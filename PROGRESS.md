@@ -88,3 +88,75 @@ own questions and Art VII.3 forbids guessing at one.
   **UNADOPTED** and every ADR filed will carry a "recorded while ungoverned" caveat.
 - **`OPEN-LOCALE-01`** — country, city and currency. This one blocks the *data model*, not just the
   interface, because a minor-unit ratio chosen now is effectively permanent once bookings exist.
+
+- **Session closed 2026-08-14_0241 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-14_0241_ani87.md`
+
+---
+
+## 2026-08-14 · Session 2 · SRC-003, and the product changed
+
+Same calendar day as Session 1; closed early because a usage limit was approaching, with two agents
+stopped mid-flight.
+
+**Done:**
+
+- **All 40 Article X rows answered by the client and frozen as `SRC-003`** — 34 `RULED`, 5 `ASSUMED`
+  ("you pick"), 1 `DEFERRED`. Every `Ruling` block is the client's own words; every `Filed as` block
+  is the build session's reading and says so.
+- **Sixteen errata filed** — ten against `SRC-001`, six against `SRC-002`. Both hashes moved and the
+  invalidation is adjudicated in `fingerprints.json`: nothing derived from either source existed yet,
+  so re-derivation is discharged by there being nothing to re-derive.
+- **`CONSTITUTION.md` ADOPTED** — Aniruddha Jathar, no backup decider, 2026-08-14. No ADR carries the
+  "recorded while ungoverned" caveat because none had been filed.
+- **`tools/consistency_check.py`** — 8 rules, `--selftest` red-proofs **8/8** by planting a real
+  violation of each and requiring the check to fire, measured by delta so it works on an
+  already-red repo.
+- `CLAUDE.md`, `docs/README.md` and `docs/30 Deployment/AWS_PREP_QUEUE.md` rewritten for the new
+  product. `GOAL_03`, `GOAL_05` and `GOAL_06` updated with the ruled facts.
+
+**Rulings** (worst first — the ones that remove something come before the ones that help):
+
+- **TMDB removed in full.** `SRC-002 §10` withdrawn. The largest scope change of the project. Its
+  second-order effect is bigger than the feature: **nothing in this system runs on a schedule any
+  more**, so the scheduler process and the EventBridge prep-queue row are deleted rather than ticked
+  off.
+- **`OPEN-EMAILFAIL-01` — a new hole opened by the answers themselves.** The emailed receipt is now
+  the customer's only proof of purchase and only way into the hall, and SES failing after capture
+  leaves a paying customer locked out. Raised, not answered.
+- **`OPEN-SHOWCANCEL-01`** — `OPEN-OPS-03` names *"cancel a show"* as an admin action while
+  `OPEN-CANCEL-02` said to forget cinema-cancelled shows. Money question; raised, not answered.
+- **`OPEN-ATTRIB-01`** — the TMDB API licence is gone, but the client supplies posters and titles
+  themselves and the attribution obligation returns if that material is licensed.
+- **Three readings marked `PROVISIONAL`**, each reconciling two of the client's own answers and
+  each naming the reading it rejected: four roles rather than one (`C-1`), one cinema with six
+  screens (`C-2`), and the sales cut-off falling after rather than before the advertised start.
+- **`OPEN-HOLD-01` ruled 3 minutes, not 7** — the trap `GOTCHAS.md` logged on day one. The client's
+  own assumption had hardened into a requirement in `SRC-002 §8.1.1`; asked properly, it came back
+  different. This is the clearest evidence so far that the method earns its cost.
+
+**Defects found in this session's own work:**
+
+- The Article X count was written as **34**; it is **40**. Five files carried it. `docs/README.md`
+  was already carrying a banner warning that a hand-typed index is how SpendWise's drifted in eight
+  places, and it drifted here in one commit. The number is now derived, not typed.
+- **A dangling ADR reference inside a frozen source** — `SRC-002` cites `FR-ADR-002`, which does not
+  exist. Caught by `consistency_check.py` on its first real run against the repo, which is exactly
+  the class it was built for. The gate is **red** on this and stays red until `GOAL_02` files it.
+- **A personal email address heading into a PUBLIC repository.** Redacted from the answer sheet and
+  `SRC-003`; `git log --all -S` confirms it never entered history.
+
+**In progress:** `GOAL_02` was killed after completing its five-lens sweep (~290 raw decisions) and
+before writing anything — **that work is lost and the goal restarts clean.** `GOAL_04` was killed
+after writing `contrast.py` and before `tokens.css`, leaving the contrast engine orphaned with
+nothing to measure. Three untracked paths are uncommitted; the handoff lists them.
+
+**Open / next:** `GOAL_02` (reserving `FR-ADR-002` for the numbering divergence) and `GOAL_04` in
+parallel — disjoint write-sets. Then `GOAL_03`, then `GOAL_05`.
+
+**Blockers:** the repository is **public** and that should be a deliberate choice · SES needs
+requesting now for its sandbox lead time · four reserved Article X rows and three `PROVISIONAL`
+readings await the client.
+
+- **Session closed 2026-08-14_0241 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-14_0241_ani87.md`
