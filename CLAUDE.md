@@ -18,9 +18,13 @@ session with `/tt`.** A session that ends without `/tt` has lost its memory.
 
 ## Mission
 
-A website where a customer browses what is playing, picks a cinema and a showtime, sees a live seat
-map, chooses seats, pays, and arrives with a ticket on their phone. **A seat is never sold twice.**
-Movie data arrives from TMDB on a schedule and appears only after a human publishes it.
+A website where a customer browses what is playing at **one theatre with six halls**, picks a
+showtime, sees a live seat map, chooses seats, pays through a **simulated** provider, and receives an
+**emailed receipt carrying a unique booking reference** that gets them in at the door.
+**A seat is never sold twice.**
+
+**An admin creates every movie by hand** — title, poster, and a display window. There is no external
+movie API and **nothing in this system runs on a schedule.**
 
 The client is also the developer and the operator. **This project exists so that deploying and
 operating it teaches DevOps** (`SRC-002 §1`). Where two designs are equally correct and one forces
@@ -28,12 +32,24 @@ the operator to confront a real infrastructure concern, that one wins — and th
 
 ## Status — 2026-08-14
 
-**Stage 0.** The repository spine, the frozen sources and the root canon exist. **No ADRs are filed,
-no derivation document exists, and no application code exists — and none should yet.** The
-derivation chain reaches code at `06 DataModel`, not before.
+**All three frozen sources exist.** `SRC-003` carries the client's rulings on all 40 Article X rows.
+**Sixteen errata** were filed as a result — ten against `SRC-001`, six against `SRC-002` — and the
+product changed materially. **No application code exists, and none should yet.** The derivation chain
+reaches code at `06 DataModel`.
 
-**Thirty of the client's own questions are unanswered** (`SRC-001 §10`, mirrored as `OPEN-*` rows in
-`CONSTITUTION.md` Article X). Until they land as `SRC-003`, nothing downstream may guess at them.
+**Four rows remain open**, all reserved: `OPEN-TLS-01` (deferred, the client is sourcing a domain),
+`OPEN-ATTRIB-01`, `OPEN-SHOWCANCEL-01`, `OPEN-EMAILFAIL-01`.
+
+### ⚠ Three rulings are `PROVISIONAL` — read `SRC-003` before relying on any of them
+
+They required the build session to reconcile two of the client's own answers, and each records the
+reading it rejected. **One message from the client reverses any of them.**
+
+1. **Four roles, not one** (`SRC-003 C-1`). `OPEN-ROLE-01` said "do not make more personas"; the very
+   next answer described two managers per hall with a dashboard.
+2. **One cinema with six screens** (`C-2`), with the `cinema` entity kept in the schema anyway.
+3. **Sales close 15 minutes *after* the advertised start** (`OPEN-BOOK-03`). The answer — "yes 15
+   minutes" — was ambiguous between before and after.
 
 ## The document set — what to read for what
 
@@ -69,10 +85,11 @@ count, cancellation, reporting, and the queue technology.
 **Backend** Python 3.12 · FastAPI
 **Database** PostgreSQL — RDS in AWS, a container locally
 **Cache and locks** Redis — ElastiCache in AWS, a container locally
-**Async** a separate worker process consuming SQS *(see `OPEN-QUEUE-01` — `§5.4.1` contradicts this)*
-**Scheduled** a scheduler process, or Lambda invoked by EventBridge
+**Async** a worker consuming **SQS** in AWS, **ElasticMQ** locally — one queue interface over both
+**Scheduled** **nothing.** The scheduler is deleted; there is nothing left to schedule
+**Email** **Amazon SES** — added to the approved list by `SRC-003 OPEN-EMAIL-01`
 **Migrations** Alembic · **Auth** own email + password with JWT, **never Cognito**
-**Storage** S3, for movie posters we cache ourselves
+**Storage** S3, for movie posters **the admin uploads**
 **Runtime** Docker on **ECS backed by EC2** · **ALB** · **SSM Parameter Store** for secrets
 
 **Forbidden and not to be designed around** (`§5.3`): EKS, Fargate, NAT Gateway, Secrets Manager,
@@ -101,9 +118,17 @@ A monorepo with obvious boundaries, because each service gets its own Dockerfile
   winners, restore it, verify the restore. A gate nobody has watched fail is decoration.
 - **If Redis is down, return an error.** Never fall back to the database for locks (`§7.9`). A silent
   fallback turns a visible outage into an invisible correctness risk.
-- **Integer minor units for money. Never a float.** Decimal at the boundary, int in persistence,
-  formatted string at render time only. **The currency is not yet ruled** (`OPEN-LOCALE-01`) — do not
-  hardcode a symbol, a ratio, or a rounding rule.
+- **Integer paise. Never a float.** Currency is **INR**, minor unit ratio **100**, timezone
+  **Asia/Kolkata** (`SRC-003 OPEN-LOCALE-01`). Decimal at the boundary, int in persistence, formatted
+  string at render time only. **The ratio is a one-way door** — bookings are permanent, so
+  reinterpreting the unit later rewrites what every past customer paid. It stays a named
+  configuration value, never a literal scattered through the code.
+- **Pricing is a base price per showtime plus a fixed percentage uplift per seat category**, applied
+  uniformly across every hall and show (`SRC-003 OPEN-PRICE-01`). **A percentage of an integer number
+  of paise does not divide evenly — the rounding rule is specified with a worked example**, because
+  an unstated one is how two screens disagree about a total.
+- **The hold is 3 minutes**, from configuration (`SRC-003 OPEN-HOLD-01`, superseding the 7 minutes in
+  `SRC-002 §8.1.1`). Maximum **10 seats** per booking, enforced server-side.
 - **`Idempotency-Key` on booking confirmation.** The same key returns the original result, never a
   second booking and never a second charge.
 - **No card data anywhere** — not a log, not a column, not a fixture, not a seed script.
@@ -119,15 +144,26 @@ A monorepo with obvious boundaries, because each service gets its own Dockerfile
   when Postgres or Redis is unreachable. Collapsing them defeats why they exist.
 - **On SIGTERM: stop accepting, drain in-flight, release this instance's Redis locks, exit** (`§7.5`).
 - **JSON logs to stdout, never a file**, with a request id propagated into worker jobs (`§7.6`).
-- **TMDB attribution in the footer** (`§10.2`). It is a licence condition, not a design choice.
+- **No card data anywhere.** Payment is simulated and no provider is ever integrated
+  (`SRC-003 OPEN-PAY-01`), so the rule is trivially satisfiable — keep it satisfied, so nobody adds
+  a card-shaped fixture out of habit.
+- **The emailed receipt is the customer's only proof of purchase and their only way into the hall.**
+  If SES fails after payment is captured, the customer has paid and cannot enter. That failure path
+  is `OPEN-EMAILFAIL-01` and it is still open — the booking screen shows the reference on screen too.
 
-## Roles
+## Roles — ruled, `PROVISIONAL` (`SRC-003 C-1`)
 
-`SRC-001 §4` names **five** — guest, customer, staff, manager, administrator. `SRC-002 §3.1` names
-**one**. That is a source conflict (`OPEN-ROLE-01`) and the build session may not pick.
+| Role | Account | Can |
+|---|---|---|
+| **guest** | none | browse movies, showtimes and the seat map. **Cannot hold or book.** |
+| **customer** | required | hold seats, pay, view their own bookings and receipts |
+| **manager** | required | **read only** — the dashboard for their assigned screens. 2 per hall, 12 total. |
+| **admin** | required | everything, including everything a manager can do |
 
-Until it is ruled: **model five in the schema, expose only what a ruled phase needs.** Expanding a
-role set later is a rewrite; collapsing one is a migration.
+**No cinema-staff role and no door scanner.** Entry is a manual human check of the booking reference.
+
+**Every privileged write belongs to the admin alone** (`SRC-003 OPEN-OPS-03`). A manager endpoint
+that writes anything is a defect, not a feature.
 
 ## Status law — the rule that matters most
 
@@ -139,13 +175,19 @@ role set later is a rewrite; collapsing one is a migration.
 | `ASSUMED` | inference; never hardens into a constraint |
 
 An agent that hits `OPEN` and fills in something sensible has committed the cardinal sin of this
-project. Open items live in `CONSTITUTION.md` Article X. **All 40 are currently `OPEN`** — 30 are
-the client's own questions from `SRC-001 §10`, 10 were raised while drafting the Constitution.
-Count them from the file, never from this sentence.
+project. Open items live in `CONSTITUTION.md` Article X. **Four remain open**, all reserved:
+`OPEN-TLS-01`, `OPEN-ATTRIB-01`, `OPEN-SHOWCANCEL-01`, `OPEN-EMAILFAIL-01`. The other 40 were ruled
+on 2026-08-14 and live in `SRC-003`. Count them from the file, never from this sentence.
 
-Watch for the specific failure this project has already produced once: `SRC-001 §10.9` asks "we
-assumed 7 minutes" and `SRC-002 §8.1.1` states 7 minutes as a requirement. **An assumption hardened
-into a specification without ever being confirmed.** That is `OPEN-HOLD-01`.
+**The specific failure this project already produced, and what came of it:** `SRC-001 §10.9` asked
+"how long should seats be held? We assumed 7 minutes" and `SRC-002 §8.1.1` then stated 7 minutes as a
+requirement. An assumption hardened into a specification without anyone deciding it. When it was
+finally put to the client it came back **3 minutes** — a different answer. That is the argument for
+the whole mechanism, and it is why `ASSUMED` may never become a `MUST`.
+
+**Five rulings are `ASSUMED`, not `RULED`** — the client said "you pick" on hall sizes, peak
+concurrency and seat category names. They never harden into constraints. Flag them each time they
+matter.
 
 ## Reserved — no model decides these, at any confidence
 
@@ -225,26 +267,48 @@ AWS**, so every claim about AWS behaviour is **reasoned, not observed**, and is 
 ## The memory budget — say it now, not in month two
 
 Roughly **1 GB total** on a `t3.micro` (`§5.4.1`), shared with an operating system, a Docker daemon
-and an ECS agent. `SRC-002 §12` implies four long-running processes: API, worker, scheduler,
-frontend. That does not fit comfortably.
+and an ECS agent — call it 300–400 MB gone before anything of ours starts.
 
-Recommendation on the record (`OPEN-PROC-01`): fold the scheduler into an EventBridge trigger against
-the admin sync endpoint that `§10.6.1` already requires, and serve the built frontend from a small
-static container. Three processes, not four. Final image under **250 MB** with a multi-stage build,
-because ECR's free tier holds 500 MB total. *(reasoned, not observed)*
+**Ruled** (`SRC-003 OPEN-PROC-01`): **three long-running processes, not four.** The scheduler is
+deleted, and with TMDB gone there is nothing left for it to run. The frontend is served from a small
+static container, not a Node process.
+
+| Process | Budget |
+|---|---|
+| API | ~200 MB |
+| Worker | ~150 MB |
+| Static frontend | ~15 MB |
+
+Final image under **250 MB** with a multi-stage build, because ECR's free tier holds 500 MB total.
+*(reasoned from typical figures, not observed — this has never run in AWS.)* **Measure it in Phase 1
+and replace these numbers with real ones.**
 
 ## Win condition — define victory, then stop
 
-A guest browses current movies, picks a cinema and a showtime, sees a live seat map, selects seats,
-holds them, pays through the simulated provider, and gets a booking reference and a scannable
-ticket; **50 concurrent requests for one seat produce exactly one winner, proved at the database
-layer**; TMDB data syncs on a schedule and appears only after a human publishes it; and it runs on
-AWS from containers the client deployed by hand.
+A guest browses current movies, registers, picks a showtime, sees a live seat map, holds seats for 3
+minutes, pays through the simulated provider, and receives an emailed receipt carrying a unique
+booking reference; **50 concurrent requests for one seat produce exactly one winner, proved at the
+database layer**; an admin creates a movie by hand and it appears to customers; a manager sees their
+own halls' numbers and not anyone else's; and it runs on AWS from containers the client deployed by
+hand.
 
-## Out of scope — do not build (`SRC-001 §6`)
+## The phases (`SRC-002 §12`, revised by `SRC-003`)
 
-No native mobile app · no food and beverage ordering · no loyalty points or membership tiers · no
-multi-language interface · no point-of-sale integration.
+1 skeleton · 2 data model and admin CRUD · 3 browsing and the seat-map read path · 4 seat locking,
+booking, idempotency, the concurrency test · 5 SQS worker and the receipt email ·
+**6 admin movie management** *(was the TMDB sync)* · 7 metrics, rate limiting, load test, runbook ·
+**8 the manager and admin dashboard** *(new)*.
+
+## Out of scope — do not build
+
+From `SRC-001 §6`: no native mobile app · no food and beverage ordering · no loyalty points or
+membership tiers · no multi-language interface · no point-of-sale integration.
+
+Added by `SRC-003`: **no external movie API** · **no scheduled job of any kind** · **no QR code** ·
+**no ticket scanner or validation endpoint** · **no customer cancellation and no refunds** · **no
+real payment provider, ever** · **no accessible-seat marking, no couple seats, no gap rule** · **no
+upcoming-releases section** · **no CSV export**.
 
 **Excluded is not blocked** (`§6.6`). The client may ask for any of these later, so no design
-decision may make one impossible.
+decision may make one impossible — which is why the schema keeps a `cinema` entity, a booking status
+and a `cancelled_at` column that v1 exposes through no endpoint.

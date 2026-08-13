@@ -14,6 +14,15 @@ CONTEXT - read before starting
   docs/01 ADR/ every APPROVED record
 
   Binding rules:
+  - SRC-003 IS THE NEWEST AND MOST AUTHORITATIVE SOURCE. It filed 10 errata against SRC-001 and 6
+    against SRC-002. READ THE ERRATA - large parts of SRC-001 §5.6, §5.4.3, §5.5.3 and SRC-002 §10
+    are WITHDRAWN. A BRD row derived from a withdrawn clause is a defect.
+  - The product after SRC-003: one theatre, six halls. Four roles - guest (browse only), customer
+    (account required to book), manager (read-only dashboard for assigned halls), admin (all
+    privileged writes). INR. A 3-minute hold, max 10 seats. Simulated payment, no refunds, no
+    cancellation. An emailed receipt with a unique reference is the ticket - no QR, no scanner.
+    The admin authors every movie by hand - there is no external movie API and nothing runs on a
+    schedule.
   - Business language only. "PostgreSQL", "Redis", "unique constraint" and "TTL" do not appear.
     "A seat cannot be sold twice, under any load" does.
   - SRC-002 is a BUILD mandate, not a product requirement. It contributes to the BRD only where

@@ -57,7 +57,8 @@ and the longer it goes the more records carry it.
 **My recommendation.** None offered — I cannot name you.
 
 **Your answer:**
->
+>Aniruddha Jathar is my name and i will always be the one building 
+
 
 ---
 
@@ -79,7 +80,7 @@ timezone that decides when a showtime actually is.
 **My recommendation.** None offered — this is your market, and it is money.
 
 **Your answer:**
->
+>India launched currency is rupees
 
 ---
 
@@ -104,7 +105,7 @@ the roles a phase actually needs. Expanding a role set later is a rewrite; colla
 migration. Say "yes, all five in the schema" and I will build interfaces only as phases require.
 
 **Your answer:**
->
+>no make it simple i am learning devops no scanner and stuff at the entrance we will make a receipt after purchase which will have a unique ID to make the person enter the cenima hall.  the guest is someone who has no account can browse but will need to amkee a account if want to purchase a ticket. and a admin who has the whole access. do not make more personas. thats it. the admin can add movie names and pictures and other stuff which the people can view on the website. and also have a dealine of how long this will stay and other things that need to be done so that customer can see the movies on front end. only 1 admin persona. admin can do all the stuff the managers can do.
 
 ---
 
@@ -133,7 +134,7 @@ reporting. Specified now, built after Phase 7. Cancellation and refunds are enta
 `OPEN-CANCEL-01`, so it belongs last.
 
 **Your answer:**
->
+>different managers for different cinema hall. can see earnings movies for the day, month, week and cannot add the new movies,the theatre has 6 cinema halls. and there are 2 managers per cinema hall. and other analytics things add more stuff that managers can do.
 
 ---
 
@@ -161,7 +162,7 @@ dependency I am asking permission for.**
 
 **Your answer:**
 >
-
+yes allowed to have ELASTICmq.
 ---
 
 ### `OPEN-EMAIL-01` — how does the confirmation email actually get sent?
@@ -192,7 +193,7 @@ the sandbox exit is not instant.
 
 **Your answer:**
 >
-
+yes will use this. 
 ---
 
 ### `OPEN-PROC-01` — four containers will not fit in 1 GB
@@ -221,7 +222,7 @@ That leaves the API (~200 MB), the worker (~150 MB), nginx (~15 MB), with real h
 reasoned from typical figures, not measured on your instance — I have never seen this run in AWS.)*
 
 **Your answer:**
->
+> sure.                          
 
 ---
 
@@ -241,7 +242,7 @@ worst thing this could turn into.
 
 **Your answer:**
 >
-
+yes this is fine.
 ---
 
 # Part 2 — Scale
@@ -258,7 +259,7 @@ picking "their cinema" is a dropdown or a search box.
 
 **Your answer:**
 >
-
+i answered this above.
 ---
 
 ### `OPEN-SCALE-02` — how many seats in the biggest screen?
@@ -275,7 +276,7 @@ design does not fall over at the top end.
 
 **Your answer:**
 >
-
+pick random.
 ---
 
 ### `OPEN-SCALE-03` — realistic peak, in customers booking at the same minute?
@@ -292,7 +293,7 @@ report where it starts to hurt.
 
 **Your answer:**
 >
-
+you pick
 ---
 
 # Part 3 — Seats and screens
@@ -310,7 +311,7 @@ and on the ticket. Making them up is inventing your product's content, which I a
 than a fixed list, so you can add a category later without a migration.
 
 **Your answer:**
->
+>you pick
 
 ---
 
@@ -327,7 +328,7 @@ may need to be held back from general sale.
 not mine to assume.
 
 **Your answer:**
->
+>no forget that this is demo project.
 
 ---
 
@@ -344,7 +345,7 @@ of the system. If yes, it is worth building properly from the start rather than 
 
 **Your answer:**
 >
-
+no such thing
 ---
 
 ### `OPEN-SEAT-04` — block single-seat gaps?
@@ -361,7 +362,7 @@ concurrent booking — a legal selection can become illegal because someone else
 while you were choosing.
 
 **Your answer:**
->
+>no such rule.
 
 ---
 
@@ -384,7 +385,7 @@ and a few abandoned checkouts can make a popular Friday show look sold out when 
 configuration value, not a constant, so you can change it without a deploy.
 
 **Your answer:**
->
+>make this 3 minutes.
 
 ---
 
@@ -399,7 +400,7 @@ nothing.
 **My recommendation.** 10. Common in the industry, and high enough that real groups are not blocked.
 
 **Your answer:**
->
+>10 maxx
 
 ---
 
@@ -418,7 +419,7 @@ converts more customers.
 one, and guest checkout is a clean thing to add later.
 
 **Your answer:**
->
+>no booking without an account as the recipet will be sent via mail.
 
 ---
 
@@ -437,7 +438,7 @@ already holds seats finish their checkout — refusing at the last step after ta
 intent is worse than selling a ticket to someone arriving late.
 
 **Your answer:**
->
+>yes 15 minutes
 
 ---
 
@@ -453,7 +454,7 @@ numbers.
 **My recommendation.** None offered — this is a money and policy decision.
 
 **Your answer:**
->
+>no refund policy
 
 ---
 
@@ -469,7 +470,7 @@ serious capability to build. Manual means someone needs a screen listing every a
 
 **Your answer:**
 >
-
+no forget this.
 ---
 
 # Part 5 — Pricing
@@ -488,7 +489,7 @@ cinemas actually sit.
 
 **Your answer:**
 >
-
+the admin will set the ticket price and more the premium ticket the more% fix price increase across all halls or any movie show.
 ---
 
 ### `OPEN-PRICE-02` — discounts, student pricing, booking fees? · **RESERVED (money)**
@@ -504,7 +505,7 @@ would suggest Phase 9 rather than v1.
 
 **Your answer:**
 >
-
+no discout for now
 ---
 
 ### `OPEN-PRICE-03` — is tax shown separately? · **RESERVED (money, legal)**
@@ -519,7 +520,7 @@ split apart afterwards.
 
 **Your answer:**
 >
-
+no
 ---
 
 # Part 6 — Payment
@@ -538,7 +539,7 @@ rather than generic. If you genuinely do not know, "don't know yet" is fine.
 
 **Your answer:**
 >
-
+we'll have a fake button and flip the flag in DB. i do not want real payment.
 ---
 
 # Part 7 — Movie data (TMDB)
@@ -554,7 +555,7 @@ question and I want the answer on the record against this id too.
 locale" here.
 
 **Your answer:**
->
+>rather make it simple we'll no longer pull the movies. the admin will upload them manually and then they will get sorted based on the customers filter, but by default the latest movie will be on top.
 
 ---
 
@@ -570,7 +571,7 @@ thinks the site is broken because there is no "book" button.
 booking control at all — a disabled button reads as a bug.
 
 **Your answer:**
->
+>no.
 
 ---
 
@@ -585,7 +586,7 @@ booking control at all — a disabled button reads as a bug.
 every cinema, so it does not sit naturally with a per-cinema role.
 
 **Your answer:**
->
+> i have defined how the admin will work on the top.
 
 ---
 
@@ -604,7 +605,7 @@ else refreshes. It is a small amount of extra work now and it prevents a failure
 until it is expensive.
 
 **Your answer:**
->
+> yeah for this the admin will add the new movies posters and other stuff which will be displayed to the customers. that's easier to make.
 
 ---
 
@@ -622,7 +623,7 @@ or too dim for a scanner.
 type. The reference costs almost nothing and it is what saves you at the door.
 
 **Your answer:**
->
+>the receipt sent on email which has a unique ID. that will be shown at the entrance.
 
 ---
 
@@ -640,7 +641,7 @@ different security model, not a fallback screen.
 manually, and if the internet is down entirely they fall back to the paper process you use today.
 
 **Your answer:**
->
+>we will have manual check up with the unique ID sent out to the customer with the booking recipet and seat number and all that stuff.
 
 ---
 
@@ -658,7 +659,7 @@ number that takes 8 seconds to load is a number nobody looks at.
 revenue-per-day as the live screen, and treat per-movie as a weekly view.
 
 **Your answer:**
->
+>reporting will be done to the mamagers and admins as they will have a dashboard.
 
 ---
 
@@ -673,7 +674,7 @@ contains customer names and emails, so it is a data-protection surface, not just
 customer-level booking data in v1 unless you specifically need it.
 
 **Your answer:**
->
+>No
 
 ---
 
@@ -691,7 +692,11 @@ than left as a hole you discover later.
 It is free-tier, it is one more AWS service for you to configure, and it turns "nobody" into "you".
 
 **Your answer:**
->
+>yes follow recommendation. my email id: [REDACTED BY THE BUILD SESSION — this repository is
+>PUBLIC. The address was supplied by the client on 2026-08-14 as the CloudWatch/SNS alert
+>destination. It lives in the SNS subscription and in local .env, never in git. Nothing downstream
+>needs the literal string. Removed before the first commit that would have published it — it has
+>never been pushed.]
 
 ---
 
@@ -706,7 +711,7 @@ rules about not keeping personal data longer than needed. Deleting rows is a one
 **My recommendation.** None offered.
 
 **Your answer:**
->
+>for now forever we'll change that later if i ask.
 
 ---
 
@@ -723,7 +728,7 @@ This question is only about whether you need a **screen to read them**.
 data being there is what matters; reading it is rarely urgent until it suddenly is.
 
 **Your answer:**
->
+>the admin will only be the one who does changes in movie , cancel a show or other priviledged things..no other persona.
 
 ---
 
@@ -745,7 +750,7 @@ the free-tier constraint. You do need a domain name, which is the only real cost
 **My recommendation.** Yes. Get a cheap domain, request an ACM certificate, terminate at the ALB.
 
 **Your answer:**
->
+>I will look if i can get a free domain somewhere. 
 
 ---
 
@@ -762,7 +767,7 @@ appearing on a real customer's ticket.
 — Riverside". Nothing that could be mistaken for real. Or give me the real ones.
 
 **Your answer:**
->
+>nope do not generate anything just generate a few fake records which we will ingest to showcase the bookings. I will bring poster and movie titles and we'll fill them with dummy data for demo. dummy data for about a month would be nice.
 
 ---
 
@@ -780,7 +785,7 @@ a sandbox's. I want the boundary written down before I use the keys, not after.
 you saying so in writing.
 
 **Your answer:**
->
+>yes follow recommendation.
 
 ---
 
@@ -796,7 +801,7 @@ you launch, and it is much easier to answer now.
 **My recommendation.** None offered — this is a legal and data-protection question.
 
 **Your answer:**
->
+>nothing like AI for now.
 
 ---
 

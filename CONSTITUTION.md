@@ -182,11 +182,15 @@ fresh zero-context session grades every irreversible call.
 2. **Store money as an integer in the currency's minor unit. Never a float.** Decimal at the
    boundary, integer in the persistence layer, formatted string at render time only. A float
    anywhere on the money path is a defect regardless of whether a test caught it.
-3. **The currency is not yet ruled** (`OPEN-LOCALE-01`, from `SRC-001 §10.4`). Until it is, no
-   symbol, no minor-unit ratio and no rounding rule may be hardcoded. Currency MUST be a
-   configuration value from the first line of schema written, because `SRC-001 §7.6` makes historical
-   bookings permanent and a currency reinterpreted later silently rewrites what every past customer
-   paid.
+3. **RULED 2026-08-14** (`SRC-003 OPEN-LOCALE-01`): the market is **India**, the currency is
+   **INR**, the minor unit is **paise** at a ratio of **100**, and the timezone is
+   **Asia/Kolkata**. Money is stored as an integer number of paise. **The ratio is a one-way door**
+   — `SRC-001 §7.6` makes bookings permanent, so a currency reinterpreted later silently rewrites
+   what every past customer paid. It stays a named configuration value rather than a literal
+   scattered through the code, and it is never changed by inference.
+   **Rounding is specified with a worked example** wherever a percentage meets an integer number of
+   paise (`OPEN-PRICE-01`), because an unstated rounding rule is how two screens disagree about a
+   total.
 4. **Payment is collected before a booking is confirmed** (`SRC-001 §5.3.1`), and **a customer is
    never charged twice for one booking attempt** (`§5.3.2`), including on refresh or double-click.
 5. **The v1 payment provider is simulated** — a real interface with real state transitions
@@ -209,11 +213,18 @@ fresh zero-context session grades every irreversible call.
    used.
 2. **Passwords are hashed with a deliberately slow algorithm, off the event loop.** Compare even for
    an unknown email, so response timing does not disclose whether an account exists.
-3. **`SRC-001 §4` names five user types** — guest visitor, registered customer, cinema staff, cinema
-   manager, system administrator. `SRC-002 §3.1` names only "admins". Per Art II.2 this is a source
-   conflict, filed as `OPEN-ROLE-01`. Until it is ruled, the data model MUST accommodate five roles
-   even where only two are exposed, because collapsing them later is a migration and expanding them
-   later is a rewrite.
+3. **RULED 2026-08-14** (`SRC-003 OPEN-ROLE-01`, reading `C-1`, **PROVISIONAL**): **four roles.**
+   **guest** — browses, cannot hold or book. **customer** — an account is required to book.
+   **manager** — **read only**, scoped to their assigned screens, twelve accounts across six halls.
+   **admin** — everything, and a superset of manager.
+   **There is no cinema-staff role and no door scanner** (`SRC-001 §4` erratum `E-1`). Entry is a
+   manual check of the booking reference on the emailed receipt.
+   The reading is `PROVISIONAL` because two of the client's own answers had to be reconciled;
+   `SRC-003 C-1` records the alternative that was rejected.
+   **Every privileged write belongs to the admin alone** (`SRC-003 OPEN-OPS-03`). A manager creates
+   nothing, prices nothing and publishes nothing. A manager endpoint that performs a write is a
+   defect against this article, not a feature. *(Folded into clause 3 rather than added as a new
+   clause, so the numbering other documents already cite does not shift.)*
 4. **Staff and management functions MUST NOT be reachable by customers** (`SRC-001 §7.4`).
    Authorisation is written once as a dependency and applied to a whole router — **one place, never
    per handler.** A per-handler check is the pattern that eventually misses one.
@@ -229,9 +240,14 @@ fresh zero-context session grades every irreversible call.
 8. **Secrets live in the environment, and in AWS in SSM Parameter Store** (`SRC-002 §5.4.3`).
    Secrets Manager MUST NOT be used. **Never commit a credential**; `/tt` scans the staged diff
    before every push.
-9. **The TMDB API key is read from an environment variable and never committed** (`SRC-002 §10.5`).
-10. **TMDB attribution appears in the site footer** (`SRC-002 §10.2`). It is a licence condition, not
-    a design choice, and removing it is not a styling decision anyone may make.
+9. **WITHDRAWN 2026-08-14** — there is no TMDB API key, because there is no TMDB integration
+    (`SRC-002 §10` erratum `E-2`). The clause number is retained rather than reused so that nothing
+    citing `Art VI.9` silently comes to mean something else.
+10. **Attribution is still owed if the material is licensed.** `SRC-002 §10.2`'s footer credit was a
+    TMDB API licence condition and that integration is gone — but the client supplies the posters
+    and titles themselves, and if any of it originates from TMDB or another licensed source the
+    obligation returns. Open as `OPEN-ATTRIB-01`. **No licensed image or synopsis enters this
+    product until that row is closed.**
 
 ## Article VII — AI Agent Guardrails (the honesty floor)
 
@@ -343,8 +359,49 @@ Rows `OPEN-SCALE-01` … `OPEN-OPS-03` are the client's own thirty questions fro
 carried here unchanged. Rows `OPEN-NAME-01` onward were raised by the build session while drafting
 this Constitution.
 
-**Status of every row below: `OPEN`.** Nothing here has been adjudicated. When the client answers,
-the answers are filed as `SRC-003` and each row is closed by a `FR-ADR` that cites it.
+---
+
+> ## ✅ ADJUDICATED 2026-08-14 — read `SRC-003`, not the tables below
+>
+> **All 40 rows were ruled by the client on 2026-08-14** and are filed verbatim in
+> `docs/00 SourceOfTruth/SRC-003_client_rulings_2026-08-14.md`. **`SRC-003` is the authority on
+> every answer.** The question tables that follow are retained unedited as the record of *what was
+> asked and how* — they are history, not live state.
+>
+> | Outcome | Count |
+> |---|---|
+> | `RULED` — binding | 34 |
+> | `ASSUMED` — client said "you pick"; never hardens into a constraint | 5 |
+> | `DEFERRED` — `OPEN-TLS-01`, the client is sourcing a domain | 1 |
+>
+> **Sixteen errata** were filed as a result — ten against `SRC-001`, six against `SRC-002`. Both
+> sources' hashes moved and the invalidation is adjudicated in `fingerprints.json`.
+>
+> **Three rulings carry a build-session reading rather than a literal answer**, each recorded with
+> the alternative it rejected and each `PROVISIONAL` — one message from the client reverses any of
+> them: the role set (`SRC-003 C-1`), one cinema or several (`C-2`), and whether the sales cut-off
+> is 15 minutes before or after the advertised start (`OPEN-BOOK-03`).
+>
+> **The largest change: TMDB is gone.** `SRC-002 §10` is withdrawn in full. The administrator
+> creates movies by hand. Nothing in this system runs on a schedule any more.
+
+### X.0 — Rows still open
+
+These three were **raised by the rulings themselves** and are not closed. Each is reserved.
+
+| ID | Question | Class |
+|---|---|---|
+| `OPEN-TLS-01` | *(carried forward, `DEFERRED`)* The client is looking for a domain. Until one exists with an ACM certificate, the session cookie's `Secure` flag stays off in the deployed environment and Art VIII.14 keeps that environment un-named as production. | reserved: product |
+| `OPEN-ATTRIB-01` | The TMDB integration is gone, but the client will supply posters and titles themselves. If that material comes from TMDB or any other licensed source, the attribution obligation still applies. Where does it come from? | reserved: legal |
+| `OPEN-SHOWCANCEL-01` | `OPEN-OPS-03` names *"cancel a show"* as an admin action; `OPEN-CANCEL-02` said to forget cinema-cancelled shows. If an admin withdraws a showtime that already has bookings, what happens to those bookings and to the money? | reserved: money, irreversible |
+| `OPEN-EMAILFAIL-01` | The emailed receipt is now the customer's only proof of purchase and their only way into the hall. What happens when SES fails *after* payment is captured? | reserved: product |
+
+*(Four rows. `OPEN-TLS-01` is carried forward; the other three are new.)*
+
+---
+
+**Historical record — the questions as they were asked on 2026-08-14.** Every row below is now
+answered in `SRC-003`. Do not read a `Recommendation` cell as live guidance.
 
 ### X.1 — Blocking, in order of what they hold up
 
@@ -479,14 +536,22 @@ the answers are filed as `SRC-003` and each row is closed by a `FR-ADR` that cit
 ## Ratification block
 
 ```
-STATUS:       DRAFT — UNADOPTED. Binds nobody until a named human signs below.
-ADOPTED BY:   ____________________   (full name. "The team agreed" is not a name.)
-ROLE:         ____________________
-DATE:         ____________________
+STATUS:       ADOPTED
+ADOPTED BY:   Aniruddha Jathar
+ROLE:         client, developer, money-signer and rules-signer — all four
+BACKUP:       NONE — stated affirmatively, not left blank
+DATE:         2026-08-14
 VERSION:      frontrow-constitution@0.1.0
 SCOPE:        The FrontRow project only.
+SOURCE:       SRC-003 OPEN-NAME-01 — "Aniruddha Jathar is my name and i will always be
+              the one building"
 ```
 
-> **An unnamed signature is not a signature.** A name inferred from a git identity or an email
-> address is not a signature either. If nobody will put their name here, that is important
-> information about this project, and it should be said out loud now rather than in month four.
+**No ADR carries the "recorded while ungoverned" caveat**, because the Constitution was adopted
+before the first record was filed.
+
+> **The consequence of one person holding all four roles, stated plainly.** The decision queue that
+> this method relies on never forms, because there is nobody it is for and no delay in which a bad
+> answer becomes visible. Article IX.7 is therefore not a formality on this project — a fresh
+> zero-context session grading every irreversible call is the **only** second opinion that exists
+> here, and where it is skipped, nothing catches the mistake.

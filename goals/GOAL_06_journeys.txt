@@ -41,19 +41,27 @@ WRITE-SET
   CONSTITUTION.md                                (Article X only, to raise new OPENs)
   PROGRESS.md . handoffs/
 
-DELIVERABLES - the walks that must exist
-  Customer  : first visit to ticket in hand . returning customer books again . cancels a booking
-              . a seat is taken while they were choosing . the hold expires ON the payment screen
-              . payment fails and they retry . they double-click confirm . they close the tab
-              mid-checkout and come back
-  Guest     : browses without an account, then tries to book (OPEN-BOOK-02 decides what happens)
-  Staff     : validates a ticket at the door . a ticket already used . a ticket for another
-              cinema . a ticket for a show that already started . the internet drops
-              (OPEN-TICKET-02)
-  Manager   : creates a showtime . sets pricing . reads occupancy for their own cinema . tries to
-              read another cinema's occupancy and is refused
-  Admin     : publishes an imported movie . the sync ran and TMDB was down . an imported field
-              was edited by a human and the sync runs again (OPEN-TMDB-04)
+WRITE-SET NOTE: STAFF_JOURNEY.md is NOT written - SRC-003 removed the cinema-staff role. Remove it
+  from the write-set. Add RECEIPT_AND_ENTRY as a section of the customer journey instead.
+
+DELIVERABLES - the walks that must exist (revised by SRC-003)
+  Customer  : first visit to receipt in hand . returning customer books again . a seat is taken
+              while they were choosing . THE 3-MINUTE HOLD EXPIRES ON THE PAYMENT SCREEN .
+              simulated payment fails and they retry . they double-click confirm . they close the
+              tab mid-checkout and come back . they try to book an 11th seat . SES FAILS AFTER
+              PAYMENT IS CAPTURED and they have no receipt (OPEN-EMAILFAIL-01 - walk it, do not
+              invent the policy)
+  Guest     : browses without an account, then tries to book and is required to register
+              (SRC-003 OPEN-BOOK-02) - and the walk must say what happens to their seat selection
+              across the registration detour. That seam is where a customer is lost.
+  Entry     : the customer arrives with the emailed reference and a human checks it . the same
+              reference is presented twice (nothing prevents it - SRC-003 OPEN-TICKET-02 accepts
+              this; the walk records what the human actually does)
+  Manager   : reads occupancy for an assigned hall . tries to read a hall they are NOT assigned to
+              and is refused . tries any write at all and is refused (managers are read-only)
+  Admin     : creates a movie by hand and uploads a poster . sets a display window and it expires .
+              creates a showtime and prices it . withdraws a showtime that already has bookings
+              (OPEN-SHOWCANCEL-01 is OPEN - walk it and file what the documents cannot answer)
 
 DEFINITION OF DONE - binary
   [ ] every P-row in the PRD is touched by at least one journey step, OR is explicitly listed as

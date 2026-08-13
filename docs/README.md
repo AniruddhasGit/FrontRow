@@ -24,7 +24,7 @@ misses. `goals/README.md` carries the real execution order.
 
 | # | Folder | What it is | State |
 |---|---|---|---|
-| 00 | **SourceOfTruth** | `SRC-001` the client's product requirements and `SRC-002` their build mandate, both verbatim, clause-numbered and **SHA-256 hashed**. `SRC-003` (the client's rulings) not yet received. Never edited. | **written** |
+| 00 | **SourceOfTruth** | Three frozen, hashed sources. `SRC-001` the product requirements (**10 errata**), `SRC-002` the build mandate (**6 errata**), `SRC-003` the client's rulings on all 40 Article X rows. Never edited; errata are appended, never struck. | **written** |
 | 01 | **ADR** | Decision records + `ADR_DECISION_RELEASE_LEDGER.tsv`. Fail-closed. `FR-ADR-nnn`. | empty |
 | 02 | **BRD** | Business requirements — what and why. No technology. | empty |
 | 03 | **PRD** | Every screen, rule, error and permission, plus the API contract. **The code is written from this.** | empty |
@@ -77,8 +77,15 @@ regenerates it and compares content.
 
 ## Where the open questions live
 
-`CONSTITUTION.md` **Article X**. It carries **40 rows and all 40 are `OPEN`.** Thirty are the
-client's own questions from `SRC-001 §10`; ten were raised while drafting the Constitution.
+`CONSTITUTION.md` **Article X**, and since 2026-08-14 the answers live in `SRC-003`.
+
+**All 40 original rows were ruled on 2026-08-14** — 34 `RULED`, 5 `ASSUMED` (the client said "you
+pick"), 1 `DEFERRED`. **Four rows are open now**, all reserved: `OPEN-TLS-01` carried forward, plus
+`OPEN-ATTRIB-01`, `OPEN-SHOWCANCEL-01` and `OPEN-EMAILFAIL-01`, which the rulings themselves raised.
+
+**Three rulings are `PROVISIONAL`** because two of the client's own answers had to be reconciled —
+the role set, one cinema versus several, and whether the sales cut-off is before or after the
+advertised start. Each records the reading it rejected. One message reverses any of them.
 
 Count them from the file, not from this sentence — this index claimed 34 for one commit because the
 number was typed rather than counted, which is the exact drift the banner at the top warns about.

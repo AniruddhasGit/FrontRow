@@ -393,8 +393,36 @@ working around it.
 
 ## §E — Errata
 
-*(none filed)*
+**Six errata, all filed 2026-08-14 from `SRC-003`.** The clause text above is never struck where it
+stands; the erratum governs over it.
 
-An erratum is appended here when a later client ruling corrects a clause above. The clause text is
-never struck where it stands; the erratum governs over it. Each erratum names the clause it
-corrects, the ADR that filed it, and the date.
+**`E-1` — `§8.1.1`, a lock TTL of 7 minutes.** The hold is **3 minutes**, read from a configuration
+value rather than a constant. *(`SRC-003 OPEN-HOLD-01`)*
+
+> This erratum is the one the method was built to catch. `SRC-001 §10.9` asked how long seats should
+> be held and answered "we assumed 7 minutes". `§8.1.1` above then stated 7 minutes as a firm
+> requirement. The assumption had become a specification without anyone deciding it. When it was
+> finally put to the client it came back **different**.
+
+**`E-2` — `§10`, the TMDB section, every clause.** Withdrawn **in full**. No TMDB, no external movie
+API, no API key, no `region` parameter, no rate-limit backoff, no upsert-by-external-id, no
+pending/publish import state, no three trigger routes, no "TMDB unreachable" path. The administrator
+creates movies by hand. **`§10.6.3` survives in effect**: posters live in S3 and we serve our own
+URLs, we simply upload them instead of downloading them. *(`SRC-003 OPEN-TMDB-01`)*
+
+**`E-3` — `§12.7`, Phase 6.** Phase 6 becomes **admin movie management** — create a movie, upload a
+poster, set the display window, publish. A **new Phase 8** adds the manager and admin dashboard.
+Phases 1–5 and 7 are unchanged. *(`SRC-003 OPEN-TMDB-01`, `OPEN-SCOPE-01`)*
+
+**`E-4` — `§4.6`, a scheduler process or a Lambda invoked by EventBridge.** Withdrawn. With the sync
+gone, **nothing in this system runs on a schedule.** Three long-running processes remain: the API,
+the worker, and a static frontend container. *(`SRC-003 OPEN-PROC-01`, `OPEN-TMDB-01`)*
+
+**`E-5` — `§8.5.1`, the worker generates the ticket QR code.** The worker **sends the receipt
+email**, carrying the unique booking reference, the seat numbers, the hall and the showtime. No QR
+code is generated anywhere. *(`SRC-003 OPEN-TICKET-01`)*
+
+**`E-6` — `§4`, the approved service list.** **Amazon SES is added.** `§4.12` required the client's
+permission before a service outside the list entered the design; it was asked for and granted. SES
+is now load-bearing rather than incidental: the emailed receipt is the customer's only proof of
+purchase and their only way into the hall. *(`SRC-003 OPEN-EMAIL-01`, `OPEN-BOOK-02`)*

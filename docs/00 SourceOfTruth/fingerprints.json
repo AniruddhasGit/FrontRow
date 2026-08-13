@@ -6,29 +6,32 @@
   "verify_command": "cd 'docs/00 SourceOfTruth' && sha256sum -c fingerprints.sha256",
   "sources": {
     "SRC-001_requirements_2026-08-14.md": {
-      "sha256": "dc15d118b55031c4a177870f49d38b5d14852b40371641a0379dea7d93e07b99",
-      "bytes": 10878,
+      "sha256": "951d2c80a756784220af3a950411a22129ec5ff6e7ccaaf8314488e79dcbcc9b",
+      "bytes": 12843,
       "status": "FROZEN",
       "what": "The client's product requirement brief. Original file CLIENT_ASK.md, clause-numbered, no wording changed.",
-      "errata": 0
+      "errata": 10
     },
     "SRC-002_build_mandate_2026-08-14.md": {
-      "sha256": "318081b3986337cbf3df4b3d5a369de5b9caa419ed511b2081015c52fa1a7ffa",
-      "bytes": 15661,
+      "sha256": "9efe9a8a2b0205546acebfc89e9cc82058e242675b1c58762bdaace58fe3b097",
+      "bytes": 17751,
       "status": "FROZEN",
       "what": "The client's build mandate: stack, AWS free-tier constraints, work zones, build order. Original file CLAUDE_CODE_BRIEF.md, clause-numbered, no wording changed.",
-      "errata": 0
+      "errata": 6
     },
-    "SRC-003_client_rulings.md": {
-      "sha256": null,
-      "bytes": null,
-      "status": "NOT_YET_RECEIVED",
-      "what": "The client's answers to SRC-001 §10 (30 questions). Until this exists, all 30 are OPEN rows in CONSTITUTION.md Article X and may not be guessed at.",
+    "SRC-003_client_rulings_2026-08-14.md": {
+      "sha256": "a945a7bea487b0d7de13f80dcb7e5defb61ff491e8c33d8629b3b3ca89725ecb",
+      "bytes": 29665,
+      "status": "FROZEN",
+      "what": "The client's rulings on all 40 CONSTITUTION.md Article X rows, answered 2026-08-14. Every Ruling block is the client's own words verbatim; the Filed as blocks are the build session's reading and say so.",
       "errata": 0
     }
   },
+  "invalidation_adjudication": "2026-08-14: the hashes of SRC-001 and SRC-002 both changed when the errata blocks were appended (previously dc15d118... and 318081b3..., recorded in the prior commit of this file). An appended ERRATUM is the one modification CONSTITUTION.md Art II.3 permits, and errata are additive - they correct a clause without altering any other. NO artifact derived from either source existed at the time the hashes moved: docs/02 through docs/12 are empty and no ADR is filed. Re-derivation is therefore discharged by there being nothing to re-derive, which is a stronger discharge than inspection. Recorded here rather than left as a silent hash bump.",
   "notes": [
     "A hash comparison is the weaker guarantee: it proves a file was not edited, it cannot see a requirement the file never contained. Where a document is GENERATED, the stronger check regenerates and compares content.",
-    "The originals CLIENT_ASK.md and CLAUDE_CODE_BRIEF.md remain in the repository root as the client handed them over. They are not cited by anything. All citations point at the SRC files."
+    "SRC-003 supersedes docs/00 SourceOfTruth/OPEN_QUESTIONS_2026-08-14.md, which was the working answer sheet and is NOT frozen. That file is retained unedited as the record of what was actually asked and how, but nothing cites it.",
+    "The originals CLIENT_ASK.md and CLAUDE_CODE_BRIEF.md remain in the repository root as the client handed them over. They are not cited by anything. All citations point at the SRC files.",
+    "SRC-003 OPEN-OPS-01 carries one deliberate redaction: the client's personal email address. This repository is PUBLIC. The address lives in the SNS subscription and local .env, never in git. The redaction is marked in place."
   ]
 }

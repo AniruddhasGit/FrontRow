@@ -18,10 +18,28 @@ CONTEXT
 
 METHOD - this is the goal that most needs parallelism
   Fan out by epic. Each lane drafts its epic's specs independently against the same BRD rows and
-  the same ADRs, then a merge pass reconciles vocabulary and hunts contradictions BETWEEN lanes.
-  Cross-epic contradictions are the defect class this stage exists to catch. Suggested lanes:
-  browse and discover . seat selection and hold . checkout and payment . tickets and entry .
-  account and bookings . management and admin . movie sync and publishing . cross-cutting floors.
+  the same ADRs, writing its OWN section file under docs/03 PRD/sections/, then a merge pass
+  assembles them and hunts contradictions BETWEEN lanes. Cross-epic contradictions are the defect
+  class this stage exists to catch. The lanes:
+    E1 browse and discover        E5 account and bookings
+    E2 seat selection and hold    E6 admin: movies, showtimes, pricing
+    E3 checkout and payment       E7 manager and admin dashboard
+    E4 receipt and entry          E8 cross-cutting floors
+
+THE RULED FACTS (SRC-003, 2026-08-14) - every lane binds to these
+  One theatre, six halls of 90/120/150/180/200/220 seats. INR, integer paise, Asia/Kolkata.
+  Four roles: guest (browse only) . customer (account required to book) . manager (READ ONLY,
+  scoped to assigned screens, 2 per hall) . admin (everything). Every privileged write is the
+  admin's alone.
+  Hold 3 minutes. Max 10 seats. Sales close 15 min AFTER the advertised start (PROVISIONAL).
+  Seat categories Standard/Premium/Recliner (ASSUMED). Price = base per showtime + a fixed % uplift
+  per category, uniform across halls and shows - THE ROUNDING RULE NEEDS A WORKED EXAMPLE.
+  Payment simulated, never a real provider. No refunds, no customer cancellation.
+  NO TMDB, NO scheduled job, NO QR code, NO scanner, NO upcoming section, NO export.
+  The admin authors every movie by hand: title, poster to S3, and a display window.
+  The emailed receipt carrying a unique human-readable reference is the customer's ONLY proof of
+  purchase and their ONLY way into the hall. Specify what happens when SES fails after capture
+  (OPEN-EMAILFAIL-01 is open - specify the surface, do not invent the policy).
 
 WRITE-SET
   docs/03 PRD/FrontRow_PRD.md                    (new)

@@ -296,8 +296,41 @@ title? `[OPEN-TMDB-04]`
 
 ## §E — Errata
 
-*(none filed)*
+**Ten errata, all filed 2026-08-14 from `SRC-003`.** The clause text above is never struck where it
+stands; the erratum governs over it. An erratum is additive — it corrects one clause and alters no
+other.
 
-An erratum is appended here when a later client ruling corrects a clause above. The clause text is
-never struck where it stands; the erratum governs over it. Each erratum names the clause it
-corrects, the ADR that filed it, and the date.
+**`E-1` — `§4`, the user types.** Four roles, not five: guest, registered customer, **manager
+(read-only, scoped to assigned screens)**, and administrator. **There is no cinema-staff role.**
+*(`SRC-003 OPEN-ROLE-01`, `OPEN-SCOPE-01`)*
+
+**`E-2` — `§5.4.3`, cancelling a booking.** Withdrawn. There is no customer-initiated cancellation
+and no refund of any kind in v1. A confirmed booking is final.
+*(`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`)*
+
+**`E-3` — `§5.5.3`, staff validate tickets at the door.** Withdrawn. Entry is a manual human check
+of the unique booking reference on the emailed receipt. No scanner, no validation endpoint, no
+used-ticket state. *(`SRC-003 OPEN-ROLE-01`, `OPEN-TICKET-02`)*
+
+**`E-4` — `§5.6`, movie data from a public database.** Withdrawn **in full**, every clause. No
+external movie API, no automatic import, no daily schedule. The administrator creates each movie by
+hand. *(`SRC-003 OPEN-TMDB-01`)*
+
+**`E-5` — `§5.1.2`, show upcoming releases separately.** Withdrawn. Customers see only what is
+currently showing. *(`SRC-003 OPEN-TMDB-02`)*
+
+**`E-6` — `§2.3`, listings without staff typing them in every week.** Withdrawn. Staff entering
+them by hand is now the design, not the problem being solved. *(`SRC-003 OPEN-TMDB-01`)*
+
+**`E-7` — `§3.4`, movie listings update automatically.** Withdrawn, for the same reason.
+*(`SRC-003 OPEN-TMDB-01`)*
+
+**`E-8` — `§5.5.4`, administrator approves imported movies.** Withdrawn; nothing is imported. The
+administrator authors and publishes. *(`SRC-003 OPEN-TMDB-01`)*
+
+**`E-9` — `§5.3.3`, a scannable ticket.** A **unique booking reference** on an emailed receipt,
+alongside the seat numbers, hall and showtime. Not a QR code. *(`SRC-003 OPEN-TICKET-01`)*
+
+**`E-10` — `§9.5`, payment handled by a third party provider.** Withdrawn. Payment is **simulated
+only**, with no provider integration at any point in this project's scope. The system never handles
+card data. *(`SRC-003 OPEN-PAY-01`, `OPEN-PAY-02`)*
