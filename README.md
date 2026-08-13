@@ -20,7 +20,8 @@ operating it teaches DevOps.
 **No ADRs are filed. No derivation document exists. No application code exists — and none should
 yet.** The derivation chain reaches code at `06 DataModel`, not before.
 
-**34 decisions are open**, 30 of them the client's own questions. They gate everything.
+**40 decisions are open** — 30 the client's own questions, 10 raised while drafting the
+Constitution. They gate everything.
 
 ## How this repository works
 

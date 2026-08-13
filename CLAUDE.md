@@ -139,7 +139,9 @@ role set later is a rewrite; collapsing one is a migration.
 | `ASSUMED` | inference; never hardens into a constraint |
 
 An agent that hits `OPEN` and fills in something sensible has committed the cardinal sin of this
-project. Open items live in `CONSTITUTION.md` Article X. **All 34 are currently `OPEN`.**
+project. Open items live in `CONSTITUTION.md` Article X. **All 40 are currently `OPEN`** — 30 are
+the client's own questions from `SRC-001 §10`, 10 were raised while drafting the Constitution.
+Count them from the file, never from this sentence.
 
 Watch for the specific failure this project has already produced once: `SRC-001 §10.9` asks "we
 assumed 7 minutes" and `SRC-002 §8.1.1` states 7 minutes as a requirement. **An assumption hardened

@@ -77,8 +77,11 @@ regenerates it and compares content.
 
 ## Where the open questions live
 
-`CONSTITUTION.md` **Article X**. It carries **34 rows and all 34 are `OPEN`.** Thirty are the
-client's own questions from `SRC-001 §10`; four were raised while drafting the Constitution.
+`CONSTITUTION.md` **Article X**. It carries **40 rows and all 40 are `OPEN`.** Thirty are the
+client's own questions from `SRC-001 §10`; ten were raised while drafting the Constitution.
+
+Count them from the file, not from this sentence — this index claimed 34 for one commit because the
+number was typed rather than counted, which is the exact drift the banner at the top warns about.
 
 Five of them are **source conflicts** — places where `SRC-001` and `SRC-002` contradict each other.
 Per Art II.2 the build session may not pick a winner in any of them.

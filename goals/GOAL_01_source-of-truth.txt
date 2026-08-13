@@ -5,7 +5,7 @@ PLUGINS & SKILLS
   superpowers:dispatching-parallel-agents      for the coverage sweep in DELIVERABLE 3
 
 OBJECTIVE
-  Close the 34 OPEN rows in CONSTITUTION.md Article X by filing the client's answers as a
+  Close the 40 OPEN rows in CONSTITUTION.md Article X by filing the client's answers as a
   frozen, hashed source, so that every document written after this one cites a ruling rather
   than an assumption. Until this goal closes, NOTHING downstream may be written.
 
@@ -43,12 +43,12 @@ DELIVERABLES
      field. Where the answer changes a clause of SRC-001 or SRC-002, name that clause.
   2. An ERRATUM appended to SRC-001 §E or SRC-002 §E for every clause a ruling corrects. The
      original text is never struck where it stands.
-  3. A coverage sweep: every one of the 34 rows appears exactly once in SRC-003, and every
+  3. A coverage sweep: every one of the 40 rows appears exactly once in SRC-003, and every
      SRC-003 section maps to exactly one Art X row. Print the two-way table. Both gap counts zero.
   4. Updated fingerprints for all three sources, with the invalidation note if a hash moved.
 
 DEFINITION OF DONE - binary
-  [ ] 34/34 Art X rows carry a status of RULED or DECLINED. Print the count by status.
+  [ ] 40/40 Art X rows carry a status of RULED or DECLINED. Print the count by status.
   [ ] zero rows carry an answer the client did not write. State the check you ran to prove it.
   [ ] the two-way coverage table prints and both gap counts are 0
   [ ] sha256sum -c docs/00 SourceOfTruth/fingerprints.sha256 -> all OK

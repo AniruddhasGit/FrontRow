@@ -73,13 +73,16 @@ that help):
 application code exists — and none should yet.** The derivation chain reaches code at `06 DataModel`,
 not before.
 
-**Open / next:** `GOAL_01` — the client answers the 34 Article X rows and they are frozen as
+**Open / next:** `GOAL_01` — the client answers the 40 Article X rows and they are frozen as
 `SRC-003`. Nothing downstream may be written until then, because 30 of those rows are the client's
 own questions and Art VII.3 forbids guessing at one.
 
 **Blockers:**
 
-- **All 34 Article X rows are `OPEN`.** They gate `GOAL_02` onward entirely.
+- **All 40 Article X rows are `OPEN`.** They gate `GOAL_02` onward entirely.
+  *(Corrected the same session: this was written as 34 because the build-session-raised rows in X.1
+  were not counted. The number is now derived from the file — `grep -oE 'OPEN-[A-Z]+-[0-9]+'`,
+  sorted unique — not typed.)*
 - **`OPEN-NAME-01`** — the client's exact full name for the ratification block, plus a backup
   decider (`NONE — accepted` is a valid written answer). Until it lands the Constitution is
   **UNADOPTED** and every ADR filed will carry a "recorded while ungoverned" caveat.
