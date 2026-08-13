@@ -1,0 +1,74 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      one agent per persona, walking independently
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/11 Journeys/ - persona journeys that walk the product end to end and find what a
+  per-screen specification cannot see: the SEAMS between screens.
+
+  On this product the seams are where the money is. A hold expiring while the customer is on the
+  payment screen is not a bug in the seat map and not a bug in checkout. It lives between them,
+  which is why no per-screen spec catches it.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/ SRC-001, SRC-002, SRC-003
+  docs/01 ADR/ (all) . docs/02 BRD/ . docs/03 PRD/ (in full) . docs/05 B DesignSystem/
+
+  Binding rules:
+  - A journey is a WALK, not a feature list. Each step names the surface, the state the user is
+    in, what they do, and what they leave with.
+  - EVERY step names the seam it crosses: a page boundary, a process boundary (API to worker),
+    a system boundary (application to Redis, to Postgres, to TMDB, to the payment provider), or
+    a time boundary (a TTL, a sales cut-off, a cancellation window).
+  - A defect found here is a defect IN THE PRD, and it is filed as such - not fixed silently in
+    the journey document.
+  - "Found zero defects" is a SUSPICIOUS result requiring an explanation, not a good one. If a
+    lane reports zero, it re-walks with a different starting state before that result stands.
+
+  OUT OF SCOPE: changing the PRD in this goal. File the defect; the fix is its own unit of work.
+
+WRITE-SET
+  docs/11 Journeys/JOURNEY_INDEX.md              (new)
+  docs/11 Journeys/CUSTOMER_JOURNEY.md           (new)
+  docs/11 Journeys/GUEST_JOURNEY.md              (new)
+  docs/11 Journeys/STAFF_JOURNEY.md              (new)
+  docs/11 Journeys/MANAGER_JOURNEY.md            (new)
+  docs/11 Journeys/ADMIN_JOURNEY.md              (new)
+  docs/11 Journeys/DEFECTS_FOUND.tsv             (new - one row per PRD defect)
+  CONSTITUTION.md                                (Article X only, to raise new OPENs)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES - the walks that must exist
+  Customer  : first visit to ticket in hand . returning customer books again . cancels a booking
+              . a seat is taken while they were choosing . the hold expires ON the payment screen
+              . payment fails and they retry . they double-click confirm . they close the tab
+              mid-checkout and come back
+  Guest     : browses without an account, then tries to book (OPEN-BOOK-02 decides what happens)
+  Staff     : validates a ticket at the door . a ticket already used . a ticket for another
+              cinema . a ticket for a show that already started . the internet drops
+              (OPEN-TICKET-02)
+  Manager   : creates a showtime . sets pricing . reads occupancy for their own cinema . tries to
+              read another cinema's occupancy and is refused
+  Admin     : publishes an imported movie . the sync ran and TMDB was down . an imported field
+              was edited by a human and the sync runs again (OPEN-TMDB-04)
+
+DEFINITION OF DONE - binary
+  [ ] every P-row in the PRD is touched by at least one journey step, OR is explicitly listed as
+      untouched with the reason. Print both counts.
+  [ ] every journey step names its seam. Zero steps with an empty seam field.
+  [ ] DEFECTS_FOUND.tsv has one row per defect, each naming the PRD section it lands against and
+      whether it is a gap, a contradiction, or an unhandled edge
+  [ ] zero lanes report zero defects without a written explanation of why zero is believable
+  [ ] the four time-boundary walks exist and each states the exact user-visible outcome: hold
+      expires on the payment screen, sales cut-off passes mid-checkout, cancellation window
+      closes while the cancel page is open, TMDB sync runs mid-session
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Do not fix the PRD here. File the defect.
+  - An unknown becomes an Art X row, never a plausible guess.
+  - Create nothing in AWS.

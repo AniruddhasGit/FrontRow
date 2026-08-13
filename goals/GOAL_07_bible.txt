@@ -1,0 +1,66 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      one agent per epic while drafting criteria
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/05 Bible/FrontRow_Bible.csv - the epics, the stories, and the binary acceptance
+  criteria. THE SCOPE ARBITER. After this goal closes, no scope exists beyond an
+  AcceptanceCriteria cell.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/ SRC-001, SRC-002, SRC-003
+  docs/01 ADR/ (all) . docs/02 BRD/ . docs/03 PRD/ (in full) . docs/11 Journeys/
+
+  Binding rules:
+  - EVERY acceptance criterion is BINARY. It passes or it fails, and it names the command or the
+    observation that decides. "The seat map works" is not a criterion. "GET /api/showtimes/7/seats
+    returns 240 seats, of which A-12 has state 'sold' and A-13 has state 'available'" is.
+  - The MILESTONE column maps to SRC-002 §12's seven phases. A story cannot sit in a phase earlier
+    than the phase that provides what it depends on.
+  - A story's AcceptanceCriteria cell is SELF-CONTAINED. An implementer working that story reads
+    the cell and the PRD section it cites, and needs nothing else. There is no scope in a
+    conversation.
+  - Stories that satisfy an SRC-001 requirement with no phase in SRC-002 §12 (OPEN-SCOPE-01) go
+    into the phases SRC-003 ruled for them. If SRC-003 declined to rule, they are Backlog with the
+    reason, never quietly dropped.
+
+  OUT OF SCOPE: the engineering ledger (GOAL_12 derives it from this), any code.
+
+WRITE-SET
+  docs/05 Bible/FrontRow_Bible.csv               (new)
+  docs/05 Bible/BIBLE_COLUMN_DICTIONARY.md       (new)
+  docs/01 ADR/ADR_DECISION_RELEASE_LEDGER.tsv    (included_in_bible column ONLY)
+  CONSTITUTION.md                                (Article X only, to raise new OPENs)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. FrontRow_Bible.csv with these columns:
+     Type,ID,ParentID,Title,Description,AcceptanceCriteria,Priority,Estimate,Milestone,Labels,
+     Status,DependsOn,SourceRef
+  2. BIBLE_COLUMN_DICTIONARY.md defining every column and every legal value of Type, Priority,
+     Milestone and Status.
+  3. Epics covering at minimum: browse and discover . seat selection and hold . checkout and
+     payment . tickets and entry . account and bookings . management and admin . movie sync and
+     publishing . operations and observability.
+
+DEFINITION OF DONE - binary
+  [ ] every P-row in the PRD is covered by at least one story. Print the two-way coverage table
+      against the PRD: no-gap and no-creep. Both zero.
+  [ ] every AcceptanceCriteria cell is binary. Sample check: a fresh ZERO-CONTEXT session reads
+      20 randomly chosen cells and marks each testable or not. Record the count. Any "not" is a
+      defect to fix before this goal closes.
+  [ ] zero stories have a DependsOn pointing at a story in a LATER milestone. Print the check.
+  [ ] every SourceRef resolves to a PRD section, an ADR, or a frozen-source clause. Zero dangling.
+  [ ] the story that proves SRC-001 §3.2 (zero double-booked seats under concurrent load) exists,
+      names the stress script, and states the exact expected counts
+  [ ] every ADR that landed here has included_in_bible flipped with its cell cited
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - No scope beyond the PRD. A story nobody asked for is scope creep with a story id.
+  - An unknown becomes an Art X row, never a plausible guess.
+  - Create nothing in AWS.

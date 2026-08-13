@@ -1,0 +1,61 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      fan out by SRC-001 section
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/02 BRD/FrontRow_BRD.md - every business requirement, in business language, each
+  citing the source clause it comes from. What and why. NO technology.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/ SRC-001, SRC-002, SRC-003
+  docs/01 ADR/ every APPROVED record
+
+  Binding rules:
+  - Business language only. "PostgreSQL", "Redis", "unique constraint" and "TTL" do not appear.
+    "A seat cannot be sold twice, under any load" does.
+  - SRC-002 is a BUILD mandate, not a product requirement. It contributes to the BRD only where
+    it states something the BUSINESS needs - the free-tier budget ceiling (§5) and the phased
+    delivery order (§12). Its technical clauses belong in the PRD, not here.
+  - Every R-row carries a [SRC:] tag naming SRC-001 §n, SRC-002 §n, SRC-003 or an APPROVED ADR.
+    A row with no source is a defect, not a judgement call.
+
+  OUT OF SCOPE: screens, endpoints, schemas, any named technology, the PRD.
+
+WRITE-SET
+  docs/02 BRD/FrontRow_BRD.md                    (new)
+  docs/01 ADR/ADR_DECISION_RELEASE_LEDGER.tsv    (included_in_brd column ONLY)
+  CONSTITUTION.md                                (Article X only, to raise new OPENs)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES - the BRD, with these sections
+  B1  Reading rules and the provenance grammar used by every row.
+  B2  Business context and the objectives, from SRC-001 §1 and §2.
+  B3  Success criteria, each restated so it is measurable. SRC-001 §3.1's "under two minutes"
+      and §3.2's "zero double-booked seats" are the two that must survive into the Bible as
+      binary criteria.
+  B4  The user types and what each needs to accomplish. Note where SRC-003 ruled OPEN-ROLE-01.
+  B5  Business requirements, ID'd R-xxx-nn, grouped by capability. Each carries: the requirement,
+      its [SRC:] tag, why the business needs it, and what it costs the business if absent.
+  B6  Constraints the business imposes - the zero infrastructure budget, the single operator,
+      the refusal of expensive vendor lock-in.
+  B7  Explicitly out of scope, from SRC-001 §6, WITH §6.6's rule that excluded is not blocked.
+
+DEFINITION OF DONE - binary
+  [ ] every clause of SRC-001 §1-§9 is covered by at least one R-row. Print the two-way coverage
+      table: no-gap and no-creep. Both counts zero.
+  [ ] every R-row's [SRC:] resolves. Run the citation checker; zero dangling.
+  [ ] zero technology names appear. Grep the document for the stack list in CLAUDE.md; zero hits.
+  [ ] every ADR that landed here has included_in_brd flipped to INCLUDED with the carrying
+      section cited in notes, DERIVED from the citations present, never asserted.
+  [ ] a fresh ZERO-CONTEXT session reads only the BRD and answers: what is this product, who
+      uses it, and what would make it a failure. Record its answer in the handoff verbatim.
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - "TBD" is not a value. An unsettled question is an Art X row.
+  - No new scope. A requirement the client never stated does not become one because it is sensible.
+  - Create nothing in AWS.

@@ -1,0 +1,52 @@
+ENGINE & MODE: <model + effort, e.g. Opus 5, xhigh effort, ultracode, maximum parallelism>
+
+PLUGINS & SKILLS — invoke these, do not reimplement them:
+  <plugin:skill>          <what it is used for in THIS goal>
+  <plugin:skill>          <...>
+  Always, on every goal:
+    superpowers:verification-before-completion   before any DoD line is ticked
+    superpowers:dispatching-parallel-agents      whenever the work fans out
+  A skill that is listed here and not used is a deviation worth a line in the handoff.
+
+OBJECTIVE:
+  <One line. What "done" looks like, in outcome terms, not activity terms.
+   Good: "50 concurrent requests for one seat produce exactly one 200 and 49 409s."
+   Bad:  "work on the seat locking module.">
+
+CONTEXT — read before starting:
+  - CLAUDE.md            the working canon: stack, invariants, DoD, reserved matters
+  - CONSTITUTION.md      the gate. Art X is the OPEN register — never fill one in
+  - GOTCHAS.md           the trap ledger
+  - docs/00 SourceOfTruth/   SRC-001 (product), SRC-002 (build mandate), SRC-003 (rulings)
+  - docs/01 ADR/         every APPROVED record — never re-open one
+  - <the specific spec rows / backlog stories this goal covers>
+  Binding rules: <anything unusual for this goal>
+  OUT OF SCOPE: <what this goal must NOT touch — be explicit>
+
+WRITE-SET (the exact files this goal may touch):
+  <path/glob>
+  <path/glob>
+  Nothing outside this list. If the work needs a file that is not here, STOP and say so
+  rather than widening silently — that is a scope change and scope changes are reserved.
+
+DELIVERABLES:
+  <exact filenames and formats>
+
+DEFINITION OF DONE — binary, testable, no adjectives:
+  [ ] <a check that either passes or fails, with the command that proves it>
+  [ ] <...>
+  [ ] every cross-reference this goal wrote resolves — the consistency check exits 0
+  [ ] the concurrency gate is STILL green (once it exists)
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS:
+  - Reversible steps only. Anything irreversible stops and asks.
+  - Report real results. Worst number first. Every rate carries its count. Never fake a green.
+  - An unknown becomes a row in CONSTITUTION.md Art X (the OPEN register) — never a plausible guess.
+  - Secrets stay in .env / SSM. Never in a committed file, never in chat.
+  - Create nothing in AWS. Read-only inspection is permitted; describe/list/get only.
+    Anything needed goes to docs/30 Deployment/AWS_PREP_QUEUE.md AND is said in chat.
+  - Write nothing in Zone C (SRC-002 §6.3). Write the specification instead, and let the
+    client fail against it.
+  - No new dependency without asking (SRC-002 §13.1).
+  - If something will not fit in 1 GB of RAM, say so (SRC-002 §13.6). Do not work around it quietly.

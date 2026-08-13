@@ -1,0 +1,91 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode
+
+PLUGINS & SKILLS
+  superpowers:test-driven-development          failing test first, from the acceptance criterion
+  superpowers:verification-before-completion   before any DoD line is ticked
+  superpowers:systematic-debugging             root cause before fix, if anything goes red
+  /code-review                                 before the work is called done
+  /run                                         to see it actually running, not just passing tests
+
+OBJECTIVE
+  SRC-002 §12.2, Phase 1, and NOTHING ELSE: the repo skeleton, config loading, health endpoints,
+  structured logging, and a local docker-compose with Postgres and Redis.
+
+  The client deploys THIS to ECS before we go further, on purpose, so they learn the pipeline
+  against something trivial rather than against the booking engine.
+
+  "Nothing else" is the requirement, not a suggestion. A Phase 1 that also contains a movie model
+  has failed this goal.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/SRC-002 §5, §6, §7, §11, §12.2
+  docs/03 PRD/ . docs/06 DataModel/AGENT_CONTRACT.md . docs/07 Architecture/for_llm/
+  docs/10 EngineeringLedger/engineering_ledger.tsv   - the Phase 1 rows are the scope
+
+  Binding rules - ZONE B applies to most of this goal:
+  - EVERY line in a Dockerfile, entrypoint, health endpoint, config validator or shutdown handler
+    that exists for a production reason carries a comment saying WHAT BREAKS WITHOUT IT
+    (SRC-002 §6.2.6). A Zone B file without those comments is not finished, even if it runs.
+  - /health/live returns 200 if the process is alive and TOUCHES NO DEPENDENCY. /health/ready
+    returns 503 if Postgres or Redis is unreachable. They behave differently on purpose because
+    the load balancer and the container health check treat them differently (SRC-002 §7.4).
+  - Config comes from environment variables and the app CRASHES ON STARTUP with a clear message
+    naming the missing variable (SRC-002 §7.1). A default that silently papers over a missing
+    value is the defect this rule exists to prevent.
+  - Logs are JSON to STDOUT with a request id on every line. No log files on disk (§5.4.5, §7.6).
+  - Migrations DO NOT run on boot (§7.8). Phase 1 has no migrations, and the entrypoint must
+    still be shaped so that adding them later cannot accidentally put them on the boot path.
+  - Graceful shutdown on SIGTERM exists from Phase 1 (§7.5), even though there are no locks to
+    release yet. The hook is what Phase 4 will hang the lock release on.
+  - docker-compose.yml is LOCAL DEVELOPMENT ONLY (§6.1.7) and says so in a comment at the top.
+  - Multi-stage build, slim base, final image UNDER 250 MB (§5.4.2). Measure it. Do not estimate.
+
+  OUT OF SCOPE - ZONE C, and this is the client's homework:
+    ECS task and service definitions . ALB, target group, listener rule, security group . VPC and
+    subnet layout . GitHub Actions or any CI/CD . CloudWatch alarms and dashboards . Terraform or
+    CloudFormation . any aws command that creates anything.
+  Write the SPECIFICATION for each in docs/30 Deployment/ instead: what to build, what the
+  application expects of it, acceptance criteria, and two or three common mistakes. Do not give
+  the answer (SRC-002 §6.5).
+
+WRITE-SET
+  backend/app/**  backend/tests/**  backend/Dockerfile  backend/entrypoint.sh
+  backend/pyproject.toml  backend/requirements*.txt
+  frontend/**  (only what Phase 1 needs - a served page proving the container works)
+  docker-compose.yml . .env.example . README.md
+  docs/30 Deployment/**  (the Zone C specifications and the prep queue)
+  docs/10 EngineeringLedger/engineering_ledger.tsv   (Status column ONLY)
+  PROGRESS.md . handoffs/
+
+DEFINITION OF DONE - binary
+  [ ] docker compose up brings the API, Postgres and Redis up, and the API answers
+      GET /health/live with 200. Paste the output.
+  [ ] GET /health/ready returns 200 with both dependencies up, and 503 with Redis STOPPED and
+      503 with Postgres STOPPED. Paste all three. Stopping a container is the proof; asserting
+      the code path is not.
+  [ ] /health/live still returns 200 while both dependencies are down. If it does not, it is
+      touching a dependency and the split has not been implemented.
+  [ ] removing one required environment variable makes the container EXIT with a message naming
+      that variable. Paste the message.
+  [ ] every log line is valid JSON on stdout and carries a request id. Pipe the output through a
+      JSON parser and paste the failure count; it must be 0.
+  [ ] SIGTERM to the container drains in-flight requests and exits 0 within the grace period.
+      Paste the timing.
+  [ ] the built image is UNDER 250 MB. Paste docker images output with the real number.
+  [ ] zero log files are written to disk. State the check.
+  [ ] every Zone B file has a what-breaks-without-it comment on every production line. A
+      reviewer confirms this, not the author.
+  [ ] every Zone C item Phase 1 needs has a specification in docs/30 Deployment/ with all four
+      parts, and a prep-queue row with a needed-by stage, AND was said in chat
+  [ ] zero Zone C artifacts were written. List every file created and confirm.
+  [ ] the Phase 1 ledger rows are flipped to Done, and NO row from a later phase was touched
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Nothing else. Not the data model, not a movie table, not an auth route. Phase 1 is trivial
+    on purpose.
+  - No new dependency without asking (SRC-002 §13.1).
+  - If it will not fit in 1 GB, say so (§13.6). Do not shave a limit until it fits.
+  - Create nothing in AWS. Read-only inspection is permitted; describe/list/get only.
+  - Report real results. Worst number first. Never fake a green.

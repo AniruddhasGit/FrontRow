@@ -1,0 +1,77 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      independent reviewers, blind to each other
+  superpowers:requesting-code-review           adversarial review of the document set
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  THE GATE BEFORE CODE. Answer two questions with evidence: do the nine documents agree with
+  each other, and can a stranger build from them?
+
+  This layer exists because the cheap mechanical check is blind to the thing that actually
+  bites: two documents that each read perfectly well on their own and contradict each other.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  EVERY document from docs/00 through docs/11. All of them. This goal has no shortcut.
+
+  Binding rules:
+  - Reviewers are FRESH ZERO-CONTEXT sessions. A session that watched a document being written
+    cannot review it (Art VII.7, Art IX.7). The substitution is recorded.
+  - The UNCOACHED SLICE is the load-bearing part: a fresh agent is handed the frozen documents
+    and NOTHING ELSE, and asked to build one thin vertical slice. EVERY QUESTION IT ASKS IS A
+    DEFECT IN THE DOCUMENTS, not a failing of the agent. Log every question verbatim.
+  - A conflict between two APPROVED ADRs cannot be resolved by the build session picking one.
+    It is a HUMAN DECISION and goes in the decision queue.
+  - The machine verdict is a file, not a sentence in a report. It is either PASS or FAIL and it
+    is computed from the counts, not written by hand.
+
+  OUT OF SCOPE: fixing what is found. That is GOAL_13b / docs/13. Writing code.
+
+METHOD - independent lanes, merged
+  1. CONFLICT HUNT     every pairwise cross-document contradiction. ADR vs ADR is the highest
+                       value pair and the one the mechanical check cannot see.
+  2. COVERAGE MATRIX   SRC-001 clause -> BRD row -> PRD spec -> Bible criterion -> SIT case ->
+                       ledger row. A break anywhere in that chain is a finding.
+  3. UNCOACHED SLICE   the fresh agent builds one vertical slice from the documents alone.
+  4. ROOT CAUSE        for every finding, WHY it survived. A finding with no root cause is a
+                       symptom and it will come back.
+  5. SELF-CHALLENGE    the reviewers attack their own review. What did we not look at? Which
+                       claim did we accept without checking? Which document did we skim?
+
+WRITE-SET
+  docs/12 DesignReview/01_CONSOLIDATED_EXIT_REPORT.md      (new)
+  docs/12 DesignReview/02_ROOT_CAUSE_REGISTER.tsv          (new)
+  docs/12 DesignReview/03_CONFLICT_MAP.tsv                 (new)
+  docs/12 DesignReview/04_COVERAGE_MATRIX.tsv              (new)
+  docs/12 DesignReview/05_UNCOACHED_SLICE_LOG.md           (new)
+  docs/12 DesignReview/06_HUMAN_DECISION_QUEUE.md          (new)
+  docs/12 DesignReview/07_MACHINE_VERDICT.json             (GENERATED)
+  docs/12 DesignReview/08_REVIEWER_SELF_CHALLENGE.md       (new)
+  PROGRESS.md . handoffs/
+
+DEFINITION OF DONE - binary
+  [ ] 04_COVERAGE_MATRIX.tsv traces every SRC-001 clause through to a ledger row, or names the
+      break. Print the break count. A break count of zero on the first attempt is a SUSPICIOUS
+      result and needs an explanation of why it is believable.
+  [ ] 03_CONFLICT_MAP.tsv lists every cross-document contradiction found, with both sides quoted
+      and the authority-order resolution under Art II.1 - or "unresolvable, human decision".
+  [ ] 05_UNCOACHED_SLICE_LOG.md records EVERY question the fresh agent asked, verbatim, with the
+      document that should have answered it. The question count is the headline number of this
+      goal and it is reported worst-first.
+  [ ] 02_ROOT_CAUSE_REGISTER.tsv has one row per finding with its root cause. Zero findings
+      without one.
+  [ ] 06_HUMAN_DECISION_QUEUE.md carries every item the build session may not decide.
+  [ ] 07_MACHINE_VERDICT.json is COMPUTED from the counts and reads PASS or FAIL. A FAIL is a
+      valid and honest outcome of this goal. Do not adjust a threshold to reach PASS.
+  [ ] 08_REVIEWER_SELF_CHALLENGE.md names at least what was not examined and why
+  [ ] every reviewer is confirmed zero-context, and the substitution for a second human is
+      recorded as a substitution
+  [ ] the consistency check exits 0, and --selftest fires on every rule first
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - FAIL is an acceptable result. Faking PASS is the single worst outcome available to this goal.
+  - Do not fix findings here. File them.
+  - Create nothing in AWS.

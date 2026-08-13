@@ -1,0 +1,34 @@
+{
+  "generated": "2026-08-14",
+  "algorithm": "sha256",
+  "line_endings": "LF. Hashes are computed on the working-tree bytes with `.gitattributes` set to `* text=auto eol=lf`, so a CRLF checkout on Windows would NOT reproduce them. Verify with `sha256sum` under Git Bash, not PowerShell against a CRLF working copy.",
+  "invalidation_rule": "If any hash below changes, every artifact derived from that source is INVALID and must be re-derived, never silently reused.",
+  "verify_command": "cd 'docs/00 SourceOfTruth' && sha256sum -c fingerprints.sha256",
+  "sources": {
+    "SRC-001_requirements_2026-08-14.md": {
+      "sha256": "dc15d118b55031c4a177870f49d38b5d14852b40371641a0379dea7d93e07b99",
+      "bytes": 10878,
+      "status": "FROZEN",
+      "what": "The client's product requirement brief. Original file CLIENT_ASK.md, clause-numbered, no wording changed.",
+      "errata": 0
+    },
+    "SRC-002_build_mandate_2026-08-14.md": {
+      "sha256": "318081b3986337cbf3df4b3d5a369de5b9caa419ed511b2081015c52fa1a7ffa",
+      "bytes": 15661,
+      "status": "FROZEN",
+      "what": "The client's build mandate: stack, AWS free-tier constraints, work zones, build order. Original file CLAUDE_CODE_BRIEF.md, clause-numbered, no wording changed.",
+      "errata": 0
+    },
+    "SRC-003_client_rulings.md": {
+      "sha256": null,
+      "bytes": null,
+      "status": "NOT_YET_RECEIVED",
+      "what": "The client's answers to SRC-001 §10 (30 questions). Until this exists, all 30 are OPEN rows in CONSTITUTION.md Article X and may not be guessed at.",
+      "errata": 0
+    }
+  },
+  "notes": [
+    "A hash comparison is the weaker guarantee: it proves a file was not edited, it cannot see a requirement the file never contained. Where a document is GENERATED, the stronger check regenerates and compares content.",
+    "The originals CLIENT_ASK.md and CLAUDE_CODE_BRIEF.md remain in the repository root as the client handed them over. They are not cited by anything. All citations point at the SRC files."
+  ]
+}

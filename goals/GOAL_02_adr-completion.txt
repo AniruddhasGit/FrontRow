@@ -1,0 +1,79 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      the five-lens sweep - one agent per lens
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Populate docs/01 ADR/ from empty, so that every decision the BRD and PRD will need either
+  has an APPROVED record or is an OPEN row with a named owner. Nothing after this goal may
+  make a decision that should have been an ADR.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md (Art III governs this goal entirely) . GOTCHAS.md
+  docs/00 SourceOfTruth/  SRC-001, SRC-002, SRC-003 - all three, in full
+
+  Binding rules:
+  - The ledger starts EMPTY. Every record is new. ADR ids are FR-ADR-nnn, allocated in filing
+    order, never reused.
+  - FAIL-CLOSED: every record is created NOT_DECIDED + HOLD_PENDING_DECISION + NOT_RELEASED.
+    A record only moves to APPROVED with a decided_by and a decision_date.
+  - Art III.9: the build session rules non-reserved TECHNICAL questions and logs each as one
+    [JUDGMENT CALL] line. Reserved matters (money, irreversible, secrets, legal, scope, waiving
+    a quality check) are NOT ruled here even where the answer looks obvious.
+  - Adopting a STRICTER option is not a waiver and needs no signature (Art III.10). That is how
+    the correctness floors in Art IV can be ruled by the build session.
+  - Decisions already taken in conversation and not yet filed MUST get a record: the simulated
+    payment provider (Art V.5), the SRC-002/SRC-003 numbering divergence from the prior project,
+    and the read-only AWS credential grant (Art VIII.2).
+
+  OUT OF SCOPE: writing the BRD. Deciding anything reserved. Any code.
+
+METHOD - the five-lens sweep, one agent per lens, run in parallel
+  Each lens reads all three frozen sources independently and lists every decision that is
+  UNDETERMINED under its lens. Lenses:
+    1. Data shape        entities, keys, constraints, what is nullable, what cascades
+    2. Concurrency       every place two actors touch one thing - this is the product's core
+    3. Money and time    currency, tax, refunds, timezones, showtime boundaries, retention
+    4. User-visible      what a person sees, is told, and is stopped from doing
+    5. Operations        config, health, shutdown, logging, queues, deploys, failure modes
+  Then a merge pass hunts contradictions BETWEEN lenses. Two lenses that resolved the same
+  question differently is the defect class this method exists to catch.
+
+WRITE-SET
+  docs/01 ADR/all-ADRs/FR-ADR-*.md               (new)
+  docs/01 ADR/ADR_DECISION_RELEASE_LEDGER.tsv    (new)
+  docs/01 ADR/README.md                          (new - the column dictionary)
+  CONSTITUTION.md                                (Article X only, to raise new OPENs)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. One FR-ADR-nnn.md per decision, each carrying: context, the decision, the alternatives
+     rejected and why, the source clause it derives from, and its consequences.
+  2. ADR_DECISION_RELEASE_LEDGER.tsv with these columns, header-anchored, never position-anchored:
+     ledger_id  pack_id  adr_id  title  decision_type  decision_owner  decision_status
+     decision_outcome  release_decision  release_status  decided_by  decision_date
+     source_file  evidence_record  last_updated  notes  included_in_brd  included_in_prd
+     included_in_bible  included_in_datamodel
+  3. Every included_in_* cell starts NOT_INCLUDED. That is CORRECT - the derived documents do
+     not exist yet.
+  4. A README.md defining every column and every legal value.
+
+DEFINITION OF DONE - binary
+  [ ] every decision found by the five-lens sweep is either an ADR or an Art X row. Print the
+      split: N ruled, M raised. Neither number may be asserted without the list behind it.
+  [ ] zero ADRs carry decision_status APPROVED without both decided_by and decision_date
+  [ ] zero RESERVED-class decisions were ruled by the build session. List the reserved ones and
+      who owns each.
+  [ ] every ADR's source_file cites a clause that exists in SRC-001, SRC-002 or SRC-003.
+      Run the citation checker; zero dangling.
+  [ ] the merge pass reports every cross-lens contradiction it found, or explains why zero is
+      a believable result. Zero is a suspicious answer, not a good one.
+  [ ] every included_in_* cell reads NOT_INCLUDED
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Silence never means approval. A record left undecided stays NOT_DECIDED.
+  - Credentials never appear in an ADR or the ledger.
+  - An unknown becomes an Art X row, never a plausible guess.
+  - Create nothing in AWS.

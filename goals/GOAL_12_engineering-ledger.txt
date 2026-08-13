@@ -1,0 +1,61 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode
+
+PLUGINS & SKILLS
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/10 EngineeringLedger/ - one row per unit of work, DERIVED from the Bible by a
+  script. This is what /ss reads to report the frontier, and it is what makes cold resumption
+  real. Only the Status column is ever hand-edited.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/05 Bible/FrontRow_Bible.csv . docs/08 SIT/ . docs/09 NegativeTesting/ .
+  C:/Users/<you>/.claude/commands/ss.md   - read how /ss actually parses a ledger before writing one
+
+  Binding rules:
+  - The ledger is GENERATED from the Bible by generate_ledger.py. Regenerating must produce no
+    diff except in the Status column, which is preserved across regenerations.
+  - /ss anchors to COLUMN HEADER NAMES, never to position. The column order may change; a
+    hardcoded index would silently mis-read. Verify the awk snippet in ss.md actually works
+    against this file - do not assume it.
+  - Status law: Backlog . InProgress . Done . Blocked. A story is never quietly Done. Blocked
+    carries the reason IN THE ROW.
+  - The Milestone column maps to SRC-002 §12's seven phases plus whatever SRC-003 ruled for
+    OPEN-SCOPE-01's four orphaned requirements.
+
+  OUT OF SCOPE: changing the Bible, any code, flipping any Status to Done.
+
+WRITE-SET
+  docs/10 EngineeringLedger/engineering_ledger.tsv        (GENERATED)
+  docs/10 EngineeringLedger/generate_ledger.py            (new)
+  docs/10 EngineeringLedger/LEDGER_COLUMN_DICTIONARY.md   (new)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. engineering_ledger.tsv with these columns:
+     Type  ID  ParentID  Title  AcceptanceCriteria  Priority  Estimate  Milestone  Status
+     DependsOn  Labels  Persona  OwnedPaths  Wave  TestTrustLevel  SITCaseIDs  NegativeCaseIDs
+     EvidencePath  SourceRef
+  2. generate_ledger.py with --check, preserving Status across regeneration.
+  3. LEDGER_COLUMN_DICTIONARY.md defining every column and every legal value.
+
+  OwnedPaths matters more than it looks: it is what lets two sessions run in parallel without
+  colliding (COORDINATION.md). Two rows with overlapping OwnedPaths can never be worked at once.
+
+DEFINITION OF DONE - binary
+  [ ] py "docs/10 EngineeringLedger/generate_ledger.py" --check exits 0 with no diff
+  [ ] row count EQUALS the Bible's story count. Print both.
+  [ ] every row's Status is Backlog. Nothing is Done - no code exists.
+  [ ] every SITCaseIDs cell resolves to a case in docs/08 SIT/. Zero dangling.
+  [ ] the /ss milestone-matrix command from ss.md is RUN against this file and its output pasted.
+      Not "it should work" - run it.
+  [ ] zero rows have a DependsOn pointing at a later milestone. Print the check.
+  [ ] zero pairs of rows in the same Wave have overlapping OwnedPaths. Print the check.
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - A generated file is never hand-edited except in the one column the generator preserves.
+  - Never flip a Status to Done in this goal.
+  - Create nothing in AWS.

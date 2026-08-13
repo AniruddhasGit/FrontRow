@@ -1,0 +1,75 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      independent attackers, each blind to the others
+  superpowers:requesting-code-review           adversarial review of the attack plan itself
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/09 NegativeTesting/ - the cases that try to break it. Weighted hard at ONE thing:
+  TWO CUSTOMERS AND ONE SEAT. Everything else in this product can be repaired after the fact.
+  A seat sold twice cannot, because a real person is standing in a cinema with a valid ticket
+  and no seat.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md (Art IV in full) . GOTCHAS.md (the concurrency section)
+  docs/03 PRD/ (the seat state machine) . docs/05 Bible/ . docs/06 DataModel/ .
+  docs/07 Architecture/for_llm/03_concurrency_model.md . docs/08 SIT/
+
+  Binding rules:
+  - Attackers work INDEPENDENTLY and are blind to each other's findings. Redundancy is cheaper
+    than a missed case. Merge afterwards.
+  - Every case states the DEFECT IT WOULD CATCH, not just the input it sends. A case that would
+    pass against broken code is worse than no case, because it reads as coverage.
+  - SEVERITY ONE is reserved for: a seat sold twice, a customer charged twice, a customer charged
+    and not given a seat, one customer seeing another's booking or payment data, and a
+    non-manager reading a cinema's revenue.
+  - Test the SILENT failures specifically. A capability that returns an empty result and a 200 is
+    indistinguishable from a working one (Art VI.7). Every cross-role case asserts a NON-EMPTY,
+    NON-ZERO result for the permitted actor as well as a denial for the forbidden one.
+
+  OUT OF SCOPE: positive cases (GOAL_10), fixing anything found, any application code.
+
+DELIVERABLES - the attack families that must each have a plan and cases
+  CONCURRENCY   50 simultaneous holds on one seat . hold and confirm racing . two confirms with
+                the same idempotency key at the same instant . confirm after the hold expired .
+                confirm a seat someone else now holds . a hold released by a client that does not
+                own it . the lock TTL expiring mid-transaction . Redis returning stale state
+  MONEY         double submit . refresh mid-payment . payment succeeds and confirm fails .
+                confirm succeeds and payment capture fails . a price changed between map render
+                and confirm . a negative or zero quantity . an integer overflow on a large booking
+  AUTHZ         customer reaching a manager route . manager reaching another cinema . staff
+                reaching admin . a guest reaching anything requiring an account . a role changed
+                mid-session . a token for a deactivated account
+  DATA          a seat id from another screen . a showtime id from another cinema . a booking
+                reference belonging to someone else . a ticket validated twice . a ticket for a
+                show that already started
+  DEPENDENCY    Redis down during hold . Redis down during confirm . Postgres down mid-confirm .
+                TMDB down during sync . TMDB returning a duplicate id . SQS unavailable after a
+                confirmed booking . the container SIGTERM'd holding locks
+  ABUSE         the rate limiter keyed on the load balancer rather than the client . a hold loop
+                that never confirms, exhausting a screen . poll flooding
+
+WRITE-SET
+  docs/09 NegativeTesting/SIT_NegativeCases.tsv          (new)
+  docs/09 NegativeTesting/CONCURRENCY_ATTACK_PLAN.md     (new)
+  docs/09 NegativeTesting/OVERSELL_COVERAGE.tsv          (new - every path to a sold seat, mapped)
+  PROGRESS.md . handoffs/
+
+DEFINITION OF DONE - binary
+  [ ] OVERSELL_COVERAGE.tsv maps EVERY code path that can mark a seat sold, and each has at least
+      one severity-one case. Print the path count and the uncovered count; uncovered must be 0.
+  [ ] every case names the defect it would catch. Zero rows with an empty cell.
+  [ ] every cross-role case asserts BOTH a non-empty result for the permitted actor and a denial
+      for the forbidden one. Print the count of cases missing the positive half; must be 0.
+  [ ] the severity-one count is stated with its total, worst number first
+  [ ] the attack plan states, for each family, what it did NOT test and why
+  [ ] a fresh ZERO-CONTEXT session reads the concurrency model and writes its own attack list.
+      Anything on that list and not in ours is a gap. Record the diff in the handoff.
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Do not fix anything here. File it.
+  - "We could not think of one" is a result to write down, not a gap to leave silent.
+  - Create nothing in AWS.

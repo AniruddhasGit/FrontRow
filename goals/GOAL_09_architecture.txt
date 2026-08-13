@@ -1,0 +1,86 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:writing-plans                    structure and the reviewer prompt
+  superpowers:dispatching-parallel-agents      one agent per for_llm document
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/07 Architecture/ for TWO audiences that need different documents. for_llm/ orients
+  a cold session in one read. for_humans/ lets the client decide, and states the weaknesses this
+  architecture accepts rather than hiding them.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/ SRC-001, SRC-002, SRC-003
+  docs/01 ADR/ (all) . docs/03 PRD/ . docs/06 DataModel/
+
+  Binding rules:
+  - EVERY statement about AWS runtime behaviour is labelled (reasoned, not observed). The build
+    session has never seen this application run in AWS (Art VIII.3). Read-only inspection of
+    what exists is an observation; concluding how traffic behaves is not.
+  - The deployed environment is never called production while it runs without TLS (Art VIII.14).
+  - for_humans/03 is the ACCEPTED WEAKNESSES document and it is not optional. Every architecture
+    trades something away. Naming what, and why it was acceptable, is the point.
+  - The 1 GB memory budget is arithmetic, not a hope. Show the sum: OS + Docker daemon + ECS
+    agent + each container's limit. If it does not fit, SAY SO (SRC-002 §13.6) - do not shave a
+    limit until the spreadsheet balances.
+
+  OUT OF SCOPE: Zone C. No task definition, no security group, no VPC layout, no Terraform.
+  Describe what the application EXPECTS of them; the client builds them.
+
+WRITE-SET
+  docs/07 Architecture/for_llm/01_system_context.md      (new)
+  docs/07 Architecture/for_llm/02_container.md           (new)
+  docs/07 Architecture/for_llm/03_concurrency_model.md   (new)
+  docs/07 Architecture/for_llm/04_deployment.md          (new)
+  docs/07 Architecture/for_llm/05_surface_route_map.md   (new)
+  docs/07 Architecture/for_llm/06_booking_sequence.md    (new)
+  docs/07 Architecture/for_llm/07_state_machines.md      (new)
+  docs/07 Architecture/for_llm/08_failure_modes.md       (new)
+  docs/07 Architecture/for_humans/01_executive_overview.md   (new)
+  docs/07 Architecture/for_humans/02_decisions_owed.md       (new)
+  docs/07 Architecture/for_humans/03_the_deliberate_gaps.md  (new)
+  docs/30 Deployment/AWS_PREP_QUEUE.md                   (append rows this goal discovers)
+  CONSTITUTION.md                                        (Article X only)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES - what each document must carry
+  03_concurrency_model  The two-system guarantee end to end: which lock is taken when, in which
+                        order, what happens when each one fails, and WHY the database guard is
+                        the one that cannot be waived. The single most important document here.
+  04_deployment         The process topology - how many containers, what each one costs in RAM,
+                        which port each listens on, which health endpoint the load balancer calls
+                        and which the container health check calls, and the memory arithmetic.
+                        Everything AWS is (reasoned, not observed).
+  08_failure_modes      Redis down . Postgres down . TMDB down . SQS down . the payment provider
+                        slow . a container SIGTERM'd holding locks . a deploy during a rush .
+                        the poll loop failing silently. For each: what the customer sees, what
+                        the operator sees, and whether data is at risk.
+  02_decisions_owed     Every Art X row still open, and what it blocks.
+  03_the_deliberate_gaps  What this architecture knowingly does not do, and why that was
+                        acceptable. No TLS until OPEN-TLS-01 is ruled. One Redis node with no
+                        failover. One EC2 instance, so a deploy is a downtime window. Polling
+                        rather than push. A simulated payment provider.
+
+DEFINITION OF DONE - binary
+  [ ] the memory arithmetic in 04_deployment sums every process and states the headroom. If the
+      total exceeds the budget, the goal reports that as its result rather than adjusting a
+      number to fit.
+  [ ] every AWS-behaviour statement carries (reasoned, not observed). Grep for the phrase and
+      compare against the count of such statements; the numbers match.
+  [ ] every failure mode in 08 names what the customer sees, what the operator sees, and whether
+      data is at risk. Zero rows with an empty cell.
+  [ ] every Art X row still OPEN appears in 02_decisions_owed with what it blocks. Two-way check
+      against CONSTITUTION.md; both counts zero.
+  [ ] every AWS dependency this architecture implies is in AWS_PREP_QUEUE.md with a needed-by
+      stage, AND was said in chat. Reporting an action you did not perform is the breach this
+      line exists to catch - paste the queue diff.
+  [ ] zero Zone C artifacts were written. List the files this goal created and confirm.
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Do not give the client the Zone C answer. Give the specification (SRC-002 §6.5).
+  - Create nothing in AWS. Read-only inspection is permitted; describe/list/get only.
+  - An unknown becomes an Art X row, never a plausible guess.

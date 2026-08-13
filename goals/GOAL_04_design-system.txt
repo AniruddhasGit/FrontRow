@@ -1,0 +1,84 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  frontend-design                              THE primary skill for this goal - load it first
+  superpowers:verification-before-completion   before any DoD line is ticked
+  superpowers:dispatching-parallel-agents      one agent per surface family while drafting
+
+OBJECTIVE
+  Write docs/05 B DesignSystem/ - the tokens, the type scale, the component specifications and
+  the real CSS the frontend is built from. It comes BEFORE the PRD because the PRD's UX section
+  binds to these token names.
+
+  This is a consumer product. A stranger decides in four seconds whether it looks like something
+  they would give a card number to. That judgement is made here, not later.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/00 SourceOfTruth/ SRC-001 (§5.2 the seat map, §7.3 speed), SRC-002 (§4.1 React+Vite+TS)
+  docs/02 BRD/FrontRow_BRD.md
+  docs/01 ADR/ every APPROVED record
+
+  Binding rules:
+  - SRC-002 §4.1 fixes React + Vite + TypeScript. It does NOT name a CSS approach. Whatever is
+    chosen is a [JUDGMENT CALL] and needs an ADR. A UI component library is a new dependency and
+    needs the client's permission first (SRC-002 §13.1).
+  - EVERY contrast figure is COMPUTED, not claimed. A contrast ratio written by hand is a number
+    nobody ran, and Art VII.1 forbids it. Ship the script that computes them.
+  - The seat map is the hardest surface in this product and it is designed here:
+      * available / held-by-someone-else / held-by-me / sold / unavailable / wheelchair
+        (OPEN-SEAT-02) / couple-seat (OPEN-SEAT-03) - every state distinguishable WITHOUT colour
+        alone, because roughly 1 in 12 men cannot separate the obvious palette for this.
+      * A large screen may have several hundred seats (OPEN-SCALE-02). The design must survive
+        that count on a 375px phone, which SRC-001 §6.1 makes the primary device.
+      * State changes arrive by poll every 3 seconds (SRC-002 §8.6.1). A seat going from
+        available to sold under the user's finger must be legible, not a silent repaint.
+  - Dark and light are both first-class. Every token is defined in both.
+
+  OUT OF SCOPE: writing React components, the PRD, any page layout that is not a token or a
+  component specification.
+
+WRITE-SET
+  docs/05 B DesignSystem/DESIGN-SYSTEM.md        (new)
+  docs/05 B DesignSystem/tokens.css              (new - real CSS, the source of record)
+  docs/05 B DesignSystem/CONTRAST.md             (new - generated, never hand-written)
+  docs/05 B DesignSystem/contrast.py             (new - the script that computes CONTRAST.md)
+  docs/05 B DesignSystem/COMPONENTS.md           (new)
+  docs/01 ADR/  new records for the CSS approach and any dependency asked for
+  CONSTITUTION.md                                (Article X only, to raise new OPENs)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. tokens.css - colour, spacing, radius, elevation, motion and type tokens, light and dark,
+     as real custom properties the build actually consumes. Not a table in a markdown file.
+  2. DESIGN-SYSTEM.md - what each token family is for and when NOT to use it.
+  3. contrast.py + CONTRAST.md - every foreground/background pair that the product actually
+     uses, computed, in both themes, against both WCAG floors. The markdown is GENERATED and
+     says so in a banner.
+  4. COMPONENTS.md - specifications for: the seat map and its seven seat states, the showtime
+     picker, the movie card, the price summary, the hold countdown, the error banner used when
+     a seat is lost mid-selection (SRC-001 §5.2.6), and the empty/loading/error/partial states
+     of each.
+  5. A named, deliberate visual identity - not a default. State what it is and why it suits a
+     cinema booking product.
+
+DEFINITION OF DONE - binary
+  [ ] py "docs/05 B DesignSystem/contrast.py" --check exits 0 with every pair over its floor,
+      in BOTH themes. Paste the output including the count of pairs checked.
+  [ ] every seat state is distinguishable in a greyscale render. Prove it - desaturate the
+      swatch set and show the states are still separable.
+  [ ] zero contrast figures in any document were typed by a human. State the check.
+  [ ] every token in tokens.css is used by at least one component specification, and every
+      component specification names only tokens that exist. Both directions, both counts zero.
+  [ ] a fresh ZERO-CONTEXT session reads COMPONENTS.md and describes the seat map. Record the
+      description in the handoff. If it cannot tell held-by-me from held-by-someone-else, the
+      goal is not done.
+  [ ] any new dependency was ASKED FOR in chat and the answer recorded, per SRC-002 §13.1
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - A hand-maintained check measures what someone remembered to list. Generate the list from
+    tokens.css, never from memory.
+  - No new dependency without asking.
+  - Create nothing in AWS.

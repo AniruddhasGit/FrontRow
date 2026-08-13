@@ -1,0 +1,64 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:dispatching-parallel-agents      one agent per epic
+  superpowers:verification-before-completion   before any DoD line is ticked
+
+OBJECTIVE
+  Write docs/08 SIT/ - the positive test cases, EXACTLY ONE PER ACCEPTANCE CRITERION in the
+  Bible, written BEFORE the code exists. A case that cannot be written from the Bible cell alone
+  is evidence the cell is not binary, and that is a defect to file.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md . GOTCHAS.md
+  docs/03 PRD/ . docs/05 Bible/ (every AcceptanceCriteria cell) . docs/06 DataModel/ .
+  docs/11 Journeys/
+
+  Binding rules:
+  - ONE case per acceptance criterion. Not one per story, not two per criterion. The mapping is
+    1:1 and it is checked mechanically.
+  - Every case cites the Bible story and criterion it proves.
+  - Every case states its PRECONDITION as data, not prose: which fixture, which seeded rows,
+    which clock instant. A case whose precondition is "a showtime exists" is not runnable.
+  - NO CASE READS THE WALL CLOCK. Time is injected. A gate that goes red at midnight has told
+    you about your test, not your system (Art IX.5, GOTCHAS).
+  - Journey cases are SEPARATE from unit-of-behaviour cases and live in their own file, because
+    they cross seams and a per-criterion mapping would distort them.
+
+  OUT OF SCOPE: negative and adversarial cases (GOAL_11), writing the harness code, any
+  application code.
+
+WRITE-SET
+  docs/08 SIT/SIT_TestCases.tsv                  (new - one row per acceptance criterion)
+  docs/08 SIT/SIT_JourneyCases.tsv               (new - one row per journey walk)
+  docs/08 SIT/harness/README.md                  (new - what the harness must provide)
+  docs/08 SIT/COVERAGE.tsv                       (GENERATED - the Bible-to-case mapping)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. SIT_TestCases.tsv, columns: CaseID, BibleStoryID, CriterionRef, Title, Precondition,
+     Steps, ExpectedResult, DataFixture, ClockInstant, Surface, PRDRef.
+  2. SIT_JourneyCases.tsv, same shape plus the JourneyRef and the seams the walk crosses.
+  3. harness/README.md - what the test harness must provide for these cases to be runnable:
+     fixture loading, clock injection, an authenticated client per role, a way to force a Redis
+     failure, and a way to force a container SIGTERM mid-request.
+  4. COVERAGE.tsv generated from the Bible, never hand-maintained.
+
+DEFINITION OF DONE - binary
+  [ ] case count EQUALS acceptance-criterion count, exactly. Print both numbers.
+  [ ] COVERAGE.tsv is generated and shows zero criteria with no case and zero cases with no
+      criterion
+  [ ] zero cases have an empty Precondition, DataFixture or ExpectedResult
+  [ ] zero cases reference the current date or time. Grep for it; zero hits.
+  [ ] every case's PRDRef resolves. Zero dangling.
+  [ ] the case proving zero-double-booking exists, names scripts/stress_seats.py, states the seat,
+      the concurrency count, and the exact expected split of status codes
+  [ ] every criterion that could NOT be turned into a runnable case is filed as a Bible defect
+      with the reason. Print that list; an empty list is a claim that needs the check behind it.
+  [ ] the consistency check exits 0
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - Do not fix the Bible here. File the defect.
+  - A case nobody can run is not a case.
+  - Create nothing in AWS.

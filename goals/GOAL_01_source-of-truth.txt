@@ -1,0 +1,65 @@
+ENGINE & MODE: Opus 5 . xhigh effort . ultracode . maximum parallelism
+
+PLUGINS & SKILLS
+  superpowers:verification-before-completion   before any DoD line is ticked
+  superpowers:dispatching-parallel-agents      for the coverage sweep in DELIVERABLE 3
+
+OBJECTIVE
+  Close the 34 OPEN rows in CONSTITUTION.md Article X by filing the client's answers as a
+  frozen, hashed source, so that every document written after this one cites a ruling rather
+  than an assumption. Until this goal closes, NOTHING downstream may be written.
+
+CONTEXT - read before starting
+  CLAUDE.md . CONSTITUTION.md (all articles, Art X in full) . GOTCHAS.md
+  docs/00 SourceOfTruth/SRC-001_requirements_2026-08-14.md   (the client's 30 questions, §10)
+  docs/00 SourceOfTruth/SRC-002_build_mandate_2026-08-14.md
+  docs/00 SourceOfTruth/fingerprints.json
+
+  Binding rules:
+  - The client answers. The build session does NOT answer on their behalf, at any confidence,
+    for any row. A row the client declines to answer is recorded as DECLINED with the working
+    default that will be used and the fact that it is ASSUMED, never RULED.
+  - Four Art X rows are SOURCE CONFLICTS between SRC-001 and SRC-002, not gaps: OPEN-ROLE-01,
+    OPEN-SCOPE-01, OPEN-QUEUE-01, OPEN-EMAIL-01. Per Art II.2 the build session may not pick a
+    winner. Present both sides in the client's own words and let them rule.
+  - OPEN-HOLD-01 is the trap already confirmed present (GOTCHAS, Process traps): the client's
+    own assumption of 7 minutes hardened into SRC-002 §8.1.1 as a requirement without ever being
+    ruled. Surface it as an assumption needing confirmation, not as a settled number.
+
+  OUT OF SCOPE: writing the BRD, any ADR, any code, or any answer the client did not give.
+
+WRITE-SET
+  docs/00 SourceOfTruth/SRC-003_client_rulings_<date>.md   (new)
+  docs/00 SourceOfTruth/fingerprints.json                  (add SRC-003; recompute)
+  docs/00 SourceOfTruth/fingerprints.sha256                (regenerate)
+  docs/00 SourceOfTruth/SRC-001_*.md                       (ERRATUM blocks at §E ONLY)
+  docs/00 SourceOfTruth/SRC-002_*.md                       (ERRATUM blocks at §E ONLY)
+  CONSTITUTION.md                                          (Article X status column ONLY)
+  PROGRESS.md . handoffs/
+
+DELIVERABLES
+  1. SRC-003 - one section per Art X row, carrying: the id, the question as asked, the client's
+     answer verbatim, the date, and a status of RULED or DECLINED. No paraphrase in the answer
+     field. Where the answer changes a clause of SRC-001 or SRC-002, name that clause.
+  2. An ERRATUM appended to SRC-001 §E or SRC-002 §E for every clause a ruling corrects. The
+     original text is never struck where it stands.
+  3. A coverage sweep: every one of the 34 rows appears exactly once in SRC-003, and every
+     SRC-003 section maps to exactly one Art X row. Print the two-way table. Both gap counts zero.
+  4. Updated fingerprints for all three sources, with the invalidation note if a hash moved.
+
+DEFINITION OF DONE - binary
+  [ ] 34/34 Art X rows carry a status of RULED or DECLINED. Print the count by status.
+  [ ] zero rows carry an answer the client did not write. State the check you ran to prove it.
+  [ ] the two-way coverage table prints and both gap counts are 0
+  [ ] sha256sum -c docs/00 SourceOfTruth/fingerprints.sha256 -> all OK
+  [ ] every hash change carries an invalidation note naming what must be re-derived
+  [ ] the four source-conflict rows each name which of SRC-001 / SRC-002 now loses, in the
+      client's words, and an erratum is filed against the losing clause
+  [ ] PROGRESS.md appended; a handoff is written by /tt
+
+GUARDRAILS
+  - An unknown becomes a DECLINED row with a working default marked ASSUMED. Never a guess.
+  - Reserved rows (money, legal, irreversible) get no recommendation from the build session
+    unless the row already carries one, and a recommendation is never an answer.
+  - Reversible steps only. Secrets stay out of every file.
+  - Create nothing in AWS.
