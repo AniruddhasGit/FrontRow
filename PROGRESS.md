@@ -160,3 +160,61 @@ readings await the client.
 
 - **Session closed 2026-08-14_0241 by Aniruddha Jathar** → handoff:
   `handoffs/HANDOFF_2026-08-14_0241_ani87.md`
+
+---
+
+## 2026-08-14 · Session 3 · The ADR pack, and a fake green found by /ss
+
+Third session of the same day. Closed on daily usage running out, with `GOAL_03` stopped one step
+before it wrote anything.
+
+**Done:**
+
+- **`/ss` earned its keep on the first run.** It found that `contrast.py` reports **eleven PASS
+  lines against zero data** — no tokens exist, no pairs were checked, and `CONTRAST`, `GREYSCALE`,
+  `THEME-PARITY` and `TOKEN-COVERAGE` all say PASS anyway. Only `PARSE` fails, and it alone holds
+  the overall result at FAIL. Verbatim the `GOTCHAS.md` trap: *a check that cannot fail looks
+  exactly like a clean result.* Left unfixed on purpose — it is `GOAL_04`'s first task, and reaching
+  into a later goal's write-set out of order is what the folder numbering exists to prevent.
+- **`GOAL_02` complete.** `FR-ADR-001`…`070`, contiguous. 66 APPROVED (every one with an authority
+  and a date), 4 NOT_DECIDED and all reserved. 30 client rulings, 33 judgment calls, 3
+  stricter-adoptions.
+- **`consistency_check.py` FAIL → PASS, 8/8.** 459 ADR references, 509 OPEN references, 1099 clause
+  citations, all resolving. Rule 8 stopped skipping now that a ledger exists.
+- Verified independently rather than on the agent's report: 70 files, 70 rows, ids contiguous, zero
+  APPROVED rows missing authority or date, all 280 incorporation cells `NOT_INCLUDED`.
+
+**Rulings** (worst first):
+
+- **Nine cross-lens contradictions**, which is the whole reason the sweep runs five ways instead of
+  once. `SRC-002 §7.9` — "fail loudly on dependency loss" — was read three different ways off a
+  single sentence by three lenses. `FR-ADR-028` decomposes it: locks fail loudly, cache degrades to
+  Postgres, the rate limiter fails closed.
+- **One lens over-read `§8.1.4`** as ruling out a holds table and recorded it as settled fact. The
+  same answer survives in `FR-ADR-025` but demoted to a judgment call, which is what it is.
+- **Only one lens of five saw that rounding has a second dimension** — per-seat or per-total. Three
+  missed it entirely, and it is a real one-paisa difference on a three-seat booking.
+- **`FR-ADR-038` — pricing rounding.** Integer half-up, per seat, never on the total, uplift in
+  basis points. Base 25000 paise at 3333 bp is exactly 33332.5, a true tie, rounding to 33333.
+  Batched for client reversal as money-adjacent.
+- **Three `CONSTITUTION.md` clauses now contradict `SRC-003` and were NOT edited** — Art XII.1
+  reserves amendment to the client. Art I.6 still defines victory as a scannable ticket plus TMDB on
+  a schedule, both withdrawn; Art V.8 calls the cancellation rows open; Art VIII.13 names TMDB as an
+  outbound path, which would mean a security-group rule for a connection that never happens and none
+  for SES.
+
+**In progress:** `GOAL_03` was stopped on the sentence *"I have the full picture. Now writing the
+BRD."* — it had read everything and written nothing. `docs/02 BRD/` is empty and all 70
+`included_in_brd` cells still read `NOT_INCLUDED`. Re-run from the top; only re-reading is lost,
+unlike Session 2's destroyed sweep.
+
+**Open / next:** `GOAL_03` (BRD) → `GOAL_04` (design system, repairing `contrast.py` first) →
+`GOAL_05` (PRD). **Strictly in order** — parallelism belongs inside a goal, never across the chain.
+
+**Blockers:** the repository is still **public** · the three stale Constitution clauses await one
+word · SES production access has a review lead time · three `PROVISIONAL` readings the PRD will be
+built directly on top of · four reserved Article X rows · six AWS prep-queue rows owed as advance
+notice under Art VIII.4.
+
+- **Session closed 2026-08-14_1638 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-14_1638_ani87.md`
