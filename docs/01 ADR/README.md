@@ -9,9 +9,21 @@ decision that should have been an ADR. If a downstream document needs an answer,
 docs/01 ADR/
 ├── README.md                        this file — the column dictionary
 ├── ADR_DECISION_RELEASE_LEDGER.tsv  the ledger. The count of record.
-└── all-ADRs/
-    └── FR-ADR-nnn.md                one file per decision
+├── all-ADRs/
+│   └── FR-ADR-nnn.md                one file per decision
+└── _sweep/
+    ├── lens-1-data-shape.md         the five lens returns, raw and unedited
+    ├── lens-2-concurrency.md
+    ├── lens-3-money-and-time.md
+    ├── lens-4-user-visible.md
+    ├── lens-5-operations.md
+    └── lens-merge.md                the dedupe, and the cross-lens contradictions
 ```
+
+**`_sweep/` is evidence, not documentation.** It holds what each of the five independent lenses
+returned before anything was merged or adjudicated, kept unedited so the derivation of the records is
+checkable rather than asserted. `lens-merge.md` is the pass that hunts for two lenses answering the
+same question differently — the defect class the method exists to catch.
 
 **For decision status, trust the ledger, never an ADR file's own header and never this README**
 (Art XI.1). The ADR file carries the reasoning; the ledger carries the state.
@@ -53,7 +65,7 @@ No cell may contain a tab or a newline. An unknown value is an **empty cell**, n
 | 8 | `decision_outcome` | What the decision was. | `HOLD_PENDING_DECISION` · `ADOPTED` · `ADOPTED_PROVISIONAL` · `WITHDRAWN` · `SUPERSEDED_BY_<adr_id>` |
 | 9 | `release_decision` | Whether the content of this record is cleared to be carried into derived documents. | `NOT_RELEASED` · `RELEASE_APPROVED` · `RELEASE_WITHHELD` |
 | 10 | `release_status` | Whether that release has actually happened yet. Distinct from column 9 on purpose: cleared is not the same as landed. | `NOT_RELEASED` · `RELEASED` |
-| 11 | `decided_by` | The named authority behind the decision. **Required for `APPROVED`.** | `Aniruddha Jathar (SRC-003)` for a client ruling · `build session (FR-ADR-nnn under Art III.9)` for a technical call · empty when `NOT_DECIDED` |
+| 11 | `decided_by` | The named authority behind the decision. **Required for `APPROVED`.** | `Aniruddha Jathar (SRC-003)` for a client ruling · `build session (Art III.9)` for a technical call or a stricter adoption · empty when `NOT_DECIDED` |
 | 12 | `decision_date` | The date the authority in column 11 decided. **Required for `APPROVED`.** | `YYYY-MM-DD` · empty when `NOT_DECIDED` |
 | 13 | `source_file` | The clause this decision derives from. **Must resolve.** | one or more of `SRC-001 §n` · `SRC-002 §n` · `SRC-001 §E E-n` · `SRC-002 §E E-n` · `SRC-003 <ROW-ID>` · `SRC-003 C-n`, separated by `; ` |
 | 14 | `evidence_record` | Where the reasoning lives. | `all-ADRs/FR-ADR-nnn.md` |
