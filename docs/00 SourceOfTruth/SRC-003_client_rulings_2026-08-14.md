@@ -28,10 +28,29 @@ Rows .............. 40 of 40 answered
 
 | Status | Count |
 |---|---|
-| `RULED` — a real answer, binding | 34 |
-| `ASSUMED` — client said "you pick"; build session chose; never hardens into a rule | 5 |
+| `RULED` — a real answer, binding | 36 |
+| `ASSUMED` — client said "you pick"; build session chose; never hardens into a rule | 3 |
 | `DEFERRED` — client is still deciding | 1 |
 | **Total** | **40** |
+
+The three `ASSUMED` rows are **`OPEN-SCALE-02`** (hall sizes), **`OPEN-SCALE-03`** (peak
+concurrency) and **`OPEN-SEAT-01`** (seat category names). Nothing else in this document rests on a
+"you pick".
+
+> **Correction, 2026-08-14, build-session metadata — not client text.** This table originally read
+> 34 / 5 / 1. It was typed rather than counted, and it disagreed with the per-row status tags in
+> this same file, which have always read 36 / 3 / 1. **The per-row tags were correct; the summary
+> was wrong**, and it is the summary that has been corrected.
+>
+> This is **not** an erratum. Errata govern client text, and every `Ruling` block below is
+> untouched and always was. This table is the build session's own arithmetic about the client's
+> answers, so it is repaired in place and the hash change is adjudicated in `fingerprints.json` —
+> the same treatment the prior project gave a miscounted banner.
+>
+> **It is also the second hand-typed count this project got wrong in one day**, after the Article X
+> register was written as 34 rows when it held 40. Both were caught by counting from the file. The
+> standing rule that came out of it: **a count in prose is a claim, and it is derived or it is
+> wrong.** `GOAL_03`'s coverage tables and this correction are both machine-derived.
 
 **Ten errata are filed against `SRC-001` and six against `SRC-002`** as a result of these rulings.
 Both are listed at the foot of this document and appended to the sources themselves.

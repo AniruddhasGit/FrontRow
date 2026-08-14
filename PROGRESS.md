@@ -101,8 +101,10 @@ stopped mid-flight.
 
 **Done:**
 
-- **All 40 Article X rows answered by the client and frozen as `SRC-003`** — 34 `RULED`, 5 `ASSUMED`
-  ("you pick"), 1 `DEFERRED`. Every `Ruling` block is the client's own words; every `Filed as` block
+- **All 40 Article X rows answered by the client and frozen as `SRC-003`** — 36 `RULED`, 3 `ASSUMED`
+  ("you pick"), 1 `DEFERRED`. *(Written here as 34/5/1 at the time; the summary table in `SRC-003`
+  was typed rather than counted and disagreed with its own per-row tags. Corrected 2026-08-14 in
+  Session 4 — see that block.)* Every `Ruling` block is the client's own words; every `Filed as` block
   is the build session's reading and says so.
 - **Sixteen errata filed** — ten against `SRC-001`, six against `SRC-002`. Both hashes moved and the
   invalidation is adjudicated in `fingerprints.json`: nothing derived from either source existed yet,

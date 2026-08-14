@@ -370,8 +370,8 @@ this Constitution.
 >
 > | Outcome | Count |
 > |---|---|
-> | `RULED` — binding | 34 |
-> | `ASSUMED` — client said "you pick"; never hardens into a constraint | 5 |
+> | `RULED` — binding | 36 |
+> | `ASSUMED` — client said "you pick"; never hardens into a constraint | 3 |
 > | `DEFERRED` — `OPEN-TLS-01`, the client is sourcing a domain | 1 |
 >
 > **Sixteen errata** were filed as a result — ten against `SRC-001`, six against `SRC-002`. Both

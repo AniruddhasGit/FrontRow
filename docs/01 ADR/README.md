@@ -145,9 +145,16 @@ states what is *not* decided and names who must decide it. That is the point of 
 resolve when you go and look. A dangling citation is a defect, not a typo — it means a decision was
 derived from something nobody said.
 
-**Credentials never appear here** (Art III.6). Not in an ADR, not in the ledger, not in a note. **This
-repository is public.** That includes anything that identifies a person: `SRC-003 OPEN-OPS-01`
-contains a redaction for exactly this reason, and nothing downstream needs the literal string.
+**Credentials never appear here** (Art III.6). Not in an ADR, not in the ledger, not in a note. That
+includes anything identifying a person: `SRC-003 OPEN-OPS-01` carries a redaction, and nothing
+downstream needs the literal string.
+
+**The repository became private on 2026-08-14, and this rule did not move** (`FR-ADR-071`). The floor
+is constitutional, not a consequence of visibility — a private repository is cloned, shared and
+flipped public, each of which leaks a committed secret just as fast. Several records written earlier
+that day justify the floor by citing publicity; they reach the right conclusion for a weaker reason
+than they needed, and `FR-ADR-071` says so without editing them, because Art III.3 makes an
+`APPROVED` record immutable.
 
 **An unknown becomes an Article X row, never a plausible guess** (Art VII.3). An `OPEN` question
 filled in with something sensible is the cardinal sin of this project.

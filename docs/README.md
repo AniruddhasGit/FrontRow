@@ -79,8 +79,8 @@ regenerates it and compares content.
 
 `CONSTITUTION.md` **Article X**, and since 2026-08-14 the answers live in `SRC-003`.
 
-**All 40 original rows were ruled on 2026-08-14** — 34 `RULED`, 5 `ASSUMED` (the client said "you
-pick"), 1 `DEFERRED`. **Four rows are open now**, all reserved: `OPEN-TLS-01` carried forward, plus
+**All 40 original rows were ruled on 2026-08-14** — 36 `RULED`, 3 `ASSUMED` (the client said "you
+pick" on hall sizes, peak concurrency and seat category names), 1 `DEFERRED`. **Four rows are open now**, all reserved: `OPEN-TLS-01` carried forward, plus
 `OPEN-ATTRIB-01`, `OPEN-SHOWCANCEL-01` and `OPEN-EMAILFAIL-01`, which the rulings themselves raised.
 
 **Three rulings are `PROVISIONAL`** because two of the client's own answers had to be reconciled —

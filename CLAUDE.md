@@ -185,9 +185,9 @@ requirement. An assumption hardened into a specification without anyone deciding
 finally put to the client it came back **3 minutes** — a different answer. That is the argument for
 the whole mechanism, and it is why `ASSUMED` may never become a `MUST`.
 
-**Five rulings are `ASSUMED`, not `RULED`** — the client said "you pick" on hall sizes, peak
-concurrency and seat category names. They never harden into constraints. Flag them each time they
-matter.
+**Three rulings are `ASSUMED`, not `RULED`** — `OPEN-SCALE-02` hall sizes, `OPEN-SCALE-03` peak
+concurrency, `OPEN-SEAT-01` seat category names. The client said "you pick" on those three and
+nothing else. They never harden into constraints. Flag them each time they matter.
 
 ## Reserved — no model decides these, at any confidence
 

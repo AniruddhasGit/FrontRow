@@ -20,13 +20,14 @@
       "errata": 6
     },
     "SRC-003_client_rulings_2026-08-14.md": {
-      "sha256": "a945a7bea487b0d7de13f80dcb7e5defb61ff491e8c33d8629b3b3ca89725ecb",
-      "bytes": 29665,
+      "sha256": "f71e697bb53fa4af36286aaea303b722d7ecd0b47e595f939c44f712e26483fa",
+      "bytes": 30961,
       "status": "FROZEN",
       "what": "The client's rulings on all 40 CONSTITUTION.md Article X rows, answered 2026-08-14. Every Ruling block is the client's own words verbatim; the Filed as blocks are the build session's reading and say so.",
       "errata": 0
     }
   },
+  "invalidation_adjudication_2": "2026-08-14, later the same day: SRC-003's hash moved from a945a7be... to f71e697b... The change is confined to the Status summary table, which is BUILD-SESSION METADATA, not client text - every Ruling block is untouched and always was. The table had been typed as 34 RULED / 5 ASSUMED / 1 DEFERRED and disagreed with the per-row status tags in the same file, which have always read 36 / 3 / 1. The per-row tags were correct. This is deliberately NOT filed as an erratum: errata govern client clauses, and no client clause changed. Same treatment the prior project gave a miscounted banner. RE-DERIVATION ASSESSED, NOT SKIPPED: the artifacts derived from SRC-003 are the 70 records in docs/01 ADR/ and docs/02 BRD/FrontRow_BRD.md. Every one of them derives from per-row rulings cited by OPEN- id. Exactly ONE derived artifact references the summary table at all: docs/02 BRD/FrontRow_BRD.md section B1.2, which quoted both figures side by side in order to FLAG the disagreement and stated 'This document takes the tag on each row, not the summary.' So the one place that saw the wrong number refused to use it. No ADR references the counts - verified by search. Re-derivation is therefore discharged by inspection, and B1.2 was rewritten in the same pass to record the correction rather than the open discrepancy. The same wrong counts had propagated to CONSTITUTION.md, CLAUDE.md, docs/README.md and PROGRESS.md and were corrected in the same pass. This is the SECOND hand-typed count this project got wrong in one day - the Article X register was written as 34 rows when it held 40. Standing rule: a count in prose is a claim, and it is derived or it is wrong.",
   "invalidation_adjudication": "2026-08-14: the hashes of SRC-001 and SRC-002 both changed when the errata blocks were appended (previously dc15d118... and 318081b3..., recorded in the prior commit of this file). An appended ERRATUM is the one modification CONSTITUTION.md Art II.3 permits, and errata are additive - they correct a clause without altering any other. NO artifact derived from either source existed at the time the hashes moved: docs/02 through docs/12 are empty and no ADR is filed. Re-derivation is therefore discharged by there being nothing to re-derive, which is a stronger discharge than inspection. Recorded here rather than left as a silent hash bump.",
   "notes": [
     "A hash comparison is the weaker guarantee: it proves a file was not edited, it cannot see a requirement the file never contained. Where a document is GENERATED, the stronger check regenerates and compares content.",
