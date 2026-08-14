@@ -517,7 +517,13 @@ answered in `SRC-003`. Do not read a `Recommendation` cell as live guidance.
    `handoffs/` (what `/tt` writes and `/ss` reads back), `goals/` (the unit of work).
 5. **`/ss` at the start of every session; `/tt` at the end of every session.** A session that ends
    without `/tt` has lost its memory.
-6. **GitHub is the source of truth.** `github.com/AniruddhaDynpro/FrontRow`. Nothing important lives
+6. **GitHub is the source of truth.** `github.com/AniruddhasGit/FrontRow`, **private**.
+   *(Moved 2026-08-14 on the client's instruction, from `github.com/AniruddhaDynpro/FrontRow`.
+   The old remote is retained locally as `dynpro` so no history is stranded. The RULE in this
+   clause is unchanged — only the identifier of which repository it points at, which is a fact
+   the client stated, not an amendment a model made. Records written before that date name the
+   old URL and are correct as written; `FR-ADR-071` in particular is APPROVED and immutable
+   under Art III.3 and is NOT edited.)* Nothing important lives
    in a chat history, on one laptop, or in one model's context. The test of this rule: a session
    starting cold on a different machine, under a different account, with `/ss` and the repository
    alone, must reach full situational awareness.
