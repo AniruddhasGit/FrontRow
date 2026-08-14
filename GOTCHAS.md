@@ -147,6 +147,200 @@ sections and write what actually happened.
   egress. The application must run in a public subnet with strict security groups (`§5.4.4`), and
   every outbound dependency must be written down. [UNPROVEN HERE]
 
+## Checks that measure less than they appear to
+
+Four separate instances on 2026-08-14/15, in four unrelated files. **This is the project's most
+frequent defect shape so far.**
+
+- **`contrast.py` reported eleven PASS lines against zero data.** No tokens existed; the checks
+  measured nothing and said so in green. Only one check failed, and it alone held the exit code.
+  *Fix:* a check whose subject set is empty reports `SKIP` or `FAIL`, **never `PASS`**, and prints
+  its subject count. Vacuous truth is not a pass.
+- **A prep-queue rule reported `14 of 14` while four new rows sat outside the table it parsed.**
+  A blank line had split one markdown table into two. The count was true of what it read.
+- **Five published `Retry-After` strings passed a rendering check and were all wrong.** Correctly
+  formatted — real integers, right unit, right plural — and not one derivable from its bucket.
+  Four were the bucket's capacity; one was its window. *The lesson, from the PRD:* **the format is
+  the cheap half; the derivation is the half that is wrong in practice**, and a review stopping at
+  the first has confirmed nothing.
+- **A `SRC-003` summary table said 34/5/1 while its own per-row tags said 36/3/1.** Both totalled
+  40, which is why it survived a day and a 70-record ADR pack.
+
+**The standing rule that came out of it: a count or a figure stated in prose is a claim, and it is
+derived from the file or it is wrong.**
+
+## A claim corrected in prose is not corrected in the generator input
+
+`E6_admin.md`'s `FORBIDDEN` block declared *"no DELETE route is mounted"* while listing
+`EP-ADM-21` — a mounted `DELETE` — in its own `raised_by` array, in the same JSON object. It
+survived that lane's own correction pass, because the pass was reading P-row exception tables and
+this is a fenced generator block. **The machine-readable copy is the one that reaches the artifact.**
+When correcting a factual claim, grep for it in the generator inputs too.
+
+## Three columns on `password_reset_token`, and collapsing any pair has a name
+
+`email_claimed_at` (a worker holds this job, cleared on failure) · `email_sent_at` (an email went
+out, **never** cleared) · `used_at` (the customer spent the token).
+
+Reusing `email_sent_at` as the claim looks like the minimal fix and **sends a second password reset
+link** after a redelivery, because a stale check reclaims a row whose email already went out. A
+duplicate credential email is worse than the lockout it was fixing. [UNPROVEN HERE — found in
+specification, no code exists]
+
+## A control specified in complete detail can still have no words
+
+Three independent screen sweeps across the PRD found **40 controls named with no published string**
+— including a filter group where none of four controls had a label, a retry action that had tokens,
+behaviour and a rule about its accessible name but no text anywhere, and an HTML anchor with a URL
+and no link text. **Every gap sat inside a row that read as thorough**, which is why none was found
+by reading. *Rule:* a screen that names a control owes that control's words; the only discharges are
+publishing the string or deferring by name to the row that does.
+
+## Fan-out lanes that cannot reach their coordinator
+
+On `GOAL_05` the coordinator could message any lane by id, but **no lane could reach the coordinator
+or each other** — six `SendMessage` attempts by one lane all failed with "no agent reachable". Every
+lane report therefore arrived only as its **final message**, relayed by hand through the main
+session, with a delay of one full wave.
+
+Three costs, all observed:
+
+- **Stale re-flags.** Lanes re-reported defects that had been fixed one or two waves earlier — one
+  item was raised three times after it was corrected. A lane cannot see another lane's fix, so it
+  re-reports from its own last read.
+- **Cross-lane findings arrive late.** A lane finding a defect in a file it does not own can only
+  report it at the end of its turn. Three separate lanes flagged something the coordinator needed
+  *during* the wave, not after it.
+- **It forces the coordinator into the lane's file.** With a correction sitting behind a relay and a
+  file apparently idle, the main session edited a section directly — and produced exactly the defect
+  write-set discipline prevents: a **partial fix that contradicted itself**, leaving a sentence one
+  paragraph below still framed the way the paragraph above had just withdrawn. The lane owning the
+  file caught the concurrent write between two reads seconds apart, stopped rather than clobbering,
+  and completed the fix properly.
+
+*Fix:* give every lane the coordinator's agent id in its brief, explicitly, and say that
+cross-lane findings are messaged **when found**, not held to the final report. **A partial fix by a
+non-owner is worse than a late fix by the owner**, because the original text was at least
+internally consistent.
+
+## A brief is not a warrant
+
+Two lanes were handed the same sentence for a security rationale: *"a 43-character token is
+brute-forceable at line rate."* **It was false** — the token is 32 bytes from a CSPRNG, a 2²⁵⁶
+space, so an attacker gets ~1.8 × 10⁶ guesses in its lifetime, which is indistinguishable from zero.
+
+One lane **refused to write it** and produced the honest rationale instead. The other **published it
+and withdrew it later**, after a second reader ran the arithmetic. Its own conclusion is the rule:
+
+> *"The wording came from the brief but I published it, and Art VII.1 binds the writer."*
+
+*Fix:* a brief that hands you a **factual assertion inside a rationale** — a number, a threat model,
+a performance claim — is something to verify **before** publishing, not after. Refusing at the point
+of writing is the better outcome; withdrawing later is acceptable; publishing and leaving it is not.
+
+**And an invented rationale is self-defeating, not merely wrong.** The first engineer who checks the
+arithmetic concludes the control is unnecessary and removes it — so a false reason for a real
+control is more dangerous than no reason at all.
+
+## Internal consistency masks external falsity
+
+A worked example stated a password was **25 code points / 75 bytes**. The real string is **28 / 84**.
+It survived **eight review passes** — and the reason is the useful part: `25 x 3 = 75`, so the two
+halves agreed with each other perfectly. **Nothing inside the sentence contradicted itself.** Only
+the literal sitting beside it disagreed, and no reader compared them.
+
+It had also propagated into **five published copy strings** telling a customer *"the limit is 72
+bytes and yours is 75"*.
+
+*Fix:* a check that a statement is self-consistent is not a check that it is true. Where a figure
+describes a literal that is present, **compute it from the literal** — `len(s.encode("utf-8"))` —
+rather than reading the sentence for plausibility. And a figure a customer sees about their own
+input is **interpolated, never typed**.
+
+## A table assembled by reading for a shape claims a completeness it never had
+
+Three separate sections did this on one project, and each then stated or implied that its list was
+the complete set:
+
+- a wrong-retry-string table built by reading for numbers, which **missed a fourth instance**
+- a date-format audit built by reading for date-shaped strings, which reached over four sites
+- a claim that one arithmetic defect was *"the only arithmetic defect in the document"*, retracted
+
+**A reader scanning for a shape finds what the reader looked at.** That is a sample, not an
+inventory, and it is not a substitute for walking the file.
+
+*Fix:* derive the list mechanically where the shape is machine-detectable — parse the blocks,
+enumerate the endpoints, compute the counts. Where it genuinely cannot be derived, **say the list is
+what was found, not what exists.** A table that names its own method is honest; one that implies
+exhaustiveness it never earned is worse than a shorter list.
+
+## A worked example whose inputs do not exercise the rule it demonstrates
+
+The PRD's example for the price-rounding rule used base `25000` paise and a `1200` basis-point
+uplift. `25000 x 11200 = 280,000,000`, which **divides by 10,000 exactly** — so the `+5000` half-up
+term did nothing, and the example produced the same answer with the rounding rule and without it.
+
+**It demonstrated nothing, and it would pass every check anyone would think to run**, because the
+arithmetic in it was correct. Only the *purpose* was unmet. A reviewer verifying the numbers
+confirms the numbers; nobody asks whether the numbers could have been produced by the wrong rule.
+
+The replacement uses the seeded figures — `24999 x 11250 = 281,238,750`, exact quotient
+`28,123.875` — so the term fires and the answer is `28124` rather than `28123`.
+
+*Fix:* an example that exists to demonstrate a rule must be **checked against the rule's absence**.
+Compute it with the rule and without it; if the two agree, the example is decoration. This applies
+to every worked example that carries a rounding step, a boundary, a cap, or a tie-break.
+
+**The general form, which this project met four separate ways:** a check that cannot fail, a count
+that describes a smaller world than it appears to, a table that claims a completeness it never had,
+and now **an example that cannot distinguish the rule from its absence.** In every case the artifact
+was internally correct and externally useless.
+
+## Record which properties were designed and which fell out
+
+A seed's idempotency anchor was written to read the earliest existing row rather than the clock, so
+a second run inserts nothing. **It also repairs an interrupted run** — but that second property was
+never designed; it fell out of the first. The lane wrote it down **as luck rather than as
+foresight**, on the ground that *the next reader deciding whether to change this should know which
+parts were reasoned.*
+
+That is the useful rule. A document that presents an accidental property as an intended one makes a
+future reader preserve the wrong thing — or, worse, refactor away the accident while carefully
+keeping the part that never mattered.
+
+The same lane's other note generalises further and is worth carrying: after correcting a figure it
+re-checked the three claims that leaned on it. Two were unaffected and one was *confirmed* by the
+correction. **None of that was knowable in advance** — and a correction that stops at the figure is
+only a correction if the dependents happen to be fine, which is not a state anyone can assert
+without looking. **The check that feels redundant is the one that establishes the thing being
+assumed.**
+
+## A killed agent's file can be intact and its work still lost
+
+Three agents died mid-goal on `GOAL_05` — two connection losses, one 600-second stall. **Every file
+was perfectly intact**: balanced fences, every block parsing, complete final sentences, all gates
+green. The write-then-think cycle means a kill lands in the gap between writes rather than inside
+one.
+
+**So a file-integrity check cannot see the damage, because there is none. The damage is absence.**
+
+Worse, the obvious recovery is also wrong. Both the coordinator and the main session recovered
+**what each dead turn had announced in prose** — *"Now doing X"* — and verified those. One lane
+later re-derived its assignment from the original brief and found **four** unwritten items, not the
+two it had announced. Its own conclusion:
+
+> *"What a dead turn announced is not what it was assigned. The only reliable recovery input is the
+> original brief's assignment list."*
+
+An agent announces an item when it starts it, so anything assigned-but-not-reached was never spoken
+and is invisible to a reader of the transcript.
+
+*Fix:* on any agent failure, recover against **the brief**, not the transcript. Re-derive the full
+assignment list and check each item against the file. Treat the last announcement as the *floor* of
+what is missing, never the extent of it. And note that the readers caught some of these as guesses —
+**a spec gap from a lost turn is indistinguishable, to a reader, from a spec gap that was never
+written**, which is the only reason they surfaced at all.
+
 ## Process traps
 
 - **A check that cannot fail looks exactly like a clean result.** *Fix:* `.gitattributes` with

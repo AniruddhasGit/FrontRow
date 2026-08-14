@@ -398,6 +398,59 @@ These three were **raised by the rulings themselves** and are not closed. Each i
 
 *(Four rows. `OPEN-TLS-01` is carried forward; the other three are new.)*
 
+### X.0b — Raised by the PRD, 2026-08-15 · filed, **not decided**
+
+`GOAL_05` surfaced **thirteen** questions its lanes could not answer from any frozen source. They
+were carried through the PRD under a `PROPOSED-` prefix **so that a proposal could never be read as
+a filed row** — a deliberate choice by the merge owner, and the right one. They are filed here now,
+and `docs/03 PRD/` §S8.7 is where each is stated in full.
+
+**Every row below is `OPEN`. None was decided. Six are reserved.** The `PROPOSED-` id is retained
+alongside so the PRD's references resolve without editing 21,000 lines.
+
+| ID | PRD id | Question | Class |
+|---|---|---|---|
+| `OPEN-PRICEBOUND-01` | `PROPOSED-PRICEBOUND-01` | An upper bound on a base price and on a category uplift. **A mistyped ₹25,000 for ₹250 is currently accepted.** | **reserved: money** |
+| `OPEN-RPTSCOPE-01` | `PROPOSED-RPTSCOPE-01` | A manager assignment has no validity period, so a manager assigned today reads that hall's **entire financial history**. | **reserved: access to financial data** |
+| `OPEN-RPTIMMUT-01` | `PROPOSED-RPTIMMUT-01` | A showtime's film or start time edited after bookings exist **rewrites reported history**. | **reserved: reporting integrity** |
+| `OPEN-ADMINCOUNT-01` | `PROPOSED-ADMINCOUNT-01` | How a second admin account is created. No endpoint was invented and no role selector exists. | **reserved: access control** |
+| `OPEN-MGRBOOK-01` | `PROPOSED-MGRBOOK-01` | May a manager buy a ticket — specifically in a hall whose takings they report on? | **reserved: access control** |
+| `OPEN-CINEMA-01` | `PROPOSED-CINEMA-01` | How a second venue is created. A second venue turns the cinema filter back on and reopens manager scoping. | **reserved: scope** |
+| `OPEN-TURNAROUND-01` | `PROPOSED-TURNAROUND-01` | The minimum gap between two showtimes in one hall. No source states a figure and none was invented. | product |
+| `OPEN-ADMINRATE-01` | `PROPOSED-ADMINRATE-01` | Rate limits for admin endpoints. The limiter table lists none, and the poster upload writes to a 5 GB allowance with no deletion path. | product |
+| `OPEN-SEATBATCH-01` | `PROPOSED-SEATBATCH-01` | Whether a seat-layout generator exists, given a mistyped seat label is permanent once a showtime exists. | product |
+| `OPEN-FORMAT-01` | `PROPOSED-FORMAT-01` | What a "format" is and which values exist. The filter is required by a frozen clause; the values are admin-supplied content. | product |
+| `OPEN-SORT-01` | `PROPOSED-SORT-01` | Which sort orders a customer may choose. A customer-chosen sort is required by `SRC-001`; none is enumerated. | product (scope) |
+| `OPEN-BRWVIS-01` | `PROPOSED-BRWVIS-01` | A film that leaves its display window while its showtimes still have unsold seats — do those showtimes keep selling? | product |
+| `OPEN-CACHE503-01` | `PROPOSED-CACHE503-01` | **Two `APPROVED` ADRs disagree about one endpoint.** Resolved at spec level as the stricter option and recorded, because a build session may not re-open an immutable record (Art III.3). | build session, escalated |
+
+**`OPEN-CACHE503-01` is the one to read first.** It is not a gap in the sources — it is two immutable
+records contradicting each other, which Art III.3 forbids the build session from resolving by
+editing either. Adopting the stricter reading is permitted under Art III.10 and is what was done,
+but a superseding ADR is owed.
+
+### X.0c — Raised by the PRD's fix waves, 2026-08-15 · filed, **not decided**
+
+| ID | Question | Class |
+|---|---|---|
+| `OPEN-SEATLABEL-01` | **`row_label` is unique per screen and unnormalised, so `C12` and `c12` are two seats a person reads as one name.** The seat label is printed on the emailed receipt and **read aloud at the door**, which is the surface where two seats sharing a name stops being a display bug. Normalising it is **not** the same decision as normalising a lookup name: it would have to be upper-case rather than `lower(trim())`, so it changes what is **stored**; and `P-ADM-14` freezes `row_label` once a showtime exists, so a rule applied later **cannot correct a row already written**. | **reserved: irreversible** |
+
+> **⏱ This row has a DEADLINE, not only a direction.** `P-ADM-14` freezes `row_label` once a
+> showtime exists on that hall. Normalising the label is **cheap on a hall with no showtimes and
+> impossible on one that has them** — so the cost of this decision starts rising the moment the
+> first showtime is created on the first hall. That is **Phase 2**, when admin CRUD lands, **not
+> Phase 6** where movie management sits. A reserved row with no deadline waits for the client; this
+> one expires.
+
+**This is a one-way door and it is why the row exists.** The build session found it, stated the
+consequence, and deliberately did **not** fix it — the fix that was safe for a category legend is
+unsafe here, and applying the same normalisation by analogy would have written a different rule into
+a frozen column. Recorded as the model for how a derived sweep should end: **the sweep finds the
+site, and a site whose fix is a different decision gets escalated rather than swept up.**
+
+**Total open rows: 18** — four in X.0, thirteen in X.0b, one here. Count them from this file, never
+from this sentence.
+
 ---
 
 **Historical record — the questions as they were asked on 2026-08-14.** Every row below is now

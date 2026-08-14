@@ -33,9 +33,31 @@ CONTEXT - read before starting
   - TIME: a showtime is an instant plus the cinema's zone. Never a naive local timestamp.
     OPEN-LOCALE-01's ruling decides the zone; if it was DECLINED, the column exists anyway and
     the value is configuration.
+  - PASSWORD RESET NEEDS THREE COLUMNS, NOT TWO. Found by GOAL_05 and easy to collapse:
+      email_claimed_at  a worker holds this job. Cleared on failure; the age branch reclaims a
+                        dead worker's row.
+      email_sent_at     an email actually went out. NEVER cleared.
+      used_at           the customer spent the token. Unrelated to sending.
+    COLLAPSING ANY PAIR IS A DEFECT WITH A NAME. Reusing email_sent_at as the claim sends a
+    SECOND password reset link after a redelivery, because it is never cleared and a stale check
+    would reclaim a row whose email already went out. Merging used_at into either loses the
+    distinction between spent and delivered. The PRD's P-ACC-07 carries the full table; this is
+    here because a data model is where the three would get merged into one "sent" flag.
+  - row_label IS AN OPEN ONE-WAY DOOR. DO NOT DECIDE IT HERE (OPEN-SEATLABEL-01, reserved).
+    It is unique per screen and unnormalised, so C12 and c12 are two seats a person reads as
+    one name - and the label is printed on the receipt and read aloud at the door. Do NOT
+    apply the lookup-name normalisation to it by analogy: that rule is lower(trim()), this one
+    would have to be upper-case, so it changes what is STORED. P-ADM-14 freezes row_label once
+    a showtime exists, so a rule applied later cannot correct a row already written. Model the
+    column, cite the open row, and leave the normalisation unruled.
   - AUDIT: SRC-001 §7.6 requires answering "who booked this seat and when" for ANY seat, at any
     time. That is a schema requirement, not a logging preference.
-  - Five roles are modelled even if fewer are exposed (Art VI.3, OPEN-ROLE-01).
+  - FOUR roles, not five (SRC-003 C-1, ruled 2026-08-14, PROVISIONAL): guest, customer,
+    manager (read-only, scoped to assigned screens), admin. The cinema-staff role is GONE
+    (SRC-001 erratum E-1). This goal file said FIVE before SRC-003 existed; a schema built
+    from the old line would carry a role nothing can ever populate.
+  - Keep the cinema entity even though there is one row, and keep a booking status and
+    cancelled_at that no v1 endpoint exposes (SRC-001 §6.6 - excluded is not blocked).
 
   OUT OF SCOPE: Alembic migrations (those are a code goal), any application code, seed DATA
   (seed EXPECTATIONS belong here; the script belongs to a code goal).

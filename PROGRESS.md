@@ -220,3 +220,70 @@ notice under Art VIII.4.
 
 - **Session closed 2026-08-14_1638 by Aniruddha Jathar** → handoff:
   `handoffs/HANDOFF_2026-08-14_1638_ani87.md`
+
+---
+
+## 2026-08-15 · Session 4 · The BRD, the design system, and the PRD
+
+Closed at 04:25 with `GOAL_05` **one step from done** — everything built, assembled, regenerated and
+green; only the final count and `S8` bookkeeping outstanding.
+
+**Done:**
+
+- **`GOAL_03` — the BRD.** 93 rows, business language, zero technology names in prose. Two-way
+  coverage machine-derived: 51 live clauses, 51 covered, **no-gap 0, no-creep 0**, with the 12
+  erratum-withdrawn clauses listed explicitly rather than silently absent.
+- **`GOAL_04` — the design system.** Repaired `contrast.py` **before** writing a token: eleven of
+  its twelve checks had been reporting PASS against zero data. Now `SKIP` on an empty subject set
+  and `--selftest` red-proofs 13/13. Then 70 contrast pairs across both themes and a greyscale
+  separation of 14.1 L* against a floor of 12.
+- **`GOAL_05` — the PRD.** 25,026 lines, 12 sections, a 3,819-line generated contract. Eight
+  parallel epic lanes, seven fix waves, **twelve iterations of fresh zero-context readers**.
+- **Repo moved** to `github.com/AniruddhasGit/FrontRow`, private. Old remote kept as `dynpro`.
+- **Article X: 4 open rows → 18.** **`GOTCHAS.md`: 8 sections → 18.**
+
+**Rulings** (worst first):
+
+- **Reader B's structural finding, which outranks the count: four of its ten remaining guesses are
+  in `scripts/seed.py`.** The seed is the only Zone A artefact that writes to every table **without
+  going through an endpoint**, so every rule about audit rows, naming and privileged writes — all
+  written for a request handler with an authenticated actor — does not reach it. A structural gap,
+  not four oversights. The seed needs an owning P-row before Phase 2.
+- **`OPEN-SEATLABEL-01` has a deadline.** `row_label` is unique and unnormalised, so `C12` and `c12`
+  are two seats a person reads as one — on a label printed on the receipt and read at the door.
+  `P-ADM-14` freezes it once a showtime exists, so the fix is cheap now and **impossible in
+  Phase 2**. Found by a lane that refused to fix it, because the safe normalisation for a category
+  name changes what is *stored* for a seat label.
+- **Nine of ten remaining guesses are silences, not contradictions**, and `S1.2`'s ranking cannot
+  reach a silence — there is nothing to arbitrate when there is one passage and it is quiet.
+- **A worked example demonstrated nothing.** The price-rounding example used inputs where the
+  rounding term was a no-op: `25000 × 11200` divides exactly. It would have passed any check anyone
+  would run, because its arithmetic was correct — only its purpose was unmet.
+- **Invented evidence in a security rationale**, caught and withdrawn: a token described as
+  "brute-forceable at line rate" is 32 bytes from a CSPRNG. One lane refused to write it; another
+  published it and withdrew it after checking. *"The wording came from the brief but I published it,
+  and Art VII.1 binds the writer."*
+
+**Defects found in this session's own work:**
+
+- **A partial fix that contradicted itself.** The main session edited a lane's file directly to
+  remove the false security claim, missed a sentence one paragraph below still carrying the
+  withdrawn framing, and was caught by the lane mid-edit. Write-set discipline exists for exactly
+  that, and breaking it produced exactly that.
+- **"Document it and close" does not discharge a deferral.** The status law has four states and
+  "written in the merge report" is not one of them, so readers correctly counted deferred items as
+  guesses. A fact recorded somewhere other than where it is needed is not recorded.
+- **Recovering what a dead agent announced is not recovering what it was assigned.** Three lanes
+  died; every file was intact; two lanes' announced items were recovered and a third re-derived
+  from its brief to find **four** unwritten items.
+
+**In progress:** `GOAL_05`'s final count and `S8` bookkeeping. Nothing else.
+
+**Open / next:** close `GOAL_05` → `GOAL_06` journeys → `GOAL_07` Bible → `GOAL_08` data model, whose
+contract already carries the three-column reset-token constraint and the `row_label` one-way door.
+
+**Blockers:** 18 open Article X rows, 7 reserved · three `PROVISIONAL` readings the PRD now rests on
+· SES production access needs requesting · 18 AWS prep-queue rows, all `REQUESTED`.
+
+- **Session closed 2026-08-15_0425 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-15_0425_ani87.md`
