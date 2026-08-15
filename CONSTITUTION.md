@@ -448,8 +448,39 @@ unsafe here, and applying the same normalisation by analogy would have written a
 a frozen column. Recorded as the model for how a derived sweep should end: **the sweep finds the
 site, and a site whose fix is a different decision gets escalated rather than swept up.**
 
-**Total open rows: 18** — four in X.0, thirteen in X.0b, one here. Count them from this file, never
-from this sentence.
+### X.0d — Raised by `GOAL_05`'s close-out, 2026-08-15 · filed, **not decided**
+
+| ID | Question | Class |
+|---|---|---|
+| `OPEN-PRDCLOSE-01` | **`GOAL_05`'s Definition of Done requires a fresh zero-context reader's guess count "under 5". It never went under 5** — the series ran 22 · 16 · 16 · 12 · 11 · (9, 12) · (7, 14) · (9, 16) · (8, 10) · (8, 9) · (9, 8) · (—, 10), the lowest single reading was 7, and the last reading taken was 10. The goal was nonetheless closed in the session narrative on a **convergence** argument — two independent readers agreeing after nine rounds of near-disjoint findings. That argument is evidenced in `docs/03 PRD/` §S8.6.9–S8.6.12 and it is **not the criterion the goal was given**. Substituting it is **waiving a quality check**. **Accept the convergence evidence as the closing criterion and record the waiver, or fund further reader rounds against the line as written?** | **reserved: waiving a quality check (Art III.8, Art IX.8)** |
+
+> **Until this is ruled, `GOAL_05` is `BLOCKED`, not `Done`** (Art IX.2 — a unit marked `Done`
+> against a gate that is not green is a fake green, and a suspected fake green is a stop-the-line
+> finding). **Every other Definition-of-Done line on that goal is met and its gate is green.**
+> The full record, including what further rounds would and would not buy, is `docs/03 PRD/` §S8.6.17.
+
+**Filing this row is not an amendment under Art XII.1.** Article X exists to hold questions the build
+session raised and may not close, and says so in its own preamble: *"The build session raised them; it
+may not close them."* Rows X.0b and X.0c were filed the same way on 2026-08-15. **Nothing above this
+line was decided, reworded, or softened** — the question is registered, and the answer is the
+client's.
+
+**Total open rows: 19** — four in X.0, thirteen in X.0b, one in X.0c, one here. **Twelve are
+reserved and seven are not.** Count them from this file, never from this sentence.
+
+> **The reserved count was wrong everywhere it was written before now.** `HANDOFF_2026-08-15_0425`
+> and `PROGRESS.md` both say *"18 open Article X rows, 7 reserved."* **Seven is the count of the rows
+> that are NOT reserved.** Derived from the tables above, at the eighteen rows those records
+> described: 4 reserved in X.0, 6 in X.0b, 1 in X.0c — **eleven**, against seven product or
+> build-session rows. **With `OPEN-PRDCLOSE-01` filed the live figures are nineteen rows, twelve
+> reserved, seven not.** The historical records are append-only and are not edited; the correction
+> lives here, at the table it is a count of.
+>
+> **This note was itself filed carrying a wrong count** — written as *"eleven reserved and eight
+> are not"* against a nineteen-row table, because the aggregate was typed from the paragraph above
+> it instead of derived from the rows. It was caught by re-deriving before the section was
+> published, and it is recorded rather than silently fixed: **the correction of a typed count is
+> exactly as prone to being typed as the count it corrects.**
 
 ---
 

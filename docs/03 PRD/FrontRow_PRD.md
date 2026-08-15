@@ -22996,14 +22996,19 @@ py "docs/03 PRD/api/generate_api.py" --statemachine
 ```
 
 PASS  sm-vocabulary 0 transition(s) name a state or input not declared
-PASS  sm-total      0 of 140 (state, input) pair(s) have no handling
+PASS  sm-total      0 of 145 (state, input) pair(s) have no handling
 PASS  sm-once       0 pair(s) handled more than once
 PASS  sm-reachable  0 state(s) unreachable from `available`
 PASS  sm-told       0 transition(s) do not say what the customer is told
+PASS  sm-mirror     0 input(s) named in one representation and not the other (29 in the prose table, 29 in the block)
 
 ```
 
-**Five states × twenty-eight inputs = 140 pairs, and every one is handled exactly once.** The full
+**Five states × twenty-nine inputs = 145 pairs, and every one is handled exactly once.** The
+twenty-ninth input, `SIGN_OUT`, was added in the last wave — and **this paragraph went on saying
+140 after it stopped being true**, in a section whose own opening rule is that a count is derived
+or it is wrong. A reader caught it. The block above is now pasted from the checker rather than
+typed, which is the only version of this that cannot go stale again. The full
 transition table is printed in `S4 / E2`.
 
 The two checks the Definition of Done asks for:
@@ -23088,6 +23093,20 @@ Anything the document marks `OPEN`, `PROPOSED-…`, `ASSUMED` or `PROVISIONAL`, 
 is specified and what is deliberately absent, does not count as a guess.** A recorded gap is the
 opposite of a guess. What counts is a behaviour required with no rule, a number used and never
 defined, two passages that cannot both be satisfied, or an endpoint too incomplete to implement.
+
+> ### ⛔ Read before the twelve rounds below: this audit's own gate is UNMET
+>
+> `GOAL_05`'s Definition of Done requires this count **under 5**. **It never went under 5.** The
+> lowest single reading was 7; the last reading taken was 10; the goal's status is
+> **BLOCKED, not `Done`.**
+>
+> The full record is `S8.6.17`, and the client's decision is filed as **`OPEN-PRDCLOSE-01`**
+> (`CONSTITUTION.md` Art X.0d). **Closing this goal is waiving a quality check, which Art III.8 and
+> Art IX.8 reserve to the client** — no build session may do it at any confidence.
+>
+> **This notice is here, and not only 500 lines below, on this section's own finding**: a fact
+> recorded somewhere other than where it is needed is not recorded (`S8.6.15`). The place an
+> engineer decides whether to trust this document is the top of the audit, not the end of it.
 
 ### S8.6.1 Iteration 1 — **22**
 
@@ -23543,7 +23562,146 @@ the layer the count was measuring.**
 
 ---
 
-## S8.6.13 Known and unbuilt — five items this goal stopped before
+### S8.6.15 Iteration 11 — **9 and 8**, and two things the process got wrong
+
+| Reader | Count |
+|---|---|
+| 11-A | **9** |
+| 11-B | **8** |
+
+Series: 22 · 16 · 16 · 12 · 11 · (9, 12) · (7, 14) · (9, 16) · (8, 10) · (8, 9) · (9, 8).
+
+**Two findings were about the method, not the product, and both are corrections to how this goal was run.**
+
+**A documented deferral is not a disclosed gap.** Five items were adjudicated, deliberately not
+built, and recorded in a table in this section. **Both readers counted them anyway, and they were
+right to.** A reader is told that `OPEN`, `PROVISIONAL`, `ASSUMED` and `PROPOSED-` are disclosed —
+and a table in a merge report is none of those. **At the site where an engineer reads the row,
+nothing said the gap was known.** The status law has four states and *"written down in the merge
+report"* is not one of them. All five were subsequently answered at their sites. The general form is
+one this project has hit before in other clothes: **a fact recorded somewhere other than where it is
+needed is not recorded.**
+
+**A killed agent's file can be perfectly intact and its work still lost.** Two lanes died mid-turn.
+Both files passed every integrity check — fences balanced, blocks parsed, gates green — and the
+recovery gave each lane back **the items it had announced in prose before dying**. That is not the
+same set as the items it was assigned. Four were lost, not two; two of the four were found only
+because a lane re-derived its own assignment from the original brief and reported the gap before
+starting. **File-integrity checks cannot see lost work.** The only thing that can is re-deriving the
+assignment against the file.
+
+### S8.6.16 A check that existed only in a lane's head
+
+The seat-lifecycle machine exists twice — as a `transition` block a machine reads, and as a markdown
+grid a person reads. They sit in the same section, are edited separately, and **every existing check
+read only the block.** An input added to one and not the other passed all five state-machine checks.
+
+The lane that added the twenty-ninth input noticed, cross-checked the two representations by hand,
+and said so. That check is now `sm-mirror` in the generator, and it is red-proofed like the others:
+renaming one row of the grid makes it fail with both halves named.
+
+**The finding is not the check — it is that the check was missing for eleven iterations while five
+neighbouring checks passed.** Every one of them verified the block against itself.
+
+### S8.6.17 Iteration 12 — **(not returned, 10)**, and the threshold this goal did not meet
+
+| Reader | Count |
+|---|---|
+| 12-A | **did not return** — the session was stopped while this reader was still running |
+| 12-B | **10** |
+
+Series across twelve rounds: 22 · 16 · 16 · 12 · 11 · (9, 12) · (7, 14) · (9, 16) · (8, 10) ·
+(8, 9) · (9, 8) · (—, 10).
+
+**12-A's count does not exist and is not estimated.** A reader that was interrupted produced no
+number, and the empty cell above is the honest record of that. It is written as a dash rather than
+carried over from 11-A, inferred from its partner, or omitted so the row reads as a pair — all three
+of which would have made this table say something no reader said.
+
+#### The Definition of Done line, quoted, and its status
+
+`goals/GOAL_05_prd.txt` lines 89–91:
+
+> a fresh ZERO-CONTEXT session reads ONLY the PRD and reports every place it would have to
+> GUESS to build. Record the count in the handoff. THIS GOAL DOES NOT CLOSE AT A HIGH COUNT -
+> iterate the spec and re-run until it is under 5.
+
+*(Quoted verbatim, including its ASCII hyphen and its capitals. The emphasis in the goal file is the
+capitalisation; none is added here, because bolding inside a quotation is the quoter choosing which
+part of someone else's sentence matters.)*
+
+**The lowest count any reader ever returned is 7, at iteration 7. No round ever produced a pair
+below 5, and the last count taken is 10.** Measured against the line as written, **this Definition of
+Done line is UNMET**, and no reading of the series makes it met.
+
+#### What was recorded instead, and why that is not the same thing
+
+The close was argued on **convergence** — two independent readers agreeing after nine rounds of
+near-disjoint findings (`S8.6.9`), the spread closing from seven apart to one apart (`S8.6.11`), and
+the composition of the count changing from contradictions to silences while its level stopped moving
+(`S8.6.12`). **That argument is real, it is evidenced in this section, and it is not the criterion the
+goal was given.** Substituting a different criterion — even a defensible one, even one the evidence
+supports — for a written binary line is **waiving a quality check**, which `CONSTITUTION.md` Art III.8
+and Art IX.8 reserve to the client. A build session may not perform it at any confidence.
+
+`CONSTITUTION.md` Art IX.2 states the consequence directly: a unit marked `Done` against a gate that
+is not green is a **fake green**, and a suspected fake green is a **stop-the-line finding**. So the
+status of this goal is recorded here as the status law's own word for a blocked gate:
+
+> ### `GOAL_05` STATUS: **BLOCKED — not `Done`.**
+> Every other Definition-of-Done line is met and its gate is green. **This one line is not**, and
+> the goal does not close until the client rules on it.
+
+#### Filed for the client, not decided here
+
+**`OPEN-PRDCLOSE-01`** (`CONSTITUTION.md` Art X.0d) puts the choice to the client in the two forms it
+actually takes: accept the convergence evidence as the closing criterion for this goal and record the
+waiver, **or** fund further reader rounds against the under-5 line as written. **Neither option is
+recommended here as a decision**, because the reserved matter is not which is wiser — it is who
+signs.
+
+**What further rounds would and would not buy, stated so the choice is informed rather than open.**
+`S8.6.12` measured it across eleven rounds: the count moved 22 → 8 and then stopped, three separate
+fix passes introduced defects of the class they were removing, and **12-B's closing analysis reports
+that nine of its ten remaining items are silences rather than contradictions.** `S1.2`'s ranking
+arbitrates between passages that disagree and **has nothing to arbitrate where there is one passage
+and it is quiet** — so the remaining items are not the kind the existing machinery converts into
+fixes. That is evidence about the cost and yield of more rounds. **It is not permission to skip
+them.**
+
+#### The bookkeeping this section was described as needing
+
+The previous handoff recorded the remaining work as *"record iteration 12's reader A count, write the
+final `S8` numbers, mark the goal done — no content work remains."* **Two of those three could not be
+done as written**, and the discrepancy is recorded rather than resolved quietly:
+
+| Described as | Actually |
+|---|---|
+| record 12-A's count | **There is no count to record.** The reader was interrupted before returning one |
+| write the final `S8` numbers | Done above — and they show the threshold unmet |
+| mark the goal done | **Reserved.** Marking it done is the waiver, and the waiver is the client's |
+
+**A handoff calling the remaining work "bookkeeping" is itself a finding.** The word described the
+effort accurately — this section is prose, not product — and described the *authority* wrongly, and
+the second is the one that matters. **Effort is a bad proxy for whether a session is allowed to do
+something.** The cheapest edit in this repository and the one requiring a signature are the same
+keystrokes.
+
+---
+
+## S8.6.13 Known and unbuilt — what is left, and what this table got wrong
+
+**This table was stale and a reader caught it.** It listed five deferred items; four of the five were
+subsequently built, and the table went on describing them as unbuilt. **A reader trusting it would
+build four things that already exist, or conclude the specification is incomplete where it is not.**
+
+That is the second time this section has published a figure that stopped being true — the state
+machine's `140` was the first — and both were caught by readers rather than by any gate. The lesson
+is the one this whole section keeps arriving at: **a hand-maintained summary of machine-checkable
+facts decays silently, and the decay is invisible to every check that reads the facts rather than the
+summary.**
+
+**What is actually left is two items**, both genuinely open:
 
 **A documented unbuilt item is not a defect. An undocumented one is.** These five were named by
 iteration 10's readers, adjudicated, assigned, and **deliberately not built**, because the fix waves
@@ -23553,11 +23711,7 @@ list rather than a rediscovery.
 
 | Item | What is unstated today | What building it would change |
 |---|---|---|
-| **Initial requests on two admin screens** | `EP-ADM-09` makes `screen_id` and `date` **required** and `SCR-ADM-03` does not say which it loads; `EP-ADM-25` takes `{kind}` in the path and `SCR-ADM-07` publishes four tab labels and no default | What an admin sees on arrival at two screens. **Neither screen can issue its first request as specified** — an implementer picks a hall, a date and a vocabulary |
 | **An invalid `format_id` has no published sentence** | `P-ADM-07` precondition 6 states the rule, its nine-row exception table has no row for it, and `SCR-ADM-03` publishes no error string | Words an admin reads. The status and code resolve by rank 1, so this is a copy gap only — but every other required select on that surface has a published sentence |
-| **Admin instants on the wire** | `EP-ADM-09/10/11` return bare UTC while `SCR-ADM-03` renders wall-clock times, and four rows in four lanes rule that the client must never convert | Either the wire gains the cinema's offset, as the customer endpoints already have, or the admin client converts — which is the implementation `P-BRW-06` names as the wrong one, and which breaks silently the moment the venue's zone is edited |
-| **The seed creates no past** | `P-ADM-07` says the seed needs *"about a month of **historical** data"*; `P-XCT-30` schedules 30 days **starting** at the injected clock. The owner wins, so the restatement is simply wrong — but the consequence is real | **No seeded booking is ever in the past, so the bookings screen's Past group is empty on a fresh seed** — one of three zero states that exist specifically to be distinguishable from each other |
-| **`audit_log.entity_id` for `manager.screen_unassigned`** | defined as *"the primary key of the changed row"*, where the row has been deleted | What an operator reads in the change log for one of twenty-odd audit actions |
 | **Seat `row_label` is unique and unnormalised** | `(screen_id, row_label, seat_number)` is unique, and `row_label` goes through no normalisation — so `C12` and `c12` are **two seats a person reads as one** | **This one reaches further than the others and is the reason it is listed rather than buried.** A seat label is printed on the receipt and read at the door, so two seats a person cannot tell apart is a person in the wrong seat. It was **deliberately not fixed with the category-name rule**, and the reasons are why it needs its own adjudication rather than the same one: the normalisation would have to be **upper**-case, not `lower(trim())`, because row labels are conventionally uppercase — so it changes **what is stored**, not only what collides — and `P-ADM-14` **freezes `row_label` once a showtime exists**, so a normalisation applied later cannot correct a row already stored. That makes it a one-way door on existing data. **And the door has a deadline, not only a direction**: normalising `row_label` is cheap on a hall with no showtimes and impossible on one that has them, so the cost rises the moment the first showtime is created on the first hall — **Phase 2, not Phase 6** |
 
 **Two of iteration 10's admin items were built rather than deferred**, because their consequences
@@ -23631,13 +23785,25 @@ place this document **refused to invent an answer**.
 | `PROPOSED-MGRBOOK-01` | **May a manager buy a ticket** — and specifically, may they buy a seat in a hall whose takings they report on? Two lanes read it opposite ways (`X-5a`). No source addresses it, and the conflict-of-interest question nobody has asked is the reason it is raised rather than settled | reserved: access control |
 
 **Two of these exposed a blind spot in the repository's own consistency checker**, and it is recorded
-because it is the kind of hole that looks like a pass. Rule 2 matches an id with the pattern
-`OPEN-[A-Z]+-\d+`, which **cannot match a two-hyphen name** — `OPEN-SEATMAP-DEGRADED-01` and
-`OPEN-CACHE503-01` were invented by lanes, referenced in the document, filed nowhere, and **sailed
-through a green rule 2** because the regex never saw them. Both are renamed to `PROPOSED-` here, so
-every `OPEN-` id in this document is a genuinely filed Article X row. **The checker is outside this
-goal's write-set and is not amended**; the widening of that pattern is raised for whoever owns
-`tools/`.
+because it is the kind of hole that looks like a pass. Rule 2 matched an id with the pattern
+`OPEN-[A-Z]+-\d+`, and `[A-Z]+` matches **neither a subject containing a second hyphen nor one
+containing a digit** — so `PROPOSED-SEATMAP-DEGRADED-01` and `PROPOSED-CACHE503-01`, in the
+`OPEN-` spelling the lanes first gave them, were invented, referenced in the document, filed
+nowhere, and **sailed through a green rule 2** because the regex never saw them. Both are renamed to
+`PROPOSED-` here, so every `OPEN-` id in this document is a genuinely filed Article X row.
+
+> **Closed 2026-08-15.** The pattern was widened to `OPEN-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+` in all
+> three places rule 2 uses it — harvesting rows from `CONSTITUTION.md`, harvesting sections from
+> `SRC-003`, and finding references in the corpus — and the widening is red-proofed by two new
+> `--selftest` plants that fire on exactly the two shapes the old pattern could not see. **It found
+> one live consequence immediately**: `OPEN-CACHE503-01` had since been filed as a real Article X
+> row in `X.0b`, so **every reference to a genuinely filed row had been going unchecked.** The count
+> rule 2 prints rose by the references it had never been counting.
+>
+> **The id in this paragraph is written in its `PROPOSED-` form on purpose.** Under the widened
+> pattern an `OPEN-` token in prose is a claim that the row exists, and this one does not — so
+> spelling it the old way here would have made a true sentence about a checker into a false
+> reference the checker then catches. **Describing a defect must not commit the defect.**
 
 **The four real `OPEN` rows are untouched and undecided**: `OPEN-EMAILFAIL-01`, `OPEN-SHOWCANCEL-01`,
 `OPEN-ATTRIB-01`, `OPEN-TLS-01`. **No sentence anywhere in this document tells a customer whose
@@ -23655,10 +23821,31 @@ stated on the screen specification itself so nobody fills it in later.
   `ASSUMED`"* and then names three. It is a residue of the corrected 36/3/1 miscount. `APPROVED`
   records are immutable (Art III.3), so it is reported here and not touched.
 - **Four design-system defects** (`S8.5.3`), outside the write-set.
-- **`FR-ADR-002` and `FR-ADR-073` are cited nowhere in this document**, and that is correct rather
-  than an omission: the first records a document-numbering divergence and the second is a
-  design-system theme decision. **71 of 73 records are cited**, and `included_in_prd` was flipped for
-  exactly those 71 — **derived from the citations actually present, never asserted.**
+- **`FR-ADR-002` and `FR-ADR-073`** record a document-numbering divergence and a design-system
+  theme decision respectively — neither is a rule an epic lane had occasion to cite.
+
+  > **⚠ This bullet said *"cited nowhere in this document"* and *"71 of 73 records are cited"*,
+  > and both halves are now false. Corrected 2026-08-15 during `GOAL_05`'s close-out, and the
+  > correction is shown rather than swapped in.**
+  >
+  > **The ledger carries `included_in_prd = INCLUDED` on all 73 rows, not 71**, each with its
+  > carrying section in `notes` as Art III.5 requires — `FR-ADR-002`'s reads *"PRD S8"*. And both
+  > ids **are** present in the sections: `FR-ADR-073` in `E8_crosscutting.md`, `FR-ADR-002` in this
+  > file. Derived, not read: `awk -F'	'` over the `included_in_prd` column returns **73 INCLUDED**,
+  > and `grep -rl` over `docs/03 PRD/sections/` finds both ids.
+  >
+  > **The sentence falsified itself by existing.** `FR-ADR-002` appears nowhere in the PRD *except*
+  > in the clause asserting that it appears nowhere — so the act of publishing the claim created
+  > the citation that refutes it, and the ledger row was then flipped to `INCLUDED` pointing at that
+  > very clause. **A statement about a document's contents is part of that document's contents.**
+  > Every check passed throughout: rule 1 resolves the ids, and the generator's `adr-resolve` only
+  > asks whether a cited id has a record file. **None of them compares a count in prose to the
+  > column it is a count of**, which is the same blind spot as `S8.6.13`'s stale table and
+  > `S8.1`'s corrected `140`.
+
+  **The live figures: 73 of 73 records carry `included_in_prd = INCLUDED`**, each derived from the
+  citations actually present and each naming its carrying section — **never asserted, and no
+  longer 71.**
 
 ---
 

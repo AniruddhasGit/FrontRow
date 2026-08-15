@@ -226,6 +226,23 @@ def rule_1_adr(root: str, corpus: dict[str, str]) -> Rule:
     return r
 
 
+# An Article X / SRC-003 open-decision id.
+#
+# Widened 2026-08-15. The original `OPEN-[A-Z]+-\d+` could not match a subject containing a
+# SECOND HYPHEN (SEATMAP-DEGRADED) or a DIGIT (CACHE503), so ids of those two shapes were
+# invisible to this rule in BOTH directions at once: invisible as filed rows when harvested from
+# CONSTITUTION.md, and invisible as references when scanned in the corpus. The two blindnesses
+# cancelled into a green line. `OPEN-CACHE503-01` was a genuinely filed row in Art X.0b whose
+# every reference went unchecked. Raised by the PRD in its S8.7 and closed here.
+#
+# The lesson is the shape, not the characters: a rule that derives BOTH its known set and its
+# referenced set through ONE narrow pattern cannot report the ids that pattern cannot see -- it
+# has no vocabulary for them, so widening is not a tightening of an existing check but the only
+# way it can speak about them at all. Red-proofed by the `open-reference` plants in SELFTESTS,
+# two of which use exactly the shapes the old pattern missed.
+OPEN_ID = r"OPEN-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+"
+
+
 def rule_2_open(root: str, corpus: dict[str, str]) -> Rule:
     """Every OPEN-XXX-nn resolves to an Article X row or an SRC-003 section."""
     r = Rule(2, "open-reference",
@@ -241,15 +258,15 @@ def rule_2_open(root: str, corpus: dict[str, str]) -> Rule:
     art_x: set[str] = set()
     if os.path.isfile(const_p):
         # An Article X row is a table row whose first cell is the backticked id.
-        art_x = set(re.findall(r"^\|\s*`(OPEN-[A-Z]+-\d+)`", read(const_p), re.M))
+        art_x = set(re.findall(r"^\|\s*`(" + OPEN_ID + r")`", read(const_p), re.M))
     src3: set[str] = set()
     if os.path.isfile(src3_p):
-        src3 = set(re.findall(r"^#{1,6}\s*`(OPEN-[A-Z]+-\d+)`", read(src3_p), re.M))
+        src3 = set(re.findall(r"^#{1,6}\s*`(" + OPEN_ID + r")`", read(src3_p), re.M))
     known = art_x | src3
 
     seen: dict[str, list[str]] = {}
     for f, t in corpus.items():
-        for oid in sorted(set(re.findall(r"\b(OPEN-[A-Z]+-\d+)\b", t))):
+        for oid in sorted(set(re.findall(r"\b(" + OPEN_ID + r")\b", t))):
             seen.setdefault(oid, []).append(f)
     if not seen:
         r.skip("no `OPEN-XXX-nn` id is referenced anywhere")
@@ -650,8 +667,101 @@ def rule_8_ledger_header(root: str, corpus: dict[str, str]) -> Rule:
     return r
 
 
+def rule_9_readme_state(root: str, corpus: dict[str, str]) -> Rule:
+    """Every `State` cell in the docs/README.md folder table agrees with the repo tree.
+
+    This rule exists because of rule 6, not beside it. Rule 6 DEFERS the path claims in any
+    row whose State cell says the folder is not written yet -- correct in intent, since a
+    folder nobody has written should not fail on a path that does not exist yet. But that
+    makes the document's own staleness set the check's coverage: on 2026-08-15 five written
+    folders were still marked `empty`, one of them a 25,000-line document, and rule 6 passed
+    green while quietly deferring six claims it should have been gating.
+
+    The failure shape is worth naming because it is not "the check measured the wrong thing".
+    It is that THE THING BEING MEASURED DECIDED HOW MUCH WOULD BE MEASURED, and it decided
+    downward. A data-driven exemption is only ever as honest as the data driving it, and that
+    data is usually the exact thing the check was bought to police.
+
+    So the exemption stays -- removing it would make an honest table fail on folders genuinely
+    not yet written -- and this rule guards the cell the exemption keys on. Neither rule is
+    sufficient alone: rule 6 without this one can be switched off by a stale cell, and this one
+    without rule 6 checks bookkeeping nobody reads.
+    """
+    r = Rule(9, "readme-state", "every `State` cell in the docs/README.md folder table "
+                                "matches whether that folder has content")
+    r.unit = "state claim"
+
+    p = j(root, *DOCS_README)
+    if not os.path.isfile(p):
+        r.skip("docs/README.md does not exist")
+        return r
+    table = None
+    for header, rows, nums in md_tables(read(p)):
+        low = [h.lower().strip("* ") for h in header]
+        if "folder" in low and "state" in low:
+            table = (rows, nums)
+            break
+    if table is None:
+        r.skip("docs/README.md has no folder table (a header row of `# | Folder | ... | State`)")
+        return r
+    rows, nums = table
+
+    def has_content(folder: str) -> bool:
+        """Content means a real file. `.gitkeep` is how an empty folder survives git."""
+        d = j(root, "docs", folder)
+        if not os.path.isdir(d):
+            return False
+        for base, dirs, files in os.walk(d):
+            dirs[:] = [x for x in dirs if x not in SKIP_DIRS]
+            if any(f != ".gitkeep" for f in files):
+                return True
+        return False
+
+    for cells, lineno in zip(rows, nums):
+        if not cells or all(not c for c in cells):
+            continue
+        state = cells[-1].strip().strip("*` ").lower()
+        combined = " | ".join(cells[:2])
+        pairs = re.findall(r"(\d{2}(?:\s+B)?)\s*\|?\s*\*\*([^*|]+?)\s*\*\*", combined)
+        if not pairs:
+            continue
+        if "written" in state:
+            expect, word = True, "written"
+        elif state == "empty":
+            expect, word = False, "empty"
+        else:
+            r.checked += 1
+            r.fail(f"docs/README.md:{lineno}: State cell reads `{cells[-1].strip()}`, which is "
+                   f"neither `written` nor `empty` -- rule 6 keys its deferral on this cell and "
+                   f"cannot read it")
+            continue
+
+        # A row naming several folders is one claim about all of them: `part written` is the
+        # honest cell when some have content, and a bare `empty`/`written` must hold for every
+        # folder the row names.
+        found = [(f"{num} {name}", has_content(f"{num} {name}")) for num, name in pairs]
+        if "part" in state:
+            r.checked += 1
+            if not any(c for _, c in found):
+                r.fail(f"docs/README.md:{lineno}: State says `part written`, but none of "
+                       f"{', '.join(f for f, _ in found)} has any file in the tree")
+            continue
+        for folder, content in found:
+            r.checked += 1
+            if content is not expect:
+                got = "has files" if content else "has no file but `.gitkeep`"
+                r.fail(f"docs/README.md:{lineno}: State says `{word}` for `docs/{folder}`, "
+                       f"which {got} in the repo tree"
+                       + ("  <- a stale `empty` also SWITCHES OFF rule 6's path checks on "
+                          "this row" if not expect else ""))
+    if not r.checked:
+        r.skip("the folder table names no folder the tool can resolve")
+    return r
+
+
 RULES = [rule_1_adr, rule_2_open, rule_3_clauses, rule_4_errata,
-         rule_5_fingerprints, rule_6_readme_paths, rule_7_prep_queue, rule_8_ledger_header]
+         rule_5_fingerprints, rule_6_readme_paths, rule_7_prep_queue,
+         rule_8_ledger_header, rule_9_readme_state]
 
 
 def check_all(root: str) -> list[Rule]:
@@ -681,6 +791,22 @@ def _plant_2(w: str) -> bool:
                  lambda t: t + "\n\nPlanted: blocked on `OPEN-NOTAROW-01`.\n")
 
 
+# The two shapes the pre-2026-08-15 pattern could not see. They are plants in their own right
+# rather than variations of _plant_2, because a pattern that cannot match an id fails SILENTLY:
+# it reports nothing rather than reporting a miss, so only a plant of that exact shape can tell
+# a widened rule from a narrow one. Both of these pass a narrow `OPEN-[A-Z]+-\d+` untouched.
+def _plant_2b(w: str) -> bool:
+    """A subject with a SECOND HYPHEN -- the `OPEN-SEATMAP-DEGRADED-01` shape."""
+    return _edit(j(w, *DOCS_README),
+                 lambda t: t + "\n\nPlanted: blocked on `OPEN-NOT-AROW-01`.\n")
+
+
+def _plant_2c(w: str) -> bool:
+    """A subject containing a DIGIT -- the `OPEN-CACHE503-01` shape."""
+    return _edit(j(w, *DOCS_README),
+                 lambda t: t + "\n\nPlanted: blocked on `OPEN-NOTAROW404-01`.\n")
+
+
 def _plant_3(w: str) -> bool:
     return _edit(j(w, *DOCS_README),
                  lambda t: t + "\n\nPlanted: per `SRC-001 §999.9`, which was never written.\n")
@@ -699,7 +825,9 @@ def _plant_5(w: str) -> bool:
 
 
 def _plant_6(w: str) -> bool:
-    # Into the ONE row the table marks `written`, so the deferral exemption cannot excuse it.
+    # Into the FIRST row the table marks `written`, so the deferral exemption cannot excuse
+    # it. (Said `the ONE row` until 2026-08-15, when five more rows were corrected to
+    # `written` -- the comment was true when written and silently stopped being true.)
     return _edit(j(w, *DOCS_README),
                  lambda t: t.replace("| **written** |",
                                      "and `docs/00 SourceOfTruth/NOT_A_FILE.md`. | **written** |",
@@ -742,18 +870,35 @@ def _plant_8(w: str) -> bool:
                  + "\t".join(["planted"] * len(swapped)) + "\n")
 
 
+def _plant_9(w: str) -> bool:
+    """Mark a folder that HAS content `empty` -- the stale cell, as it actually occurred.
+
+    This is the defect that let five written folders sit behind a green rule 6 for a day, and
+    it plants the cause rather than the symptom: flipping the cell is what a session does when
+    it writes a folder and forgets the table.
+    """
+    return _edit(j(w, *DOCS_README),
+                 lambda t: t.replace("| **written** |", "| empty |", 1))
+
+
 PLANTS = [
     (1, "a reference to `FR-ADR-994`, which has neither a file nor a ledger row", _plant_1),
     (2, "a reference to `OPEN-NOTAROW-01`, which is in no Article X row and no SRC-003 section",
      _plant_2),
+    (2, "a two-hyphen id `OPEN-NOT-AROW-01` \u2014 the shape the pre-widening pattern could not see",
+     _plant_2b),
+    (2, "a digit-bearing id `OPEN-NOTAROW404-01` \u2014 the other shape it could not see",
+     _plant_2c),
     (3, "a citation of `SRC-001 §999.9`, a clause anchor that does not exist", _plant_3),
     (4, "`E-9` renamed where it is filed — SRC-003 still tables E-9, the source now files E-99",
      _plant_4),
     (5, "a line appended to a FROZEN source, moving it off its recorded sha256", _plant_5),
-    (6, "a path quoted in the one table row marked `written` that is not in the tree", _plant_6),
+    (6, "a path quoted in the FIRST table row marked `written` that is not in the tree", _plant_6),
     (7, "a prep-queue row whose Status cell is blanked", _plant_7),
     (8, "a ledger header that swaps two of the columns docs/01 ADR/README.md documents",
      _plant_8),
+    (9, "a folder that has content, still marked `empty` \u2014 the stale cell that also "
+        "switches off rule 6's path checks", _plant_9),
 ]
 
 

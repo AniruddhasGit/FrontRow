@@ -287,3 +287,100 @@ contract already carries the three-column reset-token constraint and the `row_la
 
 - **Session closed 2026-08-15_0425 by Aniruddha Jathar** → handoff:
   `handoffs/HANDOFF_2026-08-15_0425_ani87.md`
+
+---
+
+## 2026-08-15 · Session 5 · `GOAL_05` does not close, and two checkers start measuring more
+
+Closed at 21:18 on a **reserved decision**, as Art III.8 requires: no timeout defaults past a
+reserved matter, so the work stopped rather than defaulting.
+
+**The headline, and it corrects the previous block:**
+
+- **`GOAL_05` is `BLOCKED`, not `Done`.** Its Definition of Done requires a fresh zero-context
+  reader's guess count **under 5**. Derived from the series rather than read off it: **lowest single
+  reading 7, last reading taken 10, no round ever below 5.** The previous session closed it on a
+  **convergence** argument — real, evidenced, and **not the criterion the goal was given**.
+  Substituting it is **waiving a quality check**, reserved to the client (Art III.8, Art IX.8).
+  Art IX.2 calls a unit marked `Done` against a non-green gate a **fake green** and a stop-the-line
+  finding. Filed as **`OPEN-PRDCLOSE-01`** (Art X.0d), with **neither option recommended** — the
+  reserved matter is not which is wiser, it is who signs.
+- **Every other DoD line on `GOAL_05` was verified, not assumed** — no-gap 0 / no-creep 0 over 93 BRD
+  rows and 163 P-rows, `sm-total` 0 of 145, contract byte-identical, endpoint parity 0/0 both ways,
+  73/73 `included_in_prd`. **One line, and only that line, is unmet.**
+- **Iteration 12's reader A count does not exist and was not invented.** Recorded as a dash in
+  `S8.6.17` — not carried over from 11-A, not inferred from its partner, not omitted so the row would
+  read as a pair. Taking it needs a fresh zero-context session.
+
+**Done:**
+
+- **`S8.6.17`** written, plus a notice at the **top** of `S8.6` — because that section's own finding
+  is that a fact recorded somewhere other than where it is needed is not recorded, and the place an
+  engineer decides whether to trust the PRD is the top of the audit, not the end of it.
+- **Rule 2's id pattern widened.** `OPEN-[A-Z]+-\d+` matched neither a second hyphen nor a digit, and
+  the **same pattern** harvests known rows *and* finds references — so an unmatchable id was missing
+  from both sets and **the two blindnesses cancelled into a green line.** By the time it was fixed
+  it had a live consequence: `OPEN-CACHE503-01` had been filed as a genuine Art X.0b row, so **every
+  reference to a real filed row was going unchecked.** 57 rows / 826 refs → **58 / 829**.
+- **New `rule 9 readme-state`.** Rule 6 defers path checks on rows marked not-yet-written, so a stale
+  `empty` cell **switches the check off** — five written folders sat marked `empty`, one of them a
+  25,000-line document, and rule 6 went green while deferring six claims it should have gated. The
+  exemption is kept and the cell it keys on is now guarded. Correcting the cells moved rule 6 from
+  `23 of 23 · 6 deferred` to `24 of 24 · 5 deferred`. **Checker is now 9 rules / 11 plants, all
+  red-proofed.**
+- **Drift corrected, every count derived**: `docs/README.md` states from the tree, `CLAUDE.md`'s
+  Status block, folder table and open-row counts.
+
+**Rulings** (worst first):
+
+- **A sentence in `S8.8` falsified itself by existing.** It claimed `FR-ADR-002` and `FR-ADR-073`
+  were *"cited nowhere in this document"* and that **71 of 73** records were cited; the ledger holds
+  **73 INCLUDED**, and `FR-ADR-002` appears in the PRD **only inside the clause asserting it appears
+  nowhere.** Publishing the claim created the citation that refutes it. **A statement about a
+  document's contents is part of that document's contents.** Every check passed throughout — none of
+  them compares a count in prose to the column it is a count of.
+- **A check whose exemption is data-driven is only as honest as the data driving it**, and that data
+  is usually the exact thing the check was bought to police. Worse than measuring the wrong thing:
+  **the thing being measured decided how much would be measured, and decided downward.** The fix is a
+  second check on the exemption's input, not the removal of the exemption.
+- **A pattern that cannot match an id fails silently.** It reports nothing rather than reporting a
+  miss, so only a plant of that exact shape distinguishes a widened rule from a narrow one. Both new
+  plants were **verified to discriminate** (`old=False new=True`), not merely to fire.
+- **The reserved-row count was wrong in every record before now.** The last handoff and this file
+  both said *"18 open rows, 7 reserved."* **Seven is the count of the rows that are NOT reserved** —
+  the derived figures were 11 reserved / 7 not, and are now **19 rows · 12 reserved · 7 not** with
+  `OPEN-PRDCLOSE-01` filed. It propagated into `/ss`'s orientation brief this morning before being
+  caught.
+- **Describing a defect must not commit the defect.** `S8.7` spelled the two invisible ids in their
+  `OPEN-` form; under the widened pattern that spelling is a claim the row exists, and one of them
+  does not. Rewritten to `PROPOSED-`.
+
+**Defects found in this session's own work:**
+
+- **A count typed while correcting typed counts.** `OPEN-PRDCLOSE-01`'s filing note was written to
+  fix a wrong aggregate and was itself filed reading *"eleven reserved and eight are not"* against a
+  nineteen-row table whose derived figures are twelve and seven — copied forward across the change
+  that invalidated it. **A correction is not exempt from the rule it is enforcing.**
+- **A `GOTCHAS.md` claim that was false the moment it was true.** *"This trap is dormant rather than
+  closed"* was written before rule 9 existed and left standing after it did.
+- **A line count that decayed twice inside one session** — 25,176 → 25,180 → 25,213. The exact figure
+  was **removed** from `CLAUDE.md` rather than maintained, and replaced with the command that prints
+  it. Nothing checked it, and nothing ever would have.
+- **A verbatim quotation silently re-typeset.** The DoD line was quoted with its ASCII hyphen turned
+  into an em-dash and emphasis added. Restored: **bolding inside a quotation is the quoter choosing
+  which part of someone else's sentence matters.**
+
+**In progress:** nothing half-written, no red gate. `GOAL_05` is **stopped, deliberately**, awaiting
+a signature — not unfinished.
+
+**Open / next:** the client rules on `OPEN-PRDCLOSE-01` *(optionally after dispatching reader 12-A so
+the ruling is made on a real pair)* → `GOAL_06` journeys → `GOAL_07` Bible → `GOAL_08` data model →
+`GOAL_12` ledger, which is what `/ss` still cannot read a frontier from.
+
+**Blockers:** `OPEN-PRDCLOSE-01` gates the whole chain · 19 open Article X rows, 12 reserved ·
+`OPEN-SEATLABEL-01` expires in **Phase 2**, not Phase 6 · three `PROVISIONAL` readings the PRD rests
+on · no seeded account can sign in, which stops Phase 2 **and** Phase 4 · SES production access needs
+requesting · 18 AWS prep-queue rows, all `REQUESTED`.
+
+- **Session closed 2026-08-15_2118 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-15_2118_ani87.md`

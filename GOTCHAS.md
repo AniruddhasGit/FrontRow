@@ -169,6 +169,56 @@ frequent defect shape so far.**
 **The standing rule that came out of it: a count or a figure stated in prose is a claim, and it is
 derived from the file or it is wrong.**
 
+### The fifth instance, and the worst-shaped one: a stale cell that switches the check off
+
+`tools/consistency_check.py` rule 6 verifies that every path quoted in `docs/README.md`'s folder
+table exists in the tree — **except in rows the table itself marks not-yet-written**, where the
+claims are deferred. That exemption is correct in intent: a folder nobody has written yet should not
+fail on a path that does not exist yet.
+
+**On 2026-08-15 the table still marked `01 ADR`, `02 BRD`, `03 PRD`, `05 B DesignSystem` and
+`30 Deployment` as `empty` — all five written, one of them 25,176 lines.** Rule 6 passed green,
+and its green line said exactly what was happening if anyone read it: *"23 of 23 path claims resolve
+· **6 path claim(s) in rows the table itself marks not-yet-written, deferred**."*
+
+**The failure shape is the one to carry: the document's staleness set the check's own coverage.**
+The more wrong the table got, the less rule 6 checked, and the less it checked the more reliably it
+went green. Every other instance above measured the wrong thing; **this one let the thing being
+measured decide how much would be measured.** A check with a data-driven exemption is only ever as
+honest as the data driving it, and that data is usually the thing the check was bought to police.
+
+*Fix applied:* the table was corrected from the tree — `find docs/<folder> -type f ! -name
+.gitkeep` per row, not read for shape — and rule 6 moved from `23 of 23 · 6 deferred` to
+`24 of 24 · 5 deferred`. **One claim moved out of the exemption and passed.** The rule was never
+red and is not red now; what changed is how much of it was real.
+
+*The exemption itself is kept deliberately.* Removing it would make an honest table fail on folders
+genuinely not yet written, which is the behaviour it exists for. **What was missing was a guard on
+the cell the exemption keys on** — and that is now `rule 9 readme-state`: a folder marked
+`written` must have a file, one marked `empty` must have nothing but `.gitkeep`. Twenty state claims,
+red-proofed by planting the real defect (a folder with content still marked `empty`).
+
+**Neither rule is sufficient alone, and that is the shape worth carrying.** Rule 6 without rule 9 can
+be switched off by a stale cell; rule 9 without rule 6 checks bookkeeping nobody reads. **A check
+with a data-driven exemption needs a second check on the data driving the exemption**, or the
+exemption is an off switch with no lock on it.
+
+**Still true and still worth reading: the deferred count is printed on every run.** A rising one is
+the alarm, and it was printing the truth the whole time this was broken.
+
+### And a count typed while correcting typed counts
+
+`OPEN-PRDCLOSE-01`'s filing note was written to correct a wrong aggregate in two handoffs — and
+was itself filed saying *"eleven reserved and eight are not"* against a nineteen-row table whose
+derived figures are **twelve and seven**. The paragraph directly above it, describing the eighteen
+rows as they stood before the new one, was where the eleven came from. **It was copied forward
+across a change that invalidated it**, which is the same motion as the four instances above and not
+a different mistake for being a small one.
+
+**The rule stands unchanged and applies to corrections too: derive it, including when what you are
+deriving is the correction of something someone else typed.** The correcting sentence is not exempt
+from the rule it is enforcing.
+
 ## A claim corrected in prose is not corrected in the generator input
 
 `E6_admin.md`'s `FORBIDDEN` block declared *"no DELETE route is mounted"* while listing

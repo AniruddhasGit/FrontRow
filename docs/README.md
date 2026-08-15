@@ -25,11 +25,11 @@ misses. `goals/README.md` carries the real execution order.
 | # | Folder | What it is | State |
 |---|---|---|---|
 | 00 | **SourceOfTruth** | Three frozen, hashed sources. `SRC-001` the product requirements (**10 errata**), `SRC-002` the build mandate (**6 errata**), `SRC-003` the client's rulings on all 40 Article X rows. Never edited; errata are appended, never struck. | **written** |
-| 01 | **ADR** | Decision records + `ADR_DECISION_RELEASE_LEDGER.tsv`. Fail-closed. `FR-ADR-nnn`. | empty |
-| 02 | **BRD** | Business requirements — what and why. No technology. | empty |
-| 03 | **PRD** | Every screen, rule, error and permission, plus the API contract. **The code is written from this.** | empty |
+| 01 | **ADR** | Decision records + `ADR_DECISION_RELEASE_LEDGER.tsv`. Fail-closed. `FR-ADR-nnn`. | **written** |
+| 02 | **BRD** | Business requirements — what and why. No technology. | **written** |
+| 03 | **PRD** | Every screen, rule, error and permission, plus the API contract. **The code is written from this.** | **written** |
 | 05 | **Bible** | Epics, stories, and binary acceptance criteria. The scope arbiter. | empty |
-| 05 B | **DesignSystem** | Tokens and real CSS. Every contrast figure computed, not claimed. Where the seat map is designed. | empty |
+| 05 B | **DesignSystem** | Tokens and real CSS. Every contrast figure computed, not claimed. Where the seat map is designed. | **written** |
 | 06 | **DataModel** | A **package, not a document**: `datamodel.json` is the spec of record; `schema.sql` and `TRACEABILITY.tsv` are generated from it. Holds the unique constraint the whole product rests on. | empty |
 | 07 | **Architecture** | `for_llm/` to orient a cold session · `for_humans/` to decide from, including the accepted weaknesses. | empty |
 | 08 | **SIT** | Positive cases — exactly one per acceptance criterion, each citing the story it proves. | empty |
@@ -39,7 +39,7 @@ misses. `goals/README.md` carries the real execution order.
 | 12 | **DesignReview** | The pre-code audit: fresh agents attack every document above before a line is written. | empty |
 | 13 | **Fixes for Design Review** | What the audit found, and its repair. | empty |
 | 14 | **Project_Plan** | Milestones and the cutover plan. | empty |
-| 30 | **Deployment** | The client's AWS prep queue, and one specification per Zone C item. | empty |
+| 30 | **Deployment** | The client's AWS prep queue, and one specification per Zone C item. | **written** |
 | 15 **ChangeRequest** · 20 **UAT** · 35 **Hypercare** · 40 **AMS** | Lifecycle. | empty |
 
 **The folder set is fixed. Its contents are not.** A folder may hold more or fewer documents than
