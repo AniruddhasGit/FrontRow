@@ -1,0 +1,592 @@
+{
+  "cluster": "lookup vocabularies (seat_category, certification, language, genre, format)",
+  "tables": [
+    {
+      "name": "seat_category",
+      "purpose": "The priced seat band a seat belongs to: a lookup ROW (never a PostgreSQL enum) carrying the integer basis-point uplift applied uniformly to every hall's and every show's base price.",
+      "cite": "FR-ADR-016 (Decision: 'Categories: a `seat_category` lookup table, not a database enum'); P-ADM-11 (E6_admin.md, 'Set a seat category's percentage uplift, uniform across every hall and every show'); FR-ADR-037",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (APPROVED): 'Primary keys are `bigint` identity columns — `GENERATED ALWAYS AS IDENTITY` — on every table.'",
+          "note": "GENERATED ALWAYS AS IDENTITY. No application-generated id and no uuid: FR-ADR-017 rejects UUIDv4, UUIDv7/ULID, integer, a parallel public uuid column, and natural keys, each by name. The API contract spells this field 'integer' on the wire (EP-ADM-12/13/14 response bodies) — that is JSON typing, not a storage type, and does not contradict bigint.",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-11 + SCR-ADM-04 ('Category name … 1..40 characters, unique on `lower(trim(name))`'); EP-ADM-13 request body ('string, 1..40 after trimming, unique on lower(trim(name)) (P-ADM-11), required')",
+          "note": "Bound is 1..40 AFTER trimming — narrower than the four vocabularies' 1..60. Stored as the admin typed it, case preserved, with only leading/trailing whitespace trimmed; the lowercased trimmed form is the comparison key and is never displayed (P-ADM-23, worked example). Seat category names Standard / Premium / Recliner are ASSUMED, never a constraint.",
+          "reserved_row": null
+        },
+        {
+          "name": "uplift_basis_points",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-037 ('The uplift is stored as an integer number of basis points, `uplift_basis_points`, where one basis point is 0.01%. 12.5% is `1250`.'); P-ADM-11; S-ADM-13",
+          "note": "MONEY-ADJACENT AND NEVER A FLOAT: FR-ADR-037 rejects `numeric` percentage by name because it 'puts a non-integer type on the money path'. **bigint, not integer, and this is load-bearing**: S-ADM-13 asserts the value 368934881464190 (~3.7e14) is ACCEPTED — that overflows PostgreSQL `integer` (2^31-1). The PRD prose calls the field 'integer' generically; the criterion that will be run requires 64-bit storage. Standard is a row whose uplift happens to be 0 and is NOT a special case in code (FR-ADR-037; S-ADM-13 asserts ripgrep for `uplift_basis_points == 0|if not uplift|Standard` in pricing.py returns 0 hits). Seeded values 0 / 1250 / 3333 are ASSUMED (P-XCT-30).",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-035 ('Two admins editing the same row: optimistic concurrency with a `version` integer … This applies to `movie`, `showtime`, `screen` and `seat_category`.'); S-ADM-14; E6_admin.md 'Optimistic concurrency and the VERSION_CONFLICT path'",
+          "note": "S-ADM-14 runs a literal catalogue query asserting the set of tables carrying `version` is EXACTLY {movie, showtime, screen, seat_category, cinema}. seat_category is IN that set; the four vocabulary tables below are NOT. EP-ADM-13's 201 body returns version '1', so a new row starts at 1; a successful write increments by exactly 1; a no-op write does not increment. Whether the 1 is a database DEFAULT or set by the application is not stated anywhere — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-XCT-04 precondition: 'Every table carries `created_at`; tables that mutate carry `updated_at`.'; S-XCT-09 (literal catalogue query asserting zero tables lack created_at)",
+          "note": "NO DATABASE-SIDE DEFAULT. No now(), no CURRENT_TIMESTAMP — time is injected (FR-ADR-018, CONSTITUTION Art IX.5). The application supplies the instant from the injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-XCT-04 precondition: 'Every table carries `created_at`; tables that mutate carry `updated_at`.'; S-XCT-09 Description: 'tables that are edited after creation are expected to carry updated_at as well as created_at; which tables those are is a judgement that follows from the data model and is checked there rather than here.'",
+          "note": "seat_category mutates (EP-ADM-14 changes name and uplift), so the P-XCT-04 rule reaches it. Nullable because no document says what the value is before the first edit; S-XCT-09 explicitly delegates the decision to the data model. See gaps — the merge owner must settle null-until-first-edit vs equal-to-created_at. No clock default here either.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["lower(trim(name))"],
+          "cite": "P-ADM-23 ('Every name this epic makes unique is unique on `lower(trim(name))`: a **seat category** (`P-ADM-11`) …, enforced by a unique index and not by a prior read'); S-ADM-13 ('A name colliding on lower(trim(name)) returns 422 with A seat category with that name already exists.'); EP-ADM-13 idempotency note ('A repeat fails with VALIDATION_FAILED on the unique index over lower(trim(name))')",
+          "why": "A FUNCTIONAL unique index, not a plain column unique. The index is the guard, not a prior read — two simultaneous identical creates must produce one row and one 422. The reason reaches the customer here and not only the admin: the category is the primary non-colour carrier of price band on the seat map, so `Premium` and `premium` coexisting would draw two legend rows on every seat map for what a customer reads as one category (P-ADM-23)."
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "uplift_basis_points >= 0",
+          "cite": "PRD field-bound table for P-ADM-11: '`uplift_basis_points` | integer | `>= 0` | **derived** — a negative uplift is a discount, and `SRC-003 OPEN-PRICE-02` rules out discount codes, concession pricing and every other reduction (`FR-ADR-040`)'; S-ADM-13 ('-1 returns 422 VALIDATION_FAILED with The uplift cannot be negative. This system has no discounts.')",
+          "why": "The documents state this as a SERVER-SIDE bound, not as a database constraint. Expressing it as a CHECK is a stricter adoption of a ruled bound (Art III.10) and needs no signature — but the merge owner should know the document did not ask for a CHECK."
+        },
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 40",
+          "cite": "SCR-ADM-04 fields table ('1..40 characters'); EP-ADM-13/EP-ADM-14 request body; P-ADM-11. Provenance is marked **technical** in the PRD's own provenance scheme — a storage bound chosen by the build session, not a business figure.",
+          "why": "Same status as the row above: stated as server-side validation, and a CHECK is a stricter restatement. It is 40 here and 60 on the four vocabularies, and the two must not be unified."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["lower(trim(name))"],
+          "unique": true,
+          "cite": "P-ADM-23; EP-ADM-13 idempotency",
+          "why": "The uniqueness guard itself — a functional unique index is the only way to express lower(trim(name)) uniqueness."
+        }
+      ]
+    },
+    {
+      "name": "language",
+      "purpose": "One of the four hand-typed lookup vocabularies a film is built from; the language a movie is listed in and one of the customer's browse filters.",
+      "cite": "P-ADM-23 ('Create the lookup vocabularies a film is built from', kind table: `language` -> table `language`, referenced by `movie.language_id`); FR-ADR-021 ('`language` and `certification` are **lookup tables**, not free text and not PostgreSQL enums')",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries' table ('`id` | integer identity, the value `P-ADM-01` stores on the film')",
+          "note": "GENERATED ALWAYS AS IDENTITY. P-ADM-23 says 'integer identity'; FR-ADR-017 fixes the width at bigint on every table and outranks the prose gloss. `id` is not accepted from the request — supplying it is 400 REQUEST_INVALID, never a silently dropped field (P-ADM-23 validation table, S-ADM-21).",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries' ('`name` | the displayed text. This is the only thing the admin types'); EP-ADM-26 body ('string, 1..60 characters after trimming, unique within this vocabulary on lower(trim(name)), required'); S-ADM-21",
+          "note": "1..60 after trimming (60 returns 201, 61 returns 422 — S-ADM-21). Stored exactly as typed with case preserved and only outer whitespace trimmed: submitting '  Drama  ' stores 'Drama', and GET never returns the lowercased form (S-ADM-21). NEVER RENAMED — there is no PUT and no PATCH route that changes a lookup name (P-ADM-24; S-ADM-21 asserts the route walk finds none); sending `name` to the PATCH address is 400 REQUEST_INVALID.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries' ('`is_active` | boolean, `true` on creation'); P-ADM-24 ('Withdrawal is `is_active = false`, and the column is on the row from the first migration'); S-ADM-22",
+          "note": "Written true by the server on insert; NOT accepted from the request (400 REQUEST_INVALID if supplied). Withdrawal replaces deletion (FR-ADR-012). A withdrawn row still participates in the unique index, is still resolved by every film already carrying it, and is still returned by EP-BRW-07 when a visible film carries it (P-ADM-24; EP-BRW-07: 'is_active is deliberately NOT a filter on this endpoint'). No document states whether `true` is a DATABASE default or an application-set value — see gaps; I have left default null rather than invent DEFAULT true.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries' ('`created_at` | `timestamptz`, UTC'); EP-ADM-26 201 body ('created_at: string, ISO-8601 instant in UTC'); P-XCT-04; S-XCT-09",
+          "note": "This is the ONE lookup column the PRD types explicitly. No clock default — injected clock (FR-ADR-018, Art IX.5). Returned by EP-ADM-25 in every item.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-XCT-04 ('tables that mutate carry `updated_at`'); S-XCT-09 Description (delegates 'which tables those are' to the data model)",
+          "note": "CONFLICT THE MERGE OWNER MUST SEE: P-ADM-23 enumerates 'The same four fields in all four tables' — id, name, is_active, created_at — and lists no updated_at. But these rows DO mutate (EP-ADM-27 writes is_active), so P-XCT-04's rule reaches them. S-XCT-09 explicitly hands the call to the data model. Included per the crosscutting rule; flagged in gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["lower(trim(name))"],
+          "cite": "P-ADM-23 ('`lower(trim(name))` is unique **within one vocabulary**, enforced by a unique index and not by a prior read'); S-ADM-21; EP-ADM-26 idempotency",
+          "why": "Two entries a person cannot tell apart in a select are two entries a person will pick the wrong one of. Scope is ONE vocabulary: a `genre` called Drama and a `format` called Drama are two unrelated rows in two unrelated tables and neither collides. WITHDRAWN ROWS PARTICIPATE — a withdrawn Drama blocks a new Drama and the 422 says to restore it instead (P-ADM-23 exception 6b, asserted verbatim by S-ADM-21)."
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table ('`name` | string | 1..60 characters after trimming | **technical**'); EP-ADM-26; S-ADM-21",
+          "why": "Stated as server-side validation with provenance marked **technical** (a bound chosen by the build session because a column needs one, explicitly NOT a business figure). A CHECK is a stricter restatement, not a new rule. Note it is 60 here and 40 on seat_category."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["lower(trim(name))"],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard; a functional index is the only way to express it."
+        }
+      ]
+    },
+    {
+      "name": "certification",
+      "purpose": "One of the four hand-typed lookup vocabularies; the certificate a film carries, referenced by movie.certification_id.",
+      "cite": "P-ADM-23 kind table ('`certification` | `certification` | `movie.certification_id` (`P-ADM-01`)'); FR-ADR-021",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY. Identical to `language`.",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; E1_browse.md S4 ('The certification is `{id, name}` and there is no `code` anywhere … `P-ADM-23` … fixes it at `id`, `name`, `is_active`, `created_at`, saying in terms that there is no code'); S-BRW-02",
+          "note": "1..60 after trimming. **THERE IS NO `code` COLUMN AND THIS IS ASSERTED BY TEST.** S-BRW-02 asserts 'the string ''code'' appears nowhere in the response body'. The PRD's own merge report records this as 'a wire correction, not a judgment call': the wire once said {id, code}, nothing could ever have populated it, so the wire changed and **no `code` column was added** — 'that would be a data-model change made from a display field'. Do not add one.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; S-ADM-22",
+          "note": "Identical to `language`. Server-set true on insert; 400 REQUEST_INVALID if supplied.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 ('`created_at` | `timestamptz`, UTC'); EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["lower(trim(name))"],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only. Withdrawn rows participate."
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**. A CHECK is a stricter restatement."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["lower(trim(name))"],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard."
+        }
+      ]
+    },
+    {
+      "name": "genre",
+      "purpose": "One of the four hand-typed lookup vocabularies; a film's genres, reached through the many-to-many movie_genre join table rather than a column on movie.",
+      "cite": "P-ADM-23 kind table ('`genre` | `genre` | the `movie_genre` join rows (`P-ADM-01`)'); FR-ADR-021 ('`genre` is **many-to-many** through a join table. A film is routinely two genres and a single column forces either a lie or a delimiter.')",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY.",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; S-ADM-21",
+          "note": "1..60 after trimming. The worked example in P-ADM-23 uses the genre vocabulary: 'Drama' / '  drama  ' / 'DRAMA' all collide, 'Dramas' does not, and a `format` called 'Drama' does not collide with a `genre` called 'Drama'.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; S-ADM-22",
+          "note": "Identical to `language`.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["lower(trim(name))"],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only; withdrawn rows participate. S-ADM-21 asserts creating genre 'Drama' then format 'Drama' both return 201 and produce two rows with different ids in different tables."
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["lower(trim(name))"],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard."
+        }
+      ]
+    },
+    {
+      "name": "format",
+      "purpose": "One of the four hand-typed lookup vocabularies; the presentation format of a SHOWTIME (not of a film), referenced by the optional showtime.format_id and by the customer's format filter.",
+      "cite": "P-ADM-23 kind table ('`format` | `format` | **`showtime.format_id`, which this epic does own** … The field is **optional**, so a FrontRow with no format rows at all still works'); P-ADM-07; EP-BRW-07",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY.",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; S-ADM-21",
+          "note": "1..60 after trimming. Same rules as the other three.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; P-ADM-07 precondition 6 ('If `format_id` is supplied, it names an **active** row of the `format` vocabulary')",
+          "note": "format is the ONE of the four where is_active is checked on a WRITE path other than the vocabulary's own: P-ADM-07 refuses a showtime naming a withdrawn format. Existing showtimes already carrying a withdrawn format are untouched and still resolve.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["lower(trim(name))"],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only; withdrawn rows participate."
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["lower(trim(name))"],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard."
+        }
+      ]
+    }
+  ],
+  "enums": [],
+  "gaps": [
+    {
+      "what": "Whether `updated_at` exists on the four vocabulary tables (language, certification, genre, format), and what it holds before the first edit on all five tables.",
+      "why_it_matters": "P-ADM-23 states in terms that all four vocabularies carry 'the same four fields' — id, name, is_active, created_at — and lists no updated_at. P-XCT-04 states the crosscutting rule 'Every table carries `created_at`; tables that mutate carry `updated_at`', and these rows DO mutate (EP-ADM-27 writes is_active). The two documents are in tension. S-XCT-09's Description hands the call explicitly to the data model: 'tables that are edited after creation are expected to carry updated_at as well as created_at; which tables those are is a judgement that follows from the data model and is checked there rather than here.' I have included the column per the crosscutting rule and left it nullable, because nothing states null-until-first-edit vs equal-to-created_at. The merge owner owns this, and whichever way it goes, one document needs an erratum.",
+      "where_you_looked": "docs/03 PRD/sections/E6_admin.md P-ADM-23 'What a row carries' table; docs/03 PRD/sections/E8_crosscutting.md P-XCT-04 preconditions; docs/05 Bible/FrontRow_Bible.csv S-XCT-09 and S-ADM-21 (which lists EP-ADM-25's returned item keys as exactly id, name, is_active, created_at, reference_count — a wire shape, not a column list)",
+      "reserved": false
+    },
+    {
+      "what": "Whether `seat_category.version` starts at 1 by a database DEFAULT or by the application, and its integer width.",
+      "why_it_matters": "EP-ADM-13's 201 body returns version '1' and a successful write increments by exactly 1, but no document says where the initial 1 comes from or whether the column is integer or bigint. FR-ADR-035 says only 'a `version` integer'. Guessing either way is harmless functionally but it is still a guess, and S-ADM-14 runs a catalogue query over this column.",
+      "where_you_looked": "FR-ADR-035; E6_admin.md 'Optimistic concurrency and the VERSION_CONFLICT path'; EP-ADM-13/EP-ADM-14 blocks; S-ADM-14",
+      "reserved": false
+    },
+    {
+      "what": "Whether `is_active` has a database DEFAULT true, or is always supplied by the application.",
+      "why_it_matters": "P-ADM-23 says 'the server inserts the row with `is_active = true`' — an application statement. It also says the value is not accepted from the request. Neither settles a DDL default. I left the default null rather than write DEFAULT true into a schema no document asked for.",
+      "where_you_looked": "P-ADM-23 happy path step 4 and validation table; P-ADM-24; EP-ADM-26",
+      "reserved": false
+    },
+    {
+      "what": "Whether the stated bounds (name length, uplift_basis_points >= 0) are database CHECK constraints or application-only validation.",
+      "why_it_matters": "Every document states them as SERVER-SIDE validation with an HTTP status attached. I have listed them under `checks` because adopting a stricter guard needs no signature (Art III.10), but the merge owner should know no document asked for a CHECK, and the PRD marks the length bounds' provenance **technical** — explicitly not a business figure.",
+      "where_you_looked": "P-ADM-11 and P-ADM-23 'Server-side validation' tables; PRD S-field-provenance section at the head of E6 S4",
+      "reserved": false
+    },
+    {
+      "what": "The arithmetic ceiling on `uplift_basis_points` cannot be a database constraint and no document says where it lives.",
+      "why_it_matters": "The bound is `(highest stored base_price_paise) * (10000 + uplift_basis_points) + 5000 <= 2^63 - 1` — it is written against the highest stored base price in ANOTHER table and not against a constant (S-ADM-13 asserts this explicitly: raising a showtime's base_price_paise makes a previously-accepted uplift start returning 422). A CHECK constraint cannot read another table, so this is necessarily an application check inside the write transaction. Nothing states that, and an implementer may try to express it in DDL and fail.",
+      "where_you_looked": "EP-ADM-13/EP-ADM-14 request bodies; PRD P-ADM-11 field-bound table (exception 5); S-ADM-13",
+      "reserved": false
+    },
+    {
+      "what": "No index is specified for the two ORDER BY clauses these tables serve.",
+      "why_it_matters": "EP-ADM-12 orders seat_category by 'name ASC, id ASC' and EP-ADM-25 orders a vocabulary by 'name ASC, id ASC' (S-ADM-21 asserts the order). No document requires an index for either. At the stated cardinalities (a handful of rows, typed one at a time by a single admin) none is needed, so I have invented none — recorded so the absence reads as deliberate.",
+      "where_you_looked": "EP-ADM-12, EP-ADM-25 endpoint blocks; FR-ADR-058 (no admin rate-limit bucket, i.e. no volume expectation)",
+      "reserved": false
+    },
+    {
+      "what": "Seat category NAMES and UPLIFTS are ASSUMED, not RULED — OPEN-SEAT-01, and the client said only 'you pick'.",
+      "why_it_matters": "Standard / Premium / Recliner at 0 / 1250 / 3333 basis points are the build session's choice (FR-ADR-016, P-ADM-11, P-XCT-30). They may never harden into a constraint. **A lookup ROW is the correct home for an assumed value and I agree with that reasoning**: changing an assumed name is then an UPDATE and adding a fourth category is an INSERT, where a PostgreSQL enum would make either a migration — which is exactly why FR-ADR-016 rejects the enum by name and P-ADM-11 repeats it. NOTHING in this schema may encode the three names: no CHECK listing them, no enum, no seed-dependent constraint, no code path branching on 'Standard' (S-ADM-13 asserts ripgrep for the literal `Standard` in pricing.py returns 0 hits). The same applies to the eleven DEMO-prefixed vocabulary names, which P-XCT-30 also marks ASSUMED.",
+      "where_you_looked": "SRC-003 OPEN-SEAT-01 via FR-ADR-016; P-ADM-11; P-XCT-30 'The three seeded categories and their uplifts'; S-XCT-44; S-ADM-13",
+      "reserved": false
+    },
+    {
+      "what": "Document defect (not a schema gap): P-XCT-30 says 'twelve lookup rows' twice, but its own seeded-vocabulary table lists eleven.",
+      "why_it_matters": "3 languages + 2 certifications + 4 genres + 2 formats = 11, and S-ADM-14's sibling story S-XCT-44 says 'eleven DEMO-prefixed lookup rows' and enumerates them. E8_crosscutting.md's prose says twelve at two places ('All twelve rows are ASSUMED', 'every one of the twelve lookup rows is referenced by a visible film'). The Bible and the PRD table agree on eleven; only the PRD prose says twelve. The seed script and its acceptance test will disagree with the prose. Nothing in the schema depends on it, but the count is asserted by a test ('a SELECT returning 0 unreferenced rows').",
+      "where_you_looked": "docs/03 PRD/sections/E8_crosscutting.md lines ~2133 and ~2240; docs/05 Bible/FrontRow_Bible.csv S-XCT-44",
+      "reserved": false
+    },
+    {
+      "what": "Cross-cluster warning for the merge owner: S-XCT-44's SQL names `seat.label`, not `seat.row_label` + `seat.seat_number`, and `movie.poster_key`, not `movie.poster_object_key`.",
+      "why_it_matters": "Not my tables, but I found the literal SQL while grepping for the seat_category join: \"SELECT count(*) FROM seat WHERE label LIKE '%I%' returns 0\", \"SELECT screen_id, label FROM seat GROUP BY 1, 2\", and \"SELECT count(DISTINCT poster_key) FROM movie returns 1\". FR-ADR-016 and P-ADM-13 fix the seat columns as `row_label` and `seat_number`, and FR-ADR-021 fixes the movie column as `poster_object_key`. Those three criteria will fail against the specified schema. The seat and movie cluster readers need to see this.",
+      "where_you_looked": "docs/05 Bible/FrontRow_Bible.csv S-XCT-44 AcceptanceCriteria; FR-ADR-016; FR-ADR-021; P-ADM-13",
+      "reserved": false
+    }
+  ],
+  "sql_seen_in_criteria": [
+    {
+      "story": "S-ADM-14",
+      "sql": "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'version' returns exactly movie, showtime, screen, seat_category and cinema; seat is absent",
+      "columns_implied": ["seat_category.version"]
+    },
+    {
+      "story": "S-XCT-09",
+      "sql": "SELECT conname, confdeltype FROM pg_constraint WHERE contype = 'f' AND confdeltype <> 'r' returning 0 rows",
+      "columns_implied": ["every foreign key referencing these five tables must be ON DELETE RESTRICT ('r'); none of the five has an outgoing FK of its own"]
+    },
+    {
+      "story": "S-XCT-09",
+      "sql": "SELECT table_name FROM information_schema.tables t WHERE table_schema = 'public' AND table_name <> 'alembic_version' AND NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_name = t.table_name AND c.column_name = 'created_at') returns 0 rows",
+      "columns_implied": ["seat_category.created_at", "language.created_at", "certification.created_at", "genre.created_at", "format.created_at"]
+    },
+    {
+      "story": "S-XCT-44",
+      "sql": "each count read back with SELECT count(*) FROM seat JOIN seat_category ...",
+      "columns_implied": ["seat_category.id", "seat.seat_category_id"]
+    },
+    {
+      "story": "S-XCT-44",
+      "sql": "three categories at 0, 1250 and 3333 basis points against the seeded base price of 24999 paise produce 24999, ceil-half-up(24999 * 11250 / 10000) = 28124 and ceil-half-up(24999 * 13333 / 10000) = 33331, each asserted through seat_price_paise and never typed",
+      "columns_implied": ["seat_category.uplift_basis_points"]
+    },
+    {
+      "story": "S-XCT-45",
+      "sql": "format alternates by index within each hall so SELECT format_id, count(*) FROM showtime GROUP BY 1 returns both format rows non-zero",
+      "columns_implied": ["format.id", "showtime.format_id"]
+    },
+    {
+      "story": "S-PAY-03",
+      "sql": "SELECT price_paise, base_price_paise_applied, uplift_basis_points_applied, seat_category_id FROM booking_seat WHERE booking_id = the new id returns 30938, 27500, 1250 and a non-null category id",
+      "columns_implied": ["seat_category.id (booking_seat.seat_category_id is NOT NULL)", "seat_category.uplift_basis_points (snapshotted as booking_seat.uplift_basis_points_applied)"]
+    },
+    {
+      "story": "S-PAY-03",
+      "sql": "after the booking exists, setting seat_category.uplift_basis_points to 2000 leaves GET /api/me/bookings/{reference} returning price_paise 30938 and total_paise 30938",
+      "columns_implied": ["seat_category.uplift_basis_points is MUTABLE after bookings exist and must never reprice a sold seat"]
+    },
+    {
+      "story": "S-ADM-13",
+      "sql": "seat_price_paise = (base_price_paise * (10000 + uplift_basis_points) + BASIS_POINT_HALF) // BASIS_POINT_SCALE with BASIS_POINT_SCALE = 10000 and BASIS_POINT_HALF = 5000 as named constants, integer throughout",
+      "columns_implied": ["seat_category.uplift_basis_points (integer, never a float or Decimal)"]
+    },
+    {
+      "story": "S-ADM-13",
+      "sql": "GET /api/admin/seat-categories returns affected_future_showtimes and evaluated_at_utc, where the count is COUNT(showtime WHERE starts_at + SALES_CUTOFF_MINUTES > evaluated_at) across every hall, film and category, counting halls whose is_active is false and counting showtimes whose starts_at is already past",
+      "columns_implied": ["not a seat_category column — a computed response field. Confirms seat_category has NO stored count column and NO per-hall or per-film pricing dimension."]
+    },
+    {
+      "story": "S-ADM-13",
+      "sql": "uplift_basis_points 368934881464190 is accepted because 25000 * (10000 + 368934881464190) + 5000 = 9223372036854755000, which is at most 9223372036854775807, and 368934881464191 returns 422",
+      "columns_implied": ["seat_category.uplift_basis_points MUST be bigint — 3.69e14 overflows PostgreSQL integer"]
+    },
+    {
+      "story": "S-ADM-13",
+      "sql": "A name colliding on lower(trim(name)) returns 422 with A seat category with that name already exists.; a fourth category with an unused name returns 201; a walk of app.routes finds no route mounted for DELETE on /api/admin/seat-categories/{seat_category_id}",
+      "columns_implied": ["seat_category.name unique on lower(trim(name)); no delete path"]
+    },
+    {
+      "story": "S-ADM-13",
+      "sql": "One request changing a category's name and its uplift writes exactly two audit rows, seat_category.updated and seat_category.uplift_changed",
+      "columns_implied": ["seat_category.name and seat_category.uplift_basis_points are two independently auditable fields on one row"]
+    },
+    {
+      "story": "S-ADM-21",
+      "sql": "GET /api/admin/lookups/{kind} returns items with id, name, is_active, created_at and reference_count, ordered name ASC, id ASC, with include_withdrawn defaulting to false",
+      "columns_implied": ["language|certification|genre|format .id", ".name", ".is_active", ".created_at"]
+    },
+    {
+      "story": "S-ADM-21",
+      "sql": "A second row whose lower(trim(name)) matches an existing row in that vocabulary whose is_active is true returns 422 …; one matching a row whose is_active is false returns 422 … - so withdrawn rows participate in the unique index",
+      "columns_implied": ["the unique index on lower(trim(name)) is NOT partial on is_active"]
+    },
+    {
+      "story": "S-ADM-21",
+      "sql": "reference_count counts every referencing row regardless of visibility: with language 1 referenced by one film whose published_at is null and one film that is published, reference_count is 2",
+      "columns_implied": ["movie.language_id references language.id; reference_count is computed, never stored"]
+    },
+    {
+      "story": "S-ADM-21",
+      "sql": "Creating the genre Drama and then the format Drama both return 201 and produce two rows with different ids in different tables",
+      "columns_implied": ["genre and format are two separate tables, each with its own unique index"]
+    },
+    {
+      "story": "S-ADM-22",
+      "sql": "PATCH /api/admin/lookups/{kind}/{id} with is_active false returns 200 and, in one transaction, writes is_active false and one audit row with action language.withdrawn, certification.withdrawn, genre.withdrawn or format.withdrawn, before {\"is_active\": true}, after {\"is_active\": false}",
+      "columns_implied": ["language|certification|genre|format .is_active is the ONLY mutable column"]
+    },
+    {
+      "story": "S-ADM-22",
+      "sql": "withdrawing language 4, creating language 9 and repointing the film leaves SELECT count(*) FROM audit_log WHERE entity_id = 4 at 1 and the language.withdrawn row still readable afterwards",
+      "columns_implied": ["language.id is the audit_log.entity_id for a lookup row"]
+    },
+    {
+      "story": "S-ADM-23",
+      "sql": "On a migrated but unseeded database POST /api/admin/movies returns 422 until SELECT count(*) is at least 1 on each of language, certification and genre",
+      "columns_implied": ["language, certification, genre must exist as tables before movie can be inserted — these three are a hard creation-order dependency for the movie cluster; format is not (showtime.format_id is optional)"]
+    },
+    {
+      "story": "S-ADM-19",
+      "sql": "DELETE against … /api/admin/lookups/{kind} and /api/admin/lookups/{kind}/{id} each return 405 METHOD_NOT_ALLOWED … ripgrep over backend/app for the pattern DELETE FROM|[.]delete[(][)] returns hits naming only the tables seat and manager_screen_assignment",
+      "columns_implied": ["no DELETE path exists for any of the five tables; withdrawal (is_active) replaces it for four, and seat_category is not withdrawable at all"]
+    },
+    {
+      "story": "S-BRW-13",
+      "sql": "With base_price_paise=24999 and categories at 0, 1250 and 3333 basis points, GET /api/showtimes/{id}/seatmap returns categories price_paise of exactly 24999, 28124 and 33331 … the legend renders one row per category reading 'Premium  ₹281.24'",
+      "columns_implied": ["seat_category.name and seat_category.uplift_basis_points reach the customer's seat map legend"]
+    },
+    {
+      "story": "S-SCP-08",
+      "sql": "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name='seat' returns no name matching accessible|wheelchair|pair|couple|companion|gap|group",
+      "columns_implied": ["seat table only — included because it constrains seat_category by implication: no accessible/pair/gap category exists either (FR-ADR-016 'Not modelled, on rulings')"]
+    }
+  ],
+  "notes": [
+    "PRIMARY KEYS ARE bigint GENERATED ALWAYS AS IDENTITY, NOT uuid. FR-ADR-017 (APPROVED) rules this on every table and rejects UUIDv4, UUIDv7/ULID, plain integer, a parallel public uuid column, and natural keys, each by name. The BRIEF's default of uuid is wrong for this project. The API contract spells these ids 'integer' on the wire; that is JSON typing and does not contradict bigint storage.",
+    "NONE OF THE FIVE TABLES HAS AN OUTGOING FOREIGN KEY. They are pure referenced-side vocabularies. The RESTRICT rule (S-XCT-09: SELECT conname, confdeltype FROM pg_constraint WHERE contype='f' AND confdeltype <> 'r' returns 0 rows) applies to the five INCOMING keys the other clusters own: seat.seat_category_id, booking_seat.seat_category_id, movie.certification_id, movie.language_id, movie_genre.genre_id, showtime.format_id. All must be declared ON DELETE RESTRICT.",
+    "CREATION ORDER: seat_category must exist before seat. language, certification and genre must exist before movie (S-ADM-23 asserts POST /api/admin/movies returns 422 until each has at least one row). format need not — showtime.format_id is optional and P-ADM-23 says 'a FrontRow with no format rows at all still works'. In a migration these five tables come first.",
+    "seat_category IS THE ODD ONE OUT OF THE FIVE AND MUST NOT BE MERGED WITH THE OTHER FOUR. It has `version` and `uplift_basis_points`; they do not. They have `is_active`; it does not. Its name bound is 1..40; theirs is 1..60. Its endpoints are EP-ADM-12/13/14 at /api/admin/seat-categories; theirs are EP-ADM-25/26/27 at the generic /api/admin/lookups/{kind}. P-ADM-20's withdrawal table states in terms: 'Seat category | not withdrawn; a category simply has no seats pointing at it.' Do not give seat_category an is_active, and do not give the four vocabularies a version — S-ADM-14 runs a catalogue query that fails if you do.",
+    "THE FOUR VOCABULARIES ARE FOUR SEPARATE TABLES, NOT ONE TABLE WITH A `kind` DISCRIMINATOR. P-ADM-23's kind table maps each of the four path values to its own table by name, and the routing layer matches {kind} against a closed set which is 'never interpolated into a query, so no caller-supplied string ever names a table' (EP-ADM-25/26 authorisation_rule). One generic HTTP surface over four tables — the genericity is at the API, not in the schema.",
+    "NO ENUM ANYWHERE IN THIS CLUSTER, BY TWO EXPLICIT REJECTIONS. FR-ADR-016: 'Categories: a `seat_category` lookup table, not a database enum … A table rather than an enum because a fourth category then costs an insert instead of a migration, and because the category carries a price uplift (FR-ADR-037) which an enum cannot hold.' FR-ADR-021: language and certification are 'lookup tables, not free text and not PostgreSQL enums'.",
+    "NO `code`, NO `description`, NO `sort_order`, NO `colour`, NO `icon` ON ANY OF THE FOUR VOCABULARIES. P-ADM-23 states it in terms: 'There is no description, no sort order, no code, no colour and no icon. No source asks for one, and SRC-001 §6.6 means adding a column later is a migration and not a redesign.' The `code` case is stronger still: it once existed on the wire, nothing could populate it, and the PRD's merge report records that the WIRE was corrected and 'No `code` column was added — that would be a data-model change made from a display field'. S-BRW-02 asserts the literal string 'code' appears nowhere in the movies response body.",
+    "UNIQUENESS IS FUNCTIONAL AND IT IS lower(trim(name)) ON ALL FIVE — never raw. P-ADM-23 states the rule once for the whole product and names its five holders: seat category (P-ADM-11), hall (P-ADM-13, within its venue), venue (P-ADM-25), and each of the four vocabularies. 'The index is the guard, exactly as it is on a seat label and on an email address' — enforced by a unique index and NOT by a prior read, so two simultaneous identical creates produce one row and one 422. Scope is one table: a genre 'Drama' and a format 'Drama' do not collide.",
+    "WITHDRAWN ROWS PARTICIPATE IN THE UNIQUE INDEX — the index is NOT partial on is_active. P-ADM-23: 'A withdrawn `Drama` blocks a new `Drama`, and this is deliberate.' The 422 has its own verbatim wording telling the admin to restore the withdrawn row instead. S-ADM-21 asserts both messages byte-for-byte. A partial unique index WHERE is_active would break that test.",
+    "DELETING A REFERENCED ROW IS IMPOSSIBLE BY TWO INDEPENDENT MECHANISMS, and both are asserted. (1) No DELETE route is mounted at any lookup or seat-category address — the absence IS the control (P-ADM-20, P-ADM-23 exception 7, P-ADM-24 exception 6); a hand-made DELETE hits a global 405 handler, not a route. (2) Every incoming foreign key is ON DELETE RESTRICT, so a direct SQL delete of a referenced row raises SQLSTATE 23503 (S-XCT-09). FR-ADR-012 removes deletion from this system's vocabulary; withdrawal (is_active=false) replaces it for the four vocabularies, and seat_category is not withdrawable at all because a category with no seats pointing at it needs no flag.",
+    "A LOOKUP ROW IS THE RIGHT HOME FOR AN ASSUMED VALUE, AND I AGREE WITH THE DOCUMENTS' REASONING. Standard/Premium/Recliner at 0/1250/3333 bp are ASSUMED under OPEN-SEAT-01 ('you pick'), as are the eleven DEMO-prefixed vocabulary names under P-XCT-30. Because they are rows, changing one is an UPDATE and adding a fourth is an INSERT — where a PostgreSQL enum would make either a migration on live data. That is precisely why FR-ADR-016 rejects the enum. The obligation this puts on the schema: nothing may encode the assumed names — no CHECK listing them, no enum, no unique constraint keyed to a specific name, no code branching on 'Standard' (S-ADM-13 asserts ripgrep for that literal in pricing.py returns 0 hits). If the client renames a category tomorrow, only rows change.",
+    "MONEY RULE, RESTATED FOR THIS CLUSTER: uplift_basis_points is an INTEGER number of basis points and never a float, a Decimal or a numeric percentage — FR-ADR-037 rejects `numeric` by name because 'it puts a non-integer type on the money path'. The minor-unit ratio (100) appears nowhere in this cluster: no column name, comment or constraint mentions paise here. The two constants in the pricing formula are 10000 and 5000 and they are BASIS_POINT_SCALE and BASIS_POINT_HALF, defined once, and are basis-point arithmetic rather than currency configuration.",
+    "seat_category.uplift_basis_points MUST BE bigint, NOT integer. The PRD prose says 'integer' generically, but S-ADM-13 — a test that will be run — asserts the value 368934881464190 is ACCEPTED. That is ~3.69e14 and overflows PostgreSQL `integer` (2^31-1 ≈ 2.1e9). Built as `integer`, the criterion fails with a numeric overflow instead of the specified 201/422 split. Flagging this loudly because it is exactly the kind of thing a merge would smooth over.",
+    "NO CLOCK DEFAULTS ANYWHERE IN THIS CLUSTER. created_at and updated_at carry no DEFAULT now() and no CURRENT_TIMESTAMP; the application supplies the instant from the injected clock (FR-ADR-018, CONSTITUTION Art IX.5). P-ADM-23 types created_at as 'timestamptz, UTC' and EP-ADM-26 returns it as an ISO-8601 UTC instant. Asia/Kolkata is a rendering concern owned by cinema.timezone and never a storage concern here.",
+    "AUDIT ACTIONS THESE TABLES PRODUCE, for the audit_log cluster's controlled vocabulary: seat_category.created, seat_category.updated, seat_category.uplift_changed (P-ADM-19 vocabulary table); and per {kind}: <kind>.created, <kind>.withdrawn, <kind>.restored for each of language, certification, genre, format. A name-and-uplift change in one request writes exactly TWO rows (S-ADM-13). A write that changes nothing writes NO audit row and does not increment version (P-ADM-24 exception 4, generalised in E6 S4 to every versioned entity).",
+    "TABLE NAMES: the BRIEF's fixed-name list (users, cinema, screen, seat, movie, showtime, showtime_seat, booking, booking_seat, payment, idempotency_record, password_reset_token, outbox_message, receipt_dispatch, audit_log) OMITS all five of my tables plus movie_genre and manager_screen_assignment. I have not renamed anything; the names seat_category, language, certification, genre, format come straight from P-ADM-23's kind table and FR-ADR-016, and they appear in the incoming FK names the other clusters already declare. The brief's list is incomplete, not authoritative against P-ADM-23.",
+    "EVIDENCE STATUS: everything above is extracted from written documents. Nothing here has been executed — no schema exists, no test has run, and no criterion in FrontRow_Bible.csv has ever been observed passing (the Bible's own column dictionary says so). Where I have gone beyond a document's literal words — expressing a server-side bound as a CHECK, including updated_at on the four vocabularies, choosing bigint over integer for uplift_basis_points — I have said so on the row and put the open question in `gaps` rather than presenting it as ruled."
+  ]
+}

@@ -137,6 +137,12 @@ def emit_schema(model):
         col_lines = []
         for c in t["columns"]:
             frag = "    %-26s %s" % (c["name"], sqltype(c, t["name"]))
+            if c.get("identity"):
+                # FR-ADR-017 chooses IDENTITY over serial deliberately.  It is
+                # not a DEFAULT: "DEFAULT identity" is not SQL, and GENERATED
+                # ALWAYS also refuses an application-supplied value, which is
+                # the half that makes the key genuinely database-generated.
+                frag += " GENERATED ALWAYS AS IDENTITY"
             if not c.get("nullable", True):
                 frag += " NOT NULL"
             if c.get("default") is not None:
@@ -148,8 +154,13 @@ def emit_schema(model):
         if pk:
             tail.append("    PRIMARY KEY (%s)" % ", ".join(pk))
         for u in t.get("unique", []):
-            if u.get("where"):
-                continue        # partial uniqueness is an index, not a constraint
+            if u.get("where") or u.get("expression_index"):
+                # Partial uniqueness is an index, not a constraint - and so is
+                # uniqueness over an EXPRESSION.  PostgreSQL has no syntax for
+                # UNIQUE (lower(trim(name))) as a table constraint at all; it
+                # must be CREATE UNIQUE INDEX.  Both are emitted after the
+                # CREATE TABLE, below.
+                continue
             tail.append("    CONSTRAINT %s UNIQUE (%s)"
                         % (u["name"], ", ".join(u["columns"])))
         for ck in t.get("checks", []):
@@ -179,12 +190,16 @@ def emit_schema(model):
         L.append(");")
 
         for u in t.get("unique", []):
-            if not u.get("where"):
+            if not (u.get("where") or u.get("expression_index")):
                 continue
             if u.get("why"):
                 L.append("-- %s" % u["why"])
-            L.append("CREATE UNIQUE INDEX %s ON %s (%s) WHERE %s;"
-                     % (u["name"], t["name"], ", ".join(u["columns"]), u["where"]))
+            # An expression column is wrapped in its own parentheses, which
+            # PostgreSQL requires for a functional index.
+            cols = ", ".join(("(%s)" % c) if "(" in c else c for c in u["columns"])
+            where = (" WHERE %s" % u["where"]) if u.get("where") else ""
+            L.append("CREATE UNIQUE INDEX %s ON %s (%s)%s;"
+                     % (u["name"], t["name"], cols, where))
         for ix in t.get("indexes", []):
             if ix.get("why"):
                 L.append("-- %s" % ix["why"])

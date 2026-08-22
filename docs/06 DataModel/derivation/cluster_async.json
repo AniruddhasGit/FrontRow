@@ -1,0 +1,462 @@
+{
+  "cluster": "async and delivery",
+  "tables": [
+    {
+      "name": "outbox_message",
+      "purpose": "The whole product's transactional outbox: one row per asynchronous job, inserted in the same database transaction as the business change and relayed to SQS/ElasticMQ afterwards, so the job commits with the change or does not exist.",
+      "cite": "FR-ADR-031 Decision; E4 P-TKT-04 'Enqueue the receipt through a transactional outbox' Preconditions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('An `outbox_message` table: `id`, ...'); Bible S-TKT-06 `SELECT status FROM outbox_message WHERE id=:o`",
+          "note": "THE TYPE IS NOT STATED BY ANY DOCUMENT. Reported as bigint against project evidence, not against the brief's uuid default: E8 S7.3 / E6 P-ADM-19 both give `audit_log.id` as `bigint identity`, and Bible S-PAY-07 casts `(o.payload->>'booking_id')::bigint`, which forces booking.id — and therefore receipt_dispatch.booking_id — to be bigint. See gaps: the PK convention is a merge-owner decision, not this cluster's.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 Preconditions; Bible S-TKT-06 ('outbox_message.created_at is written from the injected clock and the age threshold is bound into that statement from the same clock')",
+          "note": "NO DATABASE-SIDE DEFAULT. S-TKT-06 asserts `rg -n 'now\\(\\)|CURRENT_TIMESTAMP|statement_timestamp' backend/app/workers` returns 0 hits, because the database clock does not move when the injected clock does and a relay written against it would select the row at 29 s and at 31 s alike. A `DEFAULT now()` here would let the relay test pass by accident and is a defect. The application supplies the value.",
+          "reserved_row": null
+        },
+        {
+          "name": "topic",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 'topic is a controlled vocabulary with exactly two members in v1'",
+          "note": "Exactly two members in v1: 'receipt.send' and 'password_reset.send'. E6 P-ADM-19 records that `receipt.send` is an `outbox_message.topic` and is NOT an `audit_log.action` — 'a different column in a different namespace'. Modelled as text + CHECK rather than a native enum: no document mandates a type. See enums.",
+          "reserved_row": null
+        },
+        {
+          "name": "payload",
+          "type": "jsonb",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`payload` (`jsonb`)'); E4 P-TKT-04 payload table",
+          "note": "Key set is fixed per topic and is exhaustive. `receipt.send`: booking_id, dispatch_seq, request_id, message_version. `password_reset.send`: user_id, reset_token_id, request_id, message_version. 'No customer data travels in the payload — no email address, no seat list, no amount' (P-TKT-04, FR-ADR-059). NO CARD DATA anywhere. The reset token value never travels here (see gaps, OPEN-RESETTOKEN-01).",
+          "reserved_row": "OPEN-RESETTOKEN-01"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`status` (`pending` / `sent`)'); E4 P-TKT-04 Preconditions and happy path steps 1, 3, 4",
+          "note": "TWO values only — `pending` and `sent`. This is the state of the RELAY TO THE QUEUE, not of the email. E3 P-PAY-10 step 15: 'Step 15 marks the outbox row and not the dispatch row.' No DB default is stated; the application writes 'pending' explicitly at insert.",
+          "reserved_row": null
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 happy path step 3 ('updates the row to `status = 'sent'`, `sent_at = now()`')",
+          "note": "Set only when the queue accepted the message. Bible S-TKT-06: 'with the queue reachable the same confirm leaves that row `sent` with sent_at non-null'. Never cleared; `sent` rows are kept forever as the record that the receipt was dispatched (P-TKT-04 step 5, FR-ADR-012).",
+          "reserved_row": null
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 happy path step 1 ('`attempts = 0`') and exception row 5 ('the row stays `pending` and `attempts` increments')",
+          "note": "Written 0 at insert by the application; no DB default is stated. Bible S-TKT-05 asserts `SELECT topic, status, attempts FROM outbox_message WHERE payload->>'booking_id'=:b` returns `receipt.send, pending, 0`. No maximum, no backoff and no terminal state is specified for this counter — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`attempts`, `last_error`'); E4 P-TKT-04 Preconditions",
+          "note": "The column is required by two documents but NO specification states when it is written. P-TKT-04 exception row 5 says only that the relay 'logs at ERROR and retries on the next loop; the row stays `pending` and `attempts` increments' — it does not say last_error is set. Reported as specified, with the write rule listed in gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "topic IN ('receipt.send', 'password_reset.send')",
+          "cite": "E4 P-TKT-04 ('A row whose `topic` is not in this table is rejected at insert'); Bible S-TKT-05",
+          "why": "Bible S-TKT-05 requires that an insert with topic='receipt.render' does not commit and that SELECT count(*) FROM outbox_message WHERE topic='receipt.render' returns 0 afterwards. The criterion explicitly says it 'asserts the observable outcome and names no mechanism, so GOAL_08 may implement the guard as a CHECK constraint, a trigger or application validation'."
+        },
+        {
+          "expression": "status IN ('pending', 'sent')",
+          "cite": "FR-ADR-031 Decision",
+          "why": "The relay state is a closed two-member vocabulary. No document asserts this as a test, so it is a stricter-than-required guard, not a criterion."
+        },
+        {
+          "expression": "the payload key set is EXACTLY {booking_id, dispatch_seq, message_version, request_id} when topic='receipt.send', and EXACTLY {message_version, request_id, reset_token_id, user_id} when topic='password_reset.send' — all of them and no others",
+          "cite": "E4 P-TKT-04 Server-side validation; Bible S-TKT-05",
+          "why": "S-TKT-05 requires that a receipt.send payload carrying a fifth key, and one with message_version missing, both fail to commit; and that a password_reset.send payload whose key set is exactly {message_version, request_id, reset_token_id, user_id} commits. MECHANISM NOTE FOR THE MERGE OWNER: a plain CHECK cannot express exact jsonb key-set equality without an IMMUTABLE helper function (jsonb_object_keys is set-returning and a CHECK may not contain a subquery). S-TKT-05 permits a CHECK, a trigger or application validation; the choice is open."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": ["status", "created_at"],
+          "unique": false,
+          "cite": "FR-ADR-031 ('before each poll of the queue, the worker checks for `pending` outbox rows older than a short threshold... The relay's claim is `SELECT ... FOR UPDATE SKIP LOCKED`'); E4 P-TKT-04 happy path step 4; Bible S-TKT-06",
+          "why": "The relay's own query, run before every queue poll for the life of the system: select `pending` rows older than OUTBOX_RELAY_MIN_AGE_SECONDS with FOR UPDATE SKIP LOCKED in a bounded batch. NOTHING IS EVER DELETED from this table (FR-ADR-012, P-TKT-04 step 5), so it grows one row per booking forever and an unindexed scan for `pending` degrades on every loop. NO DOCUMENT SPECIFIES ANY INDEX — this is derived from a stated query, not from a stated index."
+        }
+      ]
+    },
+    {
+      "name": "receipt_dispatch",
+      "purpose": "One durable claim-and-outcome row per booking recording whether the receipt email was claimed, sent, failed or suppressed — the guard that makes two senders for one booking impossible, and the only record of what SES was asked to do.",
+      "cite": "FR-ADR-032 Decision; E4 P-TKT-05 'Send exactly one receipt per booking, and retry the ones that fail' Preconditions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 happy path step 2 (the claim UPDATE ends `RETURNING id`)",
+          "note": "THE TYPE IS NOT STATED. Same evidence and same caveat as outbox_message.id — see gaps. The claim returns it; nothing else in any document reads or joins on it.",
+          "reserved_row": null
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-032 Decision ('A `receipt_dispatch` claim row, unique on `booking_id`'); E4 P-TKT-05 Preconditions; Bible S-PAY-07",
+          "note": "TYPE IS FORCED BY A CRITERION'S SQL: S-PAY-07 runs `... WHERE r.booking_id = (o.payload->>'booking_id')::bigint`, so this column and booking.id must both be bigint or that test cannot run. This is the one hard type fact in this cluster.",
+          "reserved_row": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions ('`status` (`pending` / `sending` / `sent` / `failed` / `suppressed`)'); E4 P-TKT-04 'The `suppressed` state' block; E4 P-TKT-10 state table",
+          "note": "FIVE values. Created `pending` by the booking transaction; `suppressed` is written ONLY by the seed script and by nothing in the running application, has no incoming edge from any other state and no outgoing edge at all (P-TKT-05 state machine). `sent` means SES ACCEPTED the message for delivery and is never revised — P-TKT-11: 'evidence of dispatch, never of receipt'. Modelled as text + CHECK; no document mandates a native enum.",
+          "reserved_row": null
+        },
+        {
+          "name": "dispatch_seq",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions ('`dispatch_seq` (integer, `>= 1`)'); E4 P-TKT-04 happy path step 1 and Server-side validation; E4 P-TKT-07 happy path step 5; S8 merge report row X-10",
+          "note": "BUILD-SESSION EXTENSION, EXPLICITLY FLAGGED FOR 06 DataModel TO CONFIRM. It is the reconciliation of FR-ADR-032 (a `sent` claim is not retryable) against FR-ADR-048 (a resend control that re-enqueues the job): one row per booking stays unique on booking_id, and the worker's claim is conditional on the sequence so a stale redelivery cannot re-send. E4 lane notes: 'The merge pass and `06 DataModel` must confirm both, and if either is rejected the resend control needs a different mechanism.' Written 1 in the booking transaction; incremented only by an accepted resend.",
+          "reserved_row": null
+        },
+        {
+          "name": "claimed_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 2 (`claimed_at=now()` in the claim UPDATE, and `claimed_at < now() - :stale_interval` in its WHERE)",
+          "note": "THE WORKER'S CLAIM COLUMN. Null on a row the booking transaction just created ('every timestamp null', P-TKT-04 step 1). IT IS NOT CLEARED ON FAILURE — unlike password_reset_token.email_claimed_at, which P-TKT-12 exception 4 clears to NULL explicitly. A failed receipt send moves status to 'failed' and leaves claimed_at set; the 'failed' branch of the claim's WHERE clause is what makes it retryable. Bible S-TKT-07 requires claimed_at to be written from the INJECTED clock and the staleness threshold bound from the same clock, asserting `rg -n 'now\\(\\)|CURRENT_TIMESTAMP' backend/app/workers` returns 0 hits — see notes, this contradicts the literal `now()` in the PRD's published claim statement.",
+          "reserved_row": null
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 happy path step 5 ('`sent_at=now()`'); E4 P-TKT-04 'The `suppressed` state' block",
+          "note": "Set only when SES accepted. Never cleared. Bible S-TKT-08 asserts it reads null on a timed-out send.",
+          "reserved_row": null
+        },
+        {
+          "name": "ses_message_id",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 5 ('`ses_message_id=<the id SES returned>`'); FR-ADR-032 Consequences; FR-ADR-060",
+          "note": "The id SES returned on acceptance. FR-ADR-060: it 'is what makes \"did this send\" answerable'. Null on failure, on timeout and on a suppressed row.",
+          "reserved_row": null
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 2 ('`attempts=attempts+1`'); E4 P-TKT-04 happy path step 1 ('`attempts = 0`')",
+          "note": "Written 0 in the booking transaction; no DB default stated. LOAD-BEARING BEYOND COUNTING: P-TKT-07 steps 3 and 4 use attempts=0 versus attempts>0 to distinguish 'the first receipt has not been attempted yet' (202 queued:false, no token spent) from 'a resend is already in flight' (202 queued:false). It is 0 only on a row no worker has ever claimed.",
+          "reserved_row": null
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions, exception rows 2 and 2a; FR-ADR-049 dimension 5",
+          "note": "Carries the SES error. MUST DISTINGUISH A TIMEOUT FROM A REFUSAL: P-TKT-05 exception 2a — 'last_error records that the call timed out rather than that SES refused, so the two are distinguishable afterwards by the operator'. Bible S-TKT-08 tests exactly that: last_error contains 'timeout' and does not contain the SES refusal string, and an SES error is 'distinguishable from the timeout case by that string'.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {
+          "columns": ["booking_id"],
+          "cite": "FR-ADR-032 Decision ('A `receipt_dispatch` claim row, unique on `booking_id`'); E4 P-TKT-05 Preconditions ('unique on `booking_id`'); Bible S-TKT-05",
+          "why": "One row per booking is the whole guarantee. S-TKT-05: 'a second `receipt_dispatch` insert for the same booking_id does not commit and SELECT count(*) FROM receipt_dispatch WHERE booking_id=:b stays at 1.' The resend raises dispatch_seq on the same row rather than inserting a second, precisely so this constraint survives FR-ADR-048."
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": ["booking_id"],
+          "references": "booking(id)",
+          "on_delete": "RESTRICT",
+          "cite": "FR-ADR-032 Decision; FR-ADR-012 ('every relationship is `ON DELETE RESTRICT`. A cascade is a delete that happens without anyone writing the word delete')",
+          "note": "FR-ADR-012 fixes the action product-wide; no row in this cluster is ever deleted."
+        }
+      ],
+      "checks": [
+        {
+          "expression": "status IN ('pending', 'sending', 'sent', 'failed', 'suppressed')",
+          "cite": "E4 P-TKT-05 Preconditions; E4 P-TKT-04 'The `suppressed` state' block",
+          "why": "Closed five-member vocabulary, enumerated identically in three P-rows and proved complete as a 5x3 state machine in P-TKT-05. No criterion asserts the constraint itself, so the mechanism is open as it is for outbox_message.topic."
+        },
+        {
+          "expression": "dispatch_seq >= 1",
+          "cite": "E4 P-TKT-05 Preconditions ('`dispatch_seq` (integer, `>= 1`)'); E4 P-TKT-04 Server-side validation ('`dispatch_seq`: integer, `>= 1`')",
+          "why": "Stated twice as a bound on the value, in two separate specifications. A 0 or negative sequence would make the worker's sequence-conditional claim meaningless."
+        }
+      ],
+      "indexes": []
+    }
+  ],
+  "enums": [
+    {
+      "name": "outbox_topic",
+      "values": ["receipt.send", "password_reset.send"],
+      "cite": "E4 P-TKT-04 payload table ('a controlled vocabulary with exactly two members in v1')",
+      "note": "MODELLED AS text + CHECK, NOT AS A NATIVE POSTGRESQL ENUM. No document states a column type for it. Listed here so the merge owner can unify the convention across all six clusters; if the project settles on native enums, this becomes enum:outbox_topic."
+    },
+    {
+      "name": "receipt_dispatch_status",
+      "values": ["pending", "sending", "sent", "failed", "suppressed"],
+      "cite": "E4 P-TKT-05 Preconditions; E4 P-TKT-04 'The `suppressed` state' block; E4 P-TKT-10 'What state exists'",
+      "note": "Same caveat: modelled as text + CHECK. `suppressed` is written only by scripts/seed.py and is terminal in both directions."
+    },
+    {
+      "name": "outbox_message_status",
+      "values": ["pending", "sent"],
+      "cite": "FR-ADR-031 Decision",
+      "note": "Same caveat. Two values only — this is relay state, not send state."
+    }
+  ],
+  "gaps": [
+    {
+      "what": "The primary-key type for outbox_message.id and receipt_dispatch.id is stated by no document.",
+      "why_it_matters": "The brief's default is uuid, but the project's own documents point the other way: E8 S7.3 and E6 P-ADM-19 both give audit_log.id as `bigint identity`, and Bible S-PAY-07 runs `(o.payload->>'booking_id')::bigint`, which forces booking.id — and therefore receipt_dispatch.booking_id — to be bigint. A cluster that picks uuid and a cluster that picks bigint produce a schema whose foreign keys do not compile. This is a merge-owner decision across all six clusters, not a per-cluster one.",
+      "where_you_looked": "docs/03 PRD/sections/E4_receipt_entry.md P-TKT-04 and P-TKT-05 Preconditions; FR-ADR-031; FR-ADR-032; grep for bigint/bigserial/identity across docs/03 PRD/sections/ and docs/01 ADR/",
+      "reserved": false
+    },
+    {
+      "what": "receipt_dispatch has no created_at and no updated_at in any document, and nothing states when the row was written.",
+      "why_it_matters": "outbox_message has created_at because the relay's age threshold needs it. receipt_dispatch's only timestamps are claimed_at and sent_at, both null on a fresh row and both null forever on a suppressed one. An operator asking P-TKT-11's question — 'a receipt that fails repeatedly is invisible until a person looks at the table' — has no column telling them when the booking's dispatch row came into existence, and joining to booking is the only route. Adding one is inventing a column, so it is reported rather than added.",
+      "where_you_looked": "E4 P-TKT-04 happy path step 1 ('every timestamp null'), P-TKT-05 Preconditions, P-TKT-10 'What state exists', FR-ADR-032, Bible S-TKT-05 (which SELECTs all seven non-id columns and names no created_at)",
+      "reserved": false
+    },
+    {
+      "what": "Whether request_id is a COLUMN on outbox_message or only a key inside payload.",
+      "why_it_matters": "SRC-002 §7.6 and FR-ADR-056 require the request id to propagate into worker jobs, and E8 S7.8 states it twice as a property of the ROW — 'The outbox row carries the originating `request_id`' (Preconditions) and 'The `request_id` ... is written onto the outbox row, travels in the queue message' — while P-TKT-04's Preconditions column list omits any request_id column and Bible S-TKT-05 asserts the payload key set is exactly {booking_id, dispatch_seq, message_version, request_id}. Read one way there is a column; read the other the payload satisfies the sentence. NO COLUMN IS MODELLED HERE, because only the payload reading is testable against a criterion. If the merge owner reads S7.8 as requiring a column, it is one line and it changes nothing else; if a column is added and the payload key is dropped, S-TKT-05 fails.",
+      "where_you_looked": "E8 S7.8 lines around 'The outbox row carries the originating request_id' and 'Propagation into the worker is explicit, through the message payload'; E4 P-TKT-04 Preconditions and payload table; Bible S-TKT-05; FR-ADR-056",
+      "reserved": false
+    },
+    {
+      "what": "OPEN-RESETTOKEN-01 — the password_reset.send payload is specified to carry reset_token_id and never the token, the token is never stored (only token_sha256), and the worker must nevertheless render a link containing the token value.",
+      "why_it_matters": "The three statements are jointly unsatisfiable and the contradiction lands on outbox_message.payload. THE PAYLOAD CONTENTS AS THE DOCUMENTS STATE THEM, VERBATIM: P-TKT-04's table gives `password_reset.send` the payload keys 'user_id, reset_token_id, request_id, message_version' and heads the column 'Payload keys — exactly these, and no others'; the same row states 'The reset token itself never travels in the queue. The payload carries reset_token_id — the identity of a row — and never the token value. A token is a credential, and a queue message is at rest in a service the application does not own, is redelivered more than once, and is copied into a dead letter queue that nothing prunes and nobody watches.' P-TKT-12 Preconditions repeat it: 'The token itself is never in the queue — it is a credential, and the worker reads what it needs from the row.' Bible S-TKT-15 tests it: with the token generator stubbed to return TESTTOKENVALUE0001, `rg -F 'TESTTOKENVALUE0001'` over the raw enqueued message body returns 0 hits. Bible S-ACC-07's own Description escalates the contradiction: 'the 43-character token is in neither the queue payload (which carries reset_token_id only) nor the stored row (which keeps only token_sha256), so nothing downstream holds the value the emailed link must contain and P-TKT-12 as published cannot render that link.' NO PAYLOAD COLUMN OR PAYLOAD KEY SHAPED TO CARRY A TOKEN IS PROPOSED HERE. Any of the three resolutions is a decision about credential handling and is reserved to the client.",
+      "where_you_looked": "E4 P-TKT-04 payload table and the paragraph after it; E4 P-TKT-12 Preconditions and happy path; Bible S-ACC-07 Description; Bible S-TKT-15; CONSTITUTION.md Article X",
+      "reserved": true
+    },
+    {
+      "what": "OPEN-EMAILFAIL-01 — what a customer is told when a receipt definitively fails, and whether the booking stays valid.",
+      "why_it_matters": "This cluster holds the data the answer would act on and MUST NOT hold the answer. P-TKT-05 exception 5 and P-TKT-11 exception 1 fix the terminal behaviour of the row: 'the message moves to the dead letter queue. The `receipt_dispatch` row stays `failed` with the SES error' — no further state, no notification, no product action. P-TKT-09 keeps the dispatch state off the customer API entirely, because 'putting it there would require the interface to render something for `failed`, and what a customer is told in that case is OPEN-EMAILFAIL-01, reserved.' FR-ADR-049 dimension 5 says the data already exists. NEGATIVE SCHEMA REQUIREMENT LANDING ON THIS CLUSTER: Bible S-TKT-13 asserts `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('email_invalid','email_bounced','email_complained','email_suppressed')` returns 0 — those four column names may not exist anywhere in the schema, because marking an address invalid is a product behaviour affecting a customer's ability to receive their ticket and that is precisely what is reserved. `suppressed` on receipt_dispatch is NOT an answer to this row and P-TKT-04 says so explicitly: it records that no send was attempted for a booking no real customer made.",
+      "where_you_looked": "E4 P-TKT-10 (status OPEN), P-TKT-11, P-TKT-09; FR-ADR-049; Bible S-TKT-13; SRC-003 OPEN-EMAILFAIL-01",
+      "reserved": true
+    },
+    {
+      "what": "Nothing on receipt_dispatch distinguishes 'failed and still being redelivered' from 'failed and now dead-lettered'.",
+      "why_it_matters": "P-TKT-11 exception 1 fixes that the row 'stays `failed` with the SES error' when the message passes maxReceiveCount, so the two situations are the same tuple. The operator P-TKT-11 describes — the only reader, since nothing is alarmed — cannot tell from the table whether a retry is still coming. NO COLUMN IS PROPOSED: adding one (a dead_lettered_at, a terminal flag) would be inventing state the documents deliberately do not create, and it edges toward the surfacing decision OPEN-EMAILFAIL-01 reserves. Reported so the merge owner sees the absence is deliberate rather than missed.",
+      "where_you_looked": "E4 P-TKT-05 exception 5; E4 P-TKT-11 exception rows 1, 3, 3a and 'What is available to a person who does look'; FR-ADR-032 Consequences; FR-ADR-068",
+      "reserved": false
+    },
+    {
+      "what": "outbox_message.attempts has no ceiling, no backoff and no terminal state, and last_error has no stated write rule.",
+      "why_it_matters": "P-TKT-04 exception 5 says the relay 'logs at ERROR and retries on the next loop; the row stays `pending` and `attempts` increments' — forever, on every worker loop, with nothing pruning the table (FR-ADR-012) and nothing alarming on outbox_pending (P-TKT-11). A permanently unroutable row is retried for the life of the system and nothing records why. What last_error should hold on the relay path is stated nowhere; only receipt_dispatch.last_error has a stated write rule. Do not invent a max_attempts column or a backoff column: neither exists in any document, and a cap would silently drop a receipt.",
+      "where_you_looked": "FR-ADR-031 Decision and Consequences; E4 P-TKT-04 exception 5 and happy path step 4; E8 S7.9 config table rows OUTBOX_RELAY_BATCH_SIZE and OUTBOX_RELAY_MIN_AGE_SECONDS; E8 S7.14; Bible S-TKT-06",
+      "reserved": false
+    },
+    {
+      "what": "No document specifies any index on either table.",
+      "why_it_matters": "The one index reported (outbox_message on status, created_at) is derived from the relay's stated query, not from a stated index. FR-ADR-012 means both tables grow forever, so the relay's `pending` scan runs against an ever-growing table on every worker loop. If the merge owner's rule is 'no index without a citation naming an index', drop it — but record that the relay query then has no support.",
+      "where_you_looked": "FR-ADR-031; E4 P-TKT-04 step 4; E4 P-TKT-05; grep for 'index' across docs/03 PRD/sections/E4 and E8 and docs/01 ADR/",
+      "reserved": false
+    }
+  ],
+  "sql_seen_in_criteria": [
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT status, dispatch_seq, attempts, claimed_at, sent_at, ses_message_id, last_error FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.dispatch_seq", "receipt_dispatch.attempts", "receipt_dispatch.claimed_at", "receipt_dispatch.sent_at", "receipt_dispatch.ses_message_id", "receipt_dispatch.last_error", "receipt_dispatch.booking_id"],
+      "note": "Returns exactly one row reading `pending, 1, 0, null, null, null, null` after one confirmed booking. This single statement names seven of receipt_dispatch's nine columns and is the strongest column evidence in the cluster."
+    },
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT topic, status, attempts FROM outbox_message WHERE payload->>'booking_id'=:b",
+      "columns_implied": ["outbox_message.topic", "outbox_message.status", "outbox_message.attempts", "outbox_message.payload"],
+      "note": "Returns exactly one row reading `receipt.send, pending, 0`. NOTE THE COMPARISON IS TEXT — `payload->>'booking_id'=:b` with no cast — while S-PAY-07 casts the same expression to bigint. Both work whether the payload holds a JSON number or a JSON string, but the two criteria bind :b differently and the merge owner should confirm the payload's JSON type for booking_id."
+    },
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT count(*) FROM outbox_message WHERE topic='receipt.render'",
+      "columns_implied": ["outbox_message.topic"],
+      "note": "Must return 0 — an insert with an off-vocabulary topic must not commit. Same assertion holds for a receipt.send payload carrying a fifth key and for one with message_version missing."
+    },
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT count(*) FROM outbox_message WHERE topic='password_reset.send'",
+      "columns_implied": ["outbox_message.topic"],
+      "note": "Must return 1 after inserting a payload whose key set is exactly {message_version, request_id, reset_token_id, user_id}. This is the criterion that forces the topic vocabulary to have two members, not one."
+    },
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT count(*) FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.booking_id"],
+      "note": "Stays at 1 after a second insert for the same booking_id is attempted — the unique constraint, asserted behaviourally."
+    },
+    {
+      "story": "S-TKT-05",
+      "sql": "SELECT count(*) FROM booking WHERE reference=:r",
+      "columns_implied": ["booking.reference"],
+      "note": "Cross-cluster. Included because it is the assertion that forcing the OUTBOX insert to fail rolls the whole booking transaction back — the outbox row's atomicity with the booking, proved from the booking side."
+    },
+    {
+      "story": "S-PAY-07",
+      "sql": "SELECT count(*) FROM outbox_message o WHERE o.topic='receipt.send' AND NOT EXISTS (SELECT 1 FROM receipt_dispatch r WHERE r.booking_id = (o.payload->>'booking_id')::bigint AND r.dispatch_seq = (o.payload->>'dispatch_seq')::int)",
+      "columns_implied": ["outbox_message.topic", "outbox_message.payload", "receipt_dispatch.booking_id", "receipt_dispatch.dispatch_seq"],
+      "note": "MUST RETURN 0 AFTER 50 CONFIRMS. THE HARDEST TYPE FACT IN THIS CLUSTER: `::bigint` on booking_id and `::int` on dispatch_seq. receipt_dispatch.booking_id must be bigint (and therefore booking.id must be) and receipt_dispatch.dispatch_seq must be an int-comparable integer, or this test cannot run at all."
+    },
+    {
+      "story": "S-TKT-06",
+      "sql": "SELECT status FROM outbox_message WHERE id=:o",
+      "columns_implied": ["outbox_message.status", "outbox_message.id"],
+      "note": "Reads `pending` after a queue send that timed out at QUEUE_SEND_TIMEOUT_MS, and `sent` with sent_at non-null when the queue is reachable. The only criterion that selects outbox_message by its own id."
+    },
+    {
+      "story": "S-TKT-06",
+      "sql": "SELECT status FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.booking_id"],
+      "note": "Still reads `pending` after the outbox row reaches `sent` — this is the criterion that proves the two tables hold DIFFERENT state and that step 15 marks the outbox row and not the dispatch row."
+    },
+    {
+      "story": "S-TKT-07",
+      "sql": "SELECT status, attempts FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.attempts", "receipt_dispatch.booking_id"],
+      "note": "Reads `sent, 1` after the same receipt.send message is delivered twice and exactly one SES call is made."
+    },
+    {
+      "story": "S-TKT-08",
+      "sql": "SELECT status, sent_at, ses_message_id, last_error FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.sent_at", "receipt_dispatch.ses_message_id", "receipt_dispatch.last_error", "receipt_dispatch.booking_id"],
+      "note": "Reads `failed, null, null` with last_error containing `timeout` and NOT containing the SES refusal string. last_error must be free text able to hold both shapes distinguishably."
+    },
+    {
+      "story": "S-TKT-10",
+      "sql": "SELECT dispatch_seq, status FROM receipt_dispatch WHERE booking_id=:b",
+      "columns_implied": ["receipt_dispatch.dispatch_seq", "receipt_dispatch.status", "receipt_dispatch.booking_id"],
+      "note": "Moves from `1, sent` to `2, pending` on an accepted resend, with exactly one new outbox_message carrying dispatch_seq 2."
+    },
+    {
+      "story": "S-TKT-10",
+      "sql": "(SELECTing every column of that receipt_dispatch row before and after and comparing the tuples)",
+      "columns_implied": ["receipt_dispatch.*"],
+      "note": "NOT a literal statement, but a SELECT * tuple-equality assertion against a `suppressed` row across a 409 RECEIPT_SUPPRESSED. It means EVERY column of receipt_dispatch must be stable across that request — including any column the merge owner adds. An added updated_at or a DB-side trigger touching the row would fail this criterion."
+    },
+    {
+      "story": "S-TKT-10",
+      "sql": "SELECT count(*) FROM audit_log",
+      "columns_implied": ["audit_log"],
+      "note": "Unchanged on every branch of the resend. Cross-cluster, included because it is the assertion that no receipt-dispatch action writes an audit row (P-TKT-07 step 7)."
+    },
+    {
+      "story": "S-TKT-13",
+      "sql": "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('email_invalid','email_bounced','email_complained','email_suppressed')",
+      "columns_implied": ["(negative) no column anywhere may be named email_invalid, email_bounced, email_complained or email_suppressed"],
+      "note": "MUST RETURN 0. A NEGATIVE SCHEMA REQUIREMENT that lands squarely on this cluster, because these are the four names a designer would reach for when modelling SES bounce handling. Also fixes the schema name as `public`."
+    },
+    {
+      "story": "S-TKT-14",
+      "sql": "a fenced sql block in docs/35 Hypercare/runbook.md containing both `FROM receipt_dispatch` and `GROUP BY status`; a second containing both `FROM outbox_message` and `status = 'pending'`",
+      "columns_implied": ["receipt_dispatch.status", "outbox_message.status"],
+      "note": "Phase 7. The runbook's two operator queries are asserted by literal string. Both table names and the `status` column name on both tables are frozen by this criterion — a rename in 06 DataModel breaks a Phase 7 test."
+    },
+    {
+      "story": "S-XCT-31",
+      "sql": "SELECT status FROM receipt_dispatch",
+      "columns_implied": ["receipt_dispatch.status"],
+      "note": "'on SIGTERM the worker stops polling, finishes the message it is handling, completes any outbox relay batch in progress and exits with status 0, asserted by SIGTERM mid-job and observing SELECT status FROM receipt_dispatch for that job reach a terminal value.'"
+    },
+    {
+      "story": "S-ACC-06",
+      "sql": "SELECT count(*) FROM outbox_message",
+      "columns_implied": ["outbox_message"],
+      "note": "Identical before and after registration — no verification and no welcome message is enqueued."
+    },
+    {
+      "story": "S-ACC-08",
+      "sql": "SELECT count(*) FROM outbox_message",
+      "columns_implied": ["outbox_message"],
+      "note": "Unchanged by a successful password reset — no confirmation email."
+    },
+    {
+      "story": "S-ADM-18",
+      "sql": "SELECT count(*) FROM outbox_message",
+      "columns_implied": ["outbox_message"],
+      "note": "Unchanged across a manager create — the product sends no invitation (E6 P-ADM-17 step 5)."
+    },
+    {
+      "story": "S-XCT-45",
+      "sql": "every seeded booking carries a receipt_dispatch row in state suppressed with attempts = 0 and a null dispatch timestamp, and the seed enqueues no receipt job, asserted by the queue's message count being 0 after the run",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.attempts", "receipt_dispatch.sent_at"],
+      "note": "11,003 rows written `suppressed` by scripts/seed.py. The seed is the ONLY writer of that value; no application path produces it."
+    },
+    {
+      "story": "P-TKT-05 (PRD, not a Bible criterion — but a literal statement the code must implement)",
+      "sql": "UPDATE receipt_dispatch SET status='sending', claimed_at=now(), attempts=attempts+1 WHERE booking_id = :booking_id AND dispatch_seq = :dispatch_seq AND (status = 'pending' OR status = 'failed' OR (status = 'sending' AND claimed_at < now() - :stale_interval)) RETURNING id",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.claimed_at", "receipt_dispatch.attempts", "receipt_dispatch.booking_id", "receipt_dispatch.dispatch_seq", "receipt_dispatch.id"],
+      "note": "THE CLAIM. It is an UPDATE only — no INSERT and no ON CONFLICT, because the row already exists. Bible S-TKT-07 asserts `rg -in 'insert into receipt_dispatch' backend/app/workers` returns 0 hits. CONFLICT WITH ITS OWN CRITERION: this published statement uses `now()` twice, while S-TKT-07 requires claimed_at and the staleness threshold to come from the injected clock and asserts `rg -n 'now\\(\\)|CURRENT_TIMESTAMP' backend/app/workers` returns 0 hits. See notes."
+    },
+    {
+      "story": "P-TKT-07 (PRD)",
+      "sql": "SELECT ... FOR UPDATE the receipt_dispatch row for this booking",
+      "columns_implied": ["receipt_dispatch.status", "receipt_dispatch.attempts", "receipt_dispatch.dispatch_seq"],
+      "note": "The resend reads the row under a row lock, then branches on status and on attempts=0 vs attempts>0."
+    },
+    {
+      "story": "FR-ADR-031 / P-TKT-04 step 4 (PRD)",
+      "sql": "SELECT ... FOR UPDATE SKIP LOCKED over pending outbox rows older than OUTBOX_RELAY_MIN_AGE_SECONDS, in a bounded batch",
+      "columns_implied": ["outbox_message.status", "outbox_message.created_at"],
+      "note": "The relay's claim. IT IS A ROW LOCK, NOT A COLUMN — outbox_message has no claimed_at and no claimed_by, deliberately. See notes."
+    }
+  ],
+  "notes": [
+    "WHY THERE ARE TWO TABLES, AND WHERE THE BOUNDARY SITS. The documents are consistent and explicit on this. `outbox_message` is the generic transactional-outbox row: it is inserted in the same transaction as the business change and its `status` records ONLY whether the row reached the queue (`pending` -> `sent`). `receipt_dispatch` is the per-booking delivery state: one row per booking, unique on booking_id, recording the worker's claim and what SES did. E3 P-PAY-10 step 15 states the boundary in one sentence — 'Step 15 marks the outbox row and not the dispatch row. The receipt_dispatch row stays pending' — and Bible S-TKT-06 tests exactly that pair of readings in one assertion. They do not overlap: outbox_message answers 'was the job created and did it reach the queue' (P-TKT-10's table says so verbatim), receipt_dispatch answers 'was the send claimed, and did SES accept it'. The outbox is explicitly NOT the receipt lane's: P-TKT-04 — 'This outbox is the whole product's queue, not this lane's' — the account lane's password_reset.send travels through the same table, the same relay and the same worker, and that message takes NO receipt_dispatch claim because the table is keyed on booking_id and the job has no booking (P-TKT-05 topic table).",
+    "CONTRADICTION, NOT TIDIED AWAY: FR-ADR-032 says the WORKER INSERTS the claim row — 'Before sending, the worker inserts a row (booking_id, claimed_at, status=\"sending\"). The insert either succeeds ... or it violates the unique constraint.' The PRD says the opposite: P-TKT-04 step 1 writes the row inside the BOOKING transaction and P-TKT-05 says 'The worker transitions it; the worker never inserts it.' Under CONSTITUTION.md Art II.1 an APPROVED ADR outranks the PRD, so read strictly the ADR wins — but the PRD's merge pass adjudicated it deliberately (E4 lane notes: 'The merge pass fixed the row's creation point ... Under the earlier reading the worker's claim inserted the row, which left dispatch_seq in the payload referring to a row that did not exist yet and left P-TKT-07's resend with nothing to read while the worker was down'), and THREE Bible criteria now test the PRD reading and would fail against the ADR's: S-PAY-07 (step 9 is a receipt_dispatch insert inside the confirm transaction), S-TKT-05 (the row reads pending/1/0 immediately after the booking commits) and S-TKT-07 (`rg -in 'insert into receipt_dispatch' backend/app/workers` returns 0 hits). The schema is identical either way — only the writer moves — so this does not change a column, but the merge owner must record which reading 06 DataModel is built from.",
+    "TWO ROWS EXPLICITLY FLAGGED FOR 06 DataModel BY THE PRD ITSELF. S8 merge report X-10: dispatch_seq is the reconciliation of FR-ADR-032 against FR-ADR-048 and is 'Flagged for 06 DataModel to confirm'. X-11: the fourth payload key on receipt.send departs from FR-ADR-059's exhaustive enumeration of {booking_id, request_id, message_version} and is 'Flagged, not assumed'. E4's lane notes add the second topic and its four keys to the same list: '06 DataModel and the account lane must confirm both key sets.' Neither is resolved here.",
+    "THE CLAIM/SENT SHAPE — THIS CLUSTER DOES NOT COLLAPSE THEM, AND IT DOES NOT MATCH password_reset_token EITHER. The identity cluster's trap (claimed / sent / used, claim cleared on failure, sent never cleared) has a DIFFERENT shape here and the difference is deliberate and stated. receipt_dispatch separates the claim (claimed_at + status='sending') from the send (sent_at + ses_message_id + status='sent'), so no single flag does both jobs. BUT claimed_at IS NOT CLEARED ON FAILURE: a failed send sets status='failed' and leaves claimed_at where it was, and the row becomes retryable because 'failed' is a member of the claim's WHERE clause — not because the claim was released. password_reset_token does the opposite: P-TKT-12 exception 4 clears email_claimed_at to NULL explicitly on an SES refusal or timeout, 'the fast path of the one reclaim mechanism'. Both tables share the age-based reclaim (RECEIPT_CLAIM_STALE_SECONDS) for a worker that died before it could record anything. Do not harmonise them — the asymmetry is load-bearing: receipt_dispatch has a status column that can hold 'failed', password_reset_token has only two nullable timestamps and needs the clear.",
+    "outbox_message HAS NO CLAIM COLUMN AT ALL, AND THAT IS THE ANSWER TO THE STATELESS-CONTAINER QUESTION FOR THIS TABLE. The relay claims with `SELECT ... FOR UPDATE SKIP LOCKED` (FR-ADR-031), an in-transaction row lock. A worker killed mid-relay loses its transaction and the lock with it; the row is immediately available to the next loop with no expiry, no reclaim rule and no sweeper. Nothing needs cleaning up, which is why no claimed_at exists here and why adding one would be both an invention and a regression. For receipt_dispatch the equivalent is the stale branch: a worker SIGKILLed mid-send leaves status='sending' with a live claimed_at, and P-TKT-05's worked example shows the row is retaken after RECEIPT_CLAIM_STALE_SECONDS (900 s against a 120 s visibility timeout) — 'a delayed receipt, never a duplicate one'. On SIGTERM the worker 'completes any outbox relay batch in progress' (P-XCT-17 exception 5, tested by S-XCT-31), so an orderly shutdown leaves no half-claimed row at all.",
+    "NOTHING RUNS ON A SCHEDULE, CHECKED RATHER THAN ASSUMED. I grepped docs/03 PRD/sections/ and the Bible CSV for next_run_at, cron_expression, scheduled_at, run_at, available_at, visible_at and not_before: ZERO hits. Neither table carries a scheduling column and neither needs one — E8 S7.14's replacement table names the outbox explicitly ('Relay stuck outbox rows -> the worker's EXISTING receive loop checks for pending rows older than a short threshold before each poll. Work on a loop that already exists, not a timer'). Bible S-TKT-06 enforces it in code: `rg -in -e apscheduler -e celery -e BackgroundScheduler -e croniter -e crontab -e 'schedule.every' -e 'add_job\\(' backend/` returns 0 hits and backend/ contains no beat.py, scheduler.py or crontab. The relay's age threshold OUTBOX_RELAY_MIN_AGE_SECONDS is a comparison against created_at inside an existing loop, not a timer, and it lives in configuration (E8 S7.9), never in a column.",
+    "THE CLOCK. Both created_at (outbox_message) and claimed_at (receipt_dispatch) must be written from the INJECTED clock, not the database clock. Bible S-TKT-06 and S-TKT-07 each assert `rg -n 'now\\(\\)|CURRENT_TIMESTAMP...' backend/app/workers` returns 0 hits, with the reason given: the database's clock does not move when the injected one does, so a relay or a staleness check written against now() selects the row at 29 s and at 31 s alike. THIS CONTRADICTS THE LITERAL SQL PUBLISHED IN P-TKT-05, which spells the claim with `claimed_at=now()` and `claimed_at < now() - :stale_interval`. The schema consequence is only that NEITHER COLUMN MAY CARRY A DATABASE-SIDE DEFAULT; the statement text is the application's problem, but the merge owner should not add `DEFAULT now()` to created_at out of habit — it would make S-TKT-06 pass against a broken relay.",
+    "REQUEST ID: not persisted as a column on either table by any specification I could find. It reaches the worker as a payload key (P-TKT-04's key set, tested by S-TKT-05) and is bound to the worker's logging context for the whole job (FR-ADR-056, E8 S7.8). E8 S7.8 twice describes it as something 'the outbox row carries', which is satisfiable by the payload; see gaps for the ambiguity. receipt_dispatch carries no request_id at all and no document asks for one.",
+    "TABLE NAMES: both used exactly as the brief fixes them, and both are load-bearing in criteria. `receipt_dispatch` is arguably misnamed — P-TKT-11 says so at length: 'receipt_dispatch answers a narrower question than its name suggests'; it records SES ACCEPTANCE, not delivery, and a bounced receipt sits in it as `sent` and is indistinguishable from one that reached the inbox. I DID NOT RENAME IT. S-TKT-14 asserts the literal string `FROM receipt_dispatch` inside the Phase 7 runbook and S-TKT-05/07/08/10 all SELECT from it by name.",
+    "NO MONEY COLUMN AND NO CARD DATA in this cluster. The payload deliberately carries no amount ('no email address, no seat list, no amount', P-TKT-04), and S-TKT-05 tests it: 'the payload text contains no @ character, no seat label and no amount'.",
+    "SCHEMA NAME is `public`, fixed by S-TKT-13's information_schema query.",
+    "message_version is a PAYLOAD KEY, not a column, on both topics. FR-ADR-059: 'message_version exists from the first message ... precisely so the payload can change.' No column models it and none should.",
+    "CROSS-CLUSTER TYPE SIGNAL FOR THE IDENTITY CLUSTER: P-TKT-12's server-side validation reads '`reset_token_id`: integer, positive, existing' — so password_reset_token.id is an integer, not a uuid, on the same evidence line as booking.id being bigint. Worth reconciling in the merge.",
+    "OUT OF SCOPE AND CONFIRMED ABSENT: no bounce/complaint state (SES publishes to SNS and nothing subscribes — FR-ADR-060, and S-TKT-13 bans the four column names); no operator resend column or flag (P-TKT-11: 'No endpoint, screen or job in v1 re-sends a receipt on an operator's behalf'); no redemption or admission column (entry is a manual human check, P-TKT-08); no QR code anywhere; no receipt_sent_at on booking — FR-ADR-032 rejected exactly that column as 'job state on a customer-facing record', which is why receipt_dispatch exists at all."
+  ]
+}

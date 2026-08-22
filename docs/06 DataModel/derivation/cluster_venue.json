@@ -1,0 +1,264 @@
+{
+  "cluster": "venue",
+  "tables": [
+    {
+      "name": "cinema",
+      "purpose": "The venue. Exactly one row in v1, created by the seed and never by an endpoint; it is the only authority for local time and the parent of every screen.",
+      "cite": "P-ADM-25 (E6 S4) · FR-ADR-010 · SRC-003 C-2 (PROVISIONAL) · SRC-001 §6.6",
+      "columns": [
+        {"name": "id", "type": "integer", "nullable": false, "default": null,
+         "cite": "EP-ADM-29 path_params `cinema_id: integer, positive`; EP-ADM-28 body `{id, name, timezone, screen_count, showtime_count, version}`",
+         "note": "INTEGER, not uuid. Every id in this cluster is spelled `integer, positive` in the PRD's endpoint blocks and the Bible's fixtures use small integers (screen 3, seat 312, showtime 501). No document anywhere in the PRD, the ADRs or the Bible mentions a uuid primary key. How the integer is generated (identity / sequence) is not stated — see gaps.",
+         "reserved_row": null},
+        {"name": "name", "type": "text", "nullable": false, "default": null,
+         "cite": "P-ADM-25 server-side validation table; EP-ADM-29 request body",
+         "note": "1..120 characters after trimming; unique on lower(trim(name)). The 120 is explicitly labelled a technical bound, not a ruling. No document says whether the bound is a varchar(n) or an application check — see gaps.",
+         "reserved_row": null},
+        {"name": "timezone", "type": "text", "nullable": false, "default": null,
+         "cite": "P-ADM-26 · FR-ADR-018 · P-ADM-25 validation table",
+         "note": "IANA zone name, 1..64 characters, validated against the zone database at write time (zoneinfo.ZoneInfo must resolve it) and NEVER against a list typed into a document. Seeded from CINEMA_TIMEZONE once; after that the row wins over the variable, always. There is deliberately NO timezone column on screen or on showtime — S-ADM-04 asserts that absence with a query. The zone is configuration in the sense that it is data, not a constant: `Asia/Kolkata` is the seeded value (SRC-003 OPEN-LOCALE-01, RULED) and must not be a literal in code.",
+         "reserved_row": null},
+        {"name": "version", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-12 · FR-ADR-035 · S-ADM-14 · S-ADM-03",
+         "note": "Optimistic concurrency. Starts at 1, increments by exactly 1 on a write that actually changes something. S-ADM-14 asserts by query that the set of tables carrying a `version` column is EXACTLY {movie, showtime, screen, seat_category, cinema} — so cinema and screen must have it and seat must not. Application-maintained; no document specifies a trigger.",
+         "reserved_row": null},
+        {"name": "created_at", "type": "timestamptz", "nullable": false, "default": null,
+         "cite": "S-XCT-09 (acceptance criterion: every table in the public schema except alembic_version carries created_at)",
+         "note": "Required by a query that will be run as a test. No document states a database-side default; a DEFAULT now() would read the wall clock rather than the injected clock the project mandates — flagged in gaps rather than decided here.",
+         "reserved_row": null}
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {"columns": ["lower(trim(name))"], "cite": "P-ADM-25 validation table; EP-ADM-29 `unique on lower(trim(name))`; S-ADM-03 'a second row whose lower(trim(name)) matches an existing one returns 422'",
+         "why": "EXPRESSION index, not a plain unique constraint. The index is the guard, not a prior read (P-ADM-23, restated at E6:2956). Two venues differing only in case cannot both exist."}
+      ],
+      "foreign_keys": [],
+      "checks": [],
+      "indexes": [
+        {"columns": ["lower(trim(name))"], "unique": true, "cite": "P-ADM-25 validation table",
+         "why": "Serves the uniqueness refusal on EP-ADM-29 and the case-insensitive duplicate test in S-ADM-03. No other index on cinema is named by any document; the table holds one row."}
+      ]
+    },
+    {
+      "name": "screen",
+      "purpose": "A hall. Six of them in v1, each belonging to the one cinema; it is the unit manager scope attaches to and the row every seat write takes SELECT ... FOR UPDATE on.",
+      "cite": "P-ADM-13 · P-ADM-16 · FR-ADR-010 · FR-ADR-011 · FR-ADR-022",
+      "columns": [
+        {"name": "id", "type": "integer", "nullable": false, "default": null,
+         "cite": "EP-ADM-17 path_params `screen_id: integer, positive`; EP-ADM-16 201 body `{id: integer, ...}`",
+         "note": "Integer, as above. Referenced by showtime.screen_id, seat.screen_id and manager_screen_assignment (other clusters).",
+         "reserved_row": null},
+        {"name": "cinema_id", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-25 · FR-ADR-010 · EP-ADM-16 request body `cinema_id: integer, must exist, required` · S-SCP-05",
+         "note": "NOT NULL and never defaulted server-side to the only cinema row — S-ADM-03 asserts POST /api/admin/screens with no cinema_id returns 422 precisely so a second venue costs an insert and not a migration. S-SCP-05 asserts the NOT NULL column and the FK to cinema(id) exist, positively: the test fails if the column is missing, so this column may NOT be optimised away even though the parent table holds one row.",
+         "reserved_row": null},
+        {"name": "name", "type": "text", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table; EP-ADM-16 / EP-ADM-17 request bodies; S-ADM-05",
+         "note": "1..60 characters after trimming (0 -> 422, 60 -> 201, 61 -> 422), unique on (cinema_id, lower(trim(name))). Renaming stays permitted after showtimes exist — only seat identity freezes. The seed writes `SCREEN 1`..`SCREEN 6` (S-ADM-29 asserts the regex ^SCREEN [1-6]$ against seeded rows only; nothing in the running system enforces it).",
+         "reserved_row": null},
+        {"name": "is_active", "type": "boolean", "nullable": false, "default": "true",
+         "cite": "P-ADM-16 · FR-ADR-012 · EP-ADM-16 201 body `is_active: true` · EP-ADM-15",
+         "note": "Withdrawal replaces deletion. A hall created through EP-ADM-16 starts in service; the PRD states the behaviour ('A hall starts empty and in service') but never says whether `true` is a database default or an application-set value — recorded here as a default because P-ADM-13's sibling rule for seat.is_active IS spelled 'default true'. A withdrawn hall keeps every showtime, seat and booking and still appears in reports (P-RPT-02 requires out-of-service halls in the dashboard's screens[]).",
+         "reserved_row": null},
+        {"name": "version", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-12 · FR-ADR-035 · S-ADM-14 (the version-column set is exactly movie, showtime, screen, seat_category, cinema) · S-ADM-05 · S-ADM-17",
+         "note": "Required on every PATCH of a screen, including the withdrawal toggle. Increments by exactly 1.",
+         "reserved_row": null},
+        {"name": "created_at", "type": "timestamptz", "nullable": false, "default": null,
+         "cite": "S-XCT-09",
+         "note": "Same universal created_at criterion as cinema.",
+         "reserved_row": null}
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {"columns": ["cinema_id", "lower(trim(name))"], "cite": "P-ADM-13 validation table; EP-ADM-16 idempotency note; S-ADM-05 'the unique index is on (cinema_id, lower(trim(name)))'",
+         "why": "EXPRESSION index. Scoped to the cinema, not global — two venues may each have a `Hall 1`. A hall name differing only in case is the same name and is refused by the index rather than by a prior read."}
+      ],
+      "foreign_keys": [
+        {"columns": ["cinema_id"], "references": "cinema(id)", "on_delete": "RESTRICT",
+         "cite": "S-SCP-05 (FOREIGN KEY constraint referencing cinema(id)) · S-XCT-09 (`SELECT conname, confdeltype FROM pg_constraint WHERE contype = 'f' AND confdeltype <> 'r'` returns 0 rows) · FR-ADR-010 · FR-ADR-012"}
+      ],
+      "checks": [],
+      "indexes": [
+        {"columns": ["cinema_id", "lower(trim(name))"], "unique": true, "cite": "S-ADM-05",
+         "why": "The duplicate-name refusal on EP-ADM-16/EP-ADM-17, and the only index any document names on screen. E7's required-index list (showtime(starts_at), showtime(screen_id, starts_at), booking(showtime_id), booking_seat(booking_id), booking(payment_id), payment(state)) names none of this cluster's tables."}
+      ]
+    },
+    {
+      "name": "seat",
+      "purpose": "One row per real, physical, individually sellable seat in a hall — created when the hall is configured, never per showtime; its id is half of the oversell guard's unique key.",
+      "cite": "P-ADM-13 · FR-ADR-016 · FR-ADR-022 · SRC-001 §5.2.1 · SRC-001 §5.2.3",
+      "columns": [
+        {"name": "id", "type": "integer", "nullable": false, "default": null,
+         "cite": "EP-ADM-20 path_params `seat_id: integer, positive`; EP-ADM-18/19 body `array of {id, row_label, seat_number, grid_row, grid_col, seat_category_id, is_active}`; E1 P-BRW-08 wire example `{\"id\": 4821, ...}`",
+         "note": "Integer. This id is what showtime_seat.seat_id, booking_seat.seat_id and the Redis key `lock:seat:{showtime_id}:{seat_id}` all carry. FR-ADR-016 rejected a JSON-blob layout precisely because the oversell guard needs the seat to be a row with an id.",
+         "reserved_row": null},
+        {"name": "screen_id", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-13 (identity is (screen_id, row_label, seat_number)) · FR-ADR-016 · S-ADM-06 (`SELECT count(*) FROM seat WHERE screen_id = :id`) · P-ADM-14 (`INSERT INTO showtime_seat (showtime_id, seat_id) SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true`)",
+         "note": "Seats belong to the screen, not to a showtime. Every seat write first takes SELECT ... FOR UPDATE on THIS screen row (P-ADM-13, P-ADM-14, P-ADM-15) — a build-session judgment call, stricter than any source, asserted by a pg_locks test in S-ADM-06.",
+         "reserved_row": null},
+        {"name": "row_label", "type": "text", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 / EP-ADM-20 request bodies · S-ADM-06 · S-ADM-07",
+         "note": "1..4 characters, letters only. TWO reserved questions sit on this one column and they are different questions; NEITHER may be expressed as a CHECK, a citext type, a lower()/upper() expression index, or a normalising trigger. (a) CASE — OPEN-SEATLABEL-01: whether C12 and c12 are one seat or two. CONSTITUTION.md line 436 states the current position in terms: 'row_label is unique per screen and unnormalised'. The unique index below is therefore on the RAW column. Note the contradiction inside the PRD: P-ADM-13's validation table says 'stored uppercase' while its own prose two paragraphs later says the row decides nothing about case or normalisation, and journey defect J-ADM-09 (blocks-code) records exactly this and was resolved as 'open-article-x — only the client may answer it'. The Bible's S-ADM-06 description says its criteria 'normalise no case and ban no letter'. Implement no normalisation. (b) ALPHABET — OPEN-SEATALPHA-01 / PROPOSED-SEATALPHA-01: whether the letter I may appear at all. The seed skips I (rows run A B C D E F G H J K L M) because I and 1 are misread on a row marker; P-ADM-13's bound refuses nothing and EP-ADM-19/20 accept row I exactly as they accept row J. No CHECK, no regex beyond 'letters only'. (c) DEADLINE — P-ADM-14 freezes row_label the moment ANY showtime row exists on the screen, so a rule the client gives later cannot repair a row already written; the seed's 720 showtime inserts close that window on all six halls at once.",
+         "reserved_row": "OPEN-SEATLABEL-01, OPEN-SEATALPHA-01"},
+        {"name": "seat_number", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19",
+         "note": ">= 1, an integer within the row. Decomposed from row_label deliberately: FR-ADR-016 rejected a single `A-12` label string because sorting A-2 after A-12 is the default a string produces and it is wrong, and because every render would become a parse. Frozen by P-ADM-14 alongside row_label.",
+         "reserved_row": null},
+        {"name": "grid_row", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 · E1 P-BRW-08 (`gr` on the wire)",
+         "note": ">= 1. Where the seat is DRAWN, deliberately separate from what it is CALLED — a hall with a mid-row gap has seat number 12 sitting at column 14. Not frozen: P-ADM-14 permits grid coordinate changes at any time, because a redrawn map changes nothing anyone bought.",
+         "reserved_row": null},
+        {"name": "grid_col", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 · E1 P-BRW-08 (`gc` on the wire)",
+         "note": ">= 1. Aisles, gaps and non-seat space are the ABSENCE of a seat at a coordinate — there is no placeholder, spacer or 'empty seat' row and no 'blocked' state.",
+         "reserved_row": null},
+        {"name": "seat_category_id", "type": "integer", "nullable": false, "default": null,
+         "cite": "P-ADM-13 validation table ('must exist, non-null') · FR-ADR-016 · EP-ADM-19 · S-ADM-07 (frozen_fields)",
+         "note": "NON-NULL foreign key to seat_category — a LOOKUP TABLE, never a PostgreSQL enum (see notes). This is what makes SRC-001 §5.2.3's 'distinguish seat categories, since we price them differently' true. Frozen by P-ADM-14 once a showtime exists, because a category change would reprice a live selling showtime.",
+         "reserved_row": null},
+        {"name": "is_active", "type": "boolean", "nullable": false, "default": "true",
+         "cite": "P-ADM-13 validation table ('boolean | default true | ruled (FR-ADR-022)') · P-ADM-15 · FR-ADR-022 · E1 P-BRW-08",
+         "note": "In service / out of service. NOT a seat state and not a fifth value of the seat-map state enum — E1 P-BRW-08 argues this explicitly: a fifth enum value would make 'retired' and 'sold' mutually exclusive and a seat can be both. It is read by exactly one write path — P-ADM-14's `INSERT INTO showtime_seat ... WHERE screen_id = :screen_id AND is_active = true` — and it is emphatically NOT the occupancy denominator (E7:373-374 forbids computing it from seat.is_active). Toggling it to the value it already holds returns 409 LAYOUT_FROZEN, not a no-op 200, because a seat carries no version for a no-op to protect.",
+         "reserved_row": null},
+        {"name": "created_at", "type": "timestamptz", "nullable": false, "default": null,
+         "cite": "S-XCT-09",
+         "note": "Same universal created_at criterion as cinema and screen.",
+         "reserved_row": null}
+      ],
+      "primary_key": ["id"],
+      "unique": [
+        {"columns": ["screen_id", "row_label", "seat_number"],
+         "cite": "P-ADM-13 validation table ('(screen_id, row_label, seat_number) | unique | ruled (FR-ADR-016)') · FR-ADR-016 · EP-ADM-19 idempotency note · S-ADM-06",
+         "why": "Seat identity. RAW COLUMNS, NO lower()/upper() expression and no citext — CONSTITUTION.md's OPEN-SEATLABEL-01 row states the current position as 'unique per screen and unnormalised', and normalising here would silently answer a reserved, irreversible question. Contrast every other unique name in the product (cinema.name, screen.name, seat_category.name, the four lookup vocabularies), which ARE lower(trim(name)) — the asymmetry is deliberate and load-bearing, and it is exactly what journey defect J-ADM-09 flagged."},
+        {"columns": ["screen_id", "grid_row", "grid_col"],
+         "cite": "P-ADM-13 validation table ('grid_row, grid_col | integer | >= 1, unique together within the screen | derived (FR-ADR-016)') · P-ADM-13 exception 5 (duplicate_coordinates) · S-ADM-06",
+         "why": "Two seats cannot both be drawn at one coordinate. Provenance is stated as DERIVED, not ruled — it follows from FR-ADR-016 drawing the map by placing each seat at its coordinate. Also serves EP-ADM-18's mandated ORDER BY grid_row ASC, grid_col ASC, id ASC."}
+      ],
+      "foreign_keys": [
+        {"columns": ["screen_id"], "references": "screen(id)", "on_delete": "RESTRICT",
+         "cite": "S-XCT-09 (every FK is confdeltype 'r'; no CASCADE and no SET NULL anywhere) · FR-ADR-012"},
+        {"columns": ["seat_category_id"], "references": "seat_category(id)", "on_delete": "RESTRICT",
+         "cite": "FR-ADR-016 (non-null seat_category_id into a lookup table) · S-XCT-09 · S-XCT-44 (`SELECT count(*) FROM seat JOIN seat_category ...`) — NOTE: seat_category is NOT in the brief's fixed table list; see notes"}
+      ],
+      "checks": [],
+      "indexes": [
+        {"columns": ["screen_id", "row_label", "seat_number"], "unique": true, "cite": "FR-ADR-016",
+         "why": "Identity guard, and its leading `screen_id` column serves `SELECT count(*) FROM seat WHERE screen_id = :id` (S-ADM-06, S-ADM-17) and P-ADM-14's showtime_seat materialisation `SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true`. No document names a separate seat(screen_id) index and none is invented here."},
+        {"columns": ["screen_id", "grid_row", "grid_col"], "unique": true, "cite": "P-ADM-13",
+         "why": "Coordinate guard, and it is the index EP-ADM-18's ORDER BY grid_row, grid_col, id reads in order."}
+      ]
+    }
+  ],
+  "enums": [],
+  "gaps": [
+    {"what": "How the integer primary keys of cinema, screen and seat are generated. Every document spells the ids `integer, positive`; none says GENERATED ALWAYS AS IDENTITY, BIGSERIAL, or application-assigned.",
+     "why_it_matters": "The brief's default is `uuid` with an application-generated value. The documents contradict that default flatly and consistently (small integer fixtures throughout the Bible: screen 3, seat 312, showtime 501, user 4471, booking 9008), so uuid must not be applied here — but the generation mechanism is still unstated and all six clusters need the same answer.",
+     "where_you_looked": "docs/03 PRD/sections/E6_admin.md S6 endpoint blocks (EP-ADM-15..21, 28, 29), E1_browse.md P-BRW-08 wire example, docs/05 Bible/FrontRow_Bible.csv (all 211 rows), FR-ADR-016, FR-ADR-010, FR-ADR-022.",
+     "reserved": false},
+    {"what": "Whether created_at carries a database-side default (e.g. DEFAULT now()) or is stamped by the application from the injected clock.",
+     "why_it_matters": "S-XCT-09 requires the column to exist on every table but says nothing about its default. The project rules that a test reading the wall clock is a defect and that time is injected; a DEFAULT now() reads the database's wall clock and cannot be injected. The worker's own SQL does use now() (E4 P-TKT-06), so now() is not banned outright — which is exactly why this needs one decision rather than six.",
+     "where_you_looked": "S-XCT-09 acceptance criteria; E6 P-ADM-23 field table ('created_at | timestamptz, UTC'); FR-ADR-053; grep for `now()` across docs/03 PRD/sections/.",
+     "reserved": false},
+    {"what": "Whether cinema, screen and seat carry updated_at.",
+     "why_it_matters": "S-XCT-09's Description says, verbatim and explicitly labelled as NOT an acceptance criterion: 'tables that are edited after creation are expected to carry updated_at as well as created_at; which tables those are is a judgement that follows from the data model and is checked there rather than here.' All three of these tables are edited after creation. No acceptance criterion and no PRD row names the column, so it is not extracted into `columns` — it is handed to the merge owner as the data-model judgement the Bible expressly deferred to the data model.",
+     "where_you_looked": "docs/05 Bible/FrontRow_Bible.csv S-XCT-09; grep for updated_at across docs/03 PRD/sections/ (no hit on any venue table).",
+     "reserved": false},
+    {"what": "row_label case normalisation — are C12 and c12 one seat or two?",
+     "why_it_matters": "The unique constraint is currently on the raw column, so they are TWO seats with one spoken name. The label is printed on the emailed receipt and read aloud at the door, which is the surface where two seats sharing a name sends two parties to one place (journey defects J-ADM-09 and J-ENT-10, both resolved as 'open-article-x'). Normalising would have to be UPPER rather than lower(trim()), so it changes what is STORED. Deadline: P-ADM-14 freezes row_label at the first showtime on the hall, and the seed writes 720 showtimes across all six halls — Phase 2.",
+     "where_you_looked": "CONSTITUTION.md Article X line 436; E6 P-ADM-13 validation table and the paragraph after it; docs/11 Journeys/DEFECTS_FOUND.tsv J-ADM-09, J-ENT-10; DEFECTS_RESOLUTION.tsv.",
+     "reserved": true},
+    {"what": "Which letters a row_label may use, and whether `I` is one of them.",
+     "why_it_matters": "The seed skips I (A B C D E F G H J K L M) because I and 1 are misread on a printed row marker and at 375 pixels; P-ADM-13 permits it and EP-ADM-19/20 accept it. A hand-laid hall may therefore contain seat I1. Banning it is not free either: a hall whose physical markers read I could not be described accurately. Same Phase 2 deadline as the case question, and it is a DIFFERENT question — neither answers the other.",
+     "where_you_looked": "CONSTITUTION.md Article X line 495 (OPEN-SEATALPHA-01); E6 P-ADM-13 'The letter I is permitted here and the seed refuses it'; E6 Lane notes candidate 7 (PROPOSED-SEATALPHA-01); E8 P-XCT-30 exception 8; Bible S-XCT-44.",
+     "reserved": true},
+    {"what": "The Bible contradicts the PRD and an APPROVED ADR on the seat's label columns: three acceptance criteria run SQL against a column `seat.label` that the schema does not have.",
+     "why_it_matters": "These are tests that will be executed. `SELECT count(*) FROM seat WHERE label LIKE '%I%'` and `SELECT screen_id, label FROM seat GROUP BY 1, 2 HAVING count(*) > 1` (S-XCT-44) and the restore rehearsal's `SELECT b.reference, s.label, bs.price_paise ... JOIN seat s` (S-XCT-34) all fail with 'column does not exist' against the specified schema. FR-ADR-016 rejected a single label string in terms ('A single `label` string per seat, such as A-12. Rejected'), P-ADM-13 decomposes it, and every other criterion (S-ADM-06, S-ADM-07, S-ADM-16) uses row_label + seat_number. Adding a `label` column — even generated — would re-create the exact artefact the ADR rejected, and it would also become a second place the reserved case question has to be answered. The fix belongs in the Bible, not in the schema.",
+     "where_you_looked": "docs/05 Bible/FrontRow_Bible.csv S-XCT-44, S-XCT-34; FR-ADR-016 'Alternatives rejected'; E6 P-ADM-13; E8 P-XCT-30 §The six hall layouts.",
+     "reserved": false},
+    {"what": "Whether the PRD's text length bounds (cinema.name 1..120, screen.name 1..60, row_label 1..4, timezone 1..64) are database-level types/constraints or application-level validation only.",
+     "why_it_matters": "Every one is published as a row of a 'Server-side validation' table with an HTTP 422 attached, which reads as application validation. If they are also varchar(n) the failure mode changes from a 422 with a sentence to a database error. Note that row_label's bound must NOT become a CHECK regardless — see the two reserved rows above.",
+     "where_you_looked": "E6 P-ADM-13 and P-ADM-25 validation tables; EP-ADM-16/17/19/20/29 request bodies; Bible S-ADM-05, S-ADM-06, S-ADM-03.",
+     "reserved": false},
+    {"what": "seat_category and manager_screen_assignment are real tables the documents require, and neither appears in the brief's fixed table-name list.",
+     "why_it_matters": "seat.seat_category_id is a NON-NULL foreign key, so the venue cluster cannot be created without seat_category existing; S-ADM-14 asserts by query that seat_category carries a `version` column. manager_screen_assignment holds a screen_id FK and is one of only two entities in the product that is genuinely deleted. If no cluster owns them they will be missing from the merged schema.",
+     "where_you_looked": "Brief's fixed list (15 names); S-ADM-14, S-ADM-18, S-XCT-09, S-XCT-44; E6 P-ADM-11, P-ADM-17; FR-ADR-016.",
+     "reserved": false}
+  ],
+  "sql_seen_in_criteria": [
+    {"story": "S-ADM-02", "sql": "SELECT count(*) FROM screen is unchanged and the response is 500 INTERNAL_ERROR", "columns_implied": ["screen"]},
+    {"story": "S-ADM-02", "sql": "POST /api/admin/screens writes exactly one row with action screen.created, before null, and actor_user_id equal to the calling admin's id", "columns_implied": ["screen", "audit_log.action='screen.created'", "audit_log.action='seat.created'"]},
+    {"story": "S-ADM-02", "sql": "A 220-seat batch through POST /api/admin/screens/{screen_id}/seats writes exactly 220 rows with action seat.created, one per seat primary key, in the same transaction as the 220 seat rows", "columns_implied": ["seat.id", "audit_log.entity_id"]},
+    {"story": "S-ADM-03", "sql": "POST /api/admin/screens with no cinema_id key in the body returns 422, so the field is never defaulted server-side to the only row, and SELECT count(*) FROM screen is unchanged by that request.", "columns_implied": ["screen.cinema_id"]},
+    {"story": "S-ADM-03", "sql": "a second row whose lower(trim(name)) matches an existing one returns 422", "columns_implied": ["cinema.name"]},
+    {"story": "S-ADM-03", "sql": "GET /api/admin/cinemas returns an array ordered name ASC, id ASC, each item carrying id, name, timezone, screen_count and version", "columns_implied": ["cinema.id", "cinema.name", "cinema.timezone", "cinema.version"]},
+    {"story": "S-ADM-04", "sql": "With SELECT count(*) FROM cinema at 0 the process starts and emits exactly one WARNING line saying the venue has not been seeded.", "columns_implied": ["cinema"]},
+    {"story": "S-ADM-04", "sql": "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('showtime','screen') AND column_name LIKE '%timezone%' returns 0, so a showtime reaches its zone only as showtime to screen to cinema.timezone.", "columns_implied": ["screen: NO column whose name contains 'timezone'", "cinema.timezone"]},
+    {"story": "S-ADM-04", "sql": "A connection-level statement listener over the whole boot sequence records only SELECT statements against cinema and no UPDATE and no ALTER.", "columns_implied": ["cinema"]},
+    {"story": "S-ADM-04", "sql": "With the cinema row edited to Asia/Dubai, SELECT starts_at for that showtime still returns 2026-08-14T14:00:00Z", "columns_implied": ["cinema.timezone", "showtime.starts_at (other cluster)"]},
+    {"story": "S-ADM-05", "sql": "A second hall with the same name in that cinema returns 422 VALIDATION_FAILED and SELECT count(*) FROM screen is unchanged; a name differing only in case is the same refusal, because the unique index is on (cinema_id, lower(trim(name))).", "columns_implied": ["screen.cinema_id", "screen.name"]},
+    {"story": "S-ADM-05", "sql": "it returns 200 on a hall for which SELECT count(*) FROM showtime WHERE screen_id = :id is greater than 0", "columns_implied": ["showtime.screen_id"]},
+    {"story": "S-ADM-05", "sql": "GET /api/admin/screens returns every hall, is_active true and false alike, ordered name ASC, id ASC, each item carrying cinema_id, is_active, seat_count_total, seat_count_in_service, has_showtimes and version", "columns_implied": ["screen.id", "screen.cinema_id", "screen.name", "screen.is_active", "screen.version", "seat_count_total/seat_count_in_service/has_showtimes are COMPUTED, not columns"]},
+    {"story": "S-ADM-06", "sql": "Afterwards SELECT count(*) FROM seat WHERE screen_id = :id is unchanged, so C11 and C15 were not created either.", "columns_implied": ["seat.screen_id"]},
+    {"story": "S-ADM-06", "sql": "On a hall where SELECT count(*) FROM showtime WHERE screen_id = :id is 0: PATCH /api/admin/seats/{seat_id} changing row_label, seat_number or seat_category_id returns 200 and writes one seat.updated row, and DELETE /api/admin/seats/{seat_id} returns 204", "columns_implied": ["seat.row_label", "seat.seat_number", "seat.seat_category_id", "showtime.screen_id"]},
+    {"story": "S-ADM-06", "sql": "GET /api/admin/screens/{screen_id}/seats returns the seats ordered grid_row ASC, grid_col ASC, id ASC together with has_showtimes and showtime_count", "columns_implied": ["seat.grid_row", "seat.grid_col", "seat.id"]},
+    {"story": "S-ADM-06", "sql": "Every seat write takes SELECT ... FOR UPDATE on the screen row before writing ... SELECT count(*) FROM pg_locks WHERE granted = false AND pid = the inserting backend's pid returns 1 while the insert has not returned", "columns_implied": ["screen (row-lock target)"]},
+    {"story": "S-ADM-07", "sql": "With SELECT count(*) FROM showtime WHERE screen_id = :id greater than 0: PATCH /api/admin/seats/{seat_id} changing row_label returns 409 LAYOUT_FROZEN ... and SELECT count(*) FROM audit_log is unchanged across the request", "columns_implied": ["seat.row_label", "seat.seat_number", "seat.seat_category_id", "showtime.screen_id"]},
+    {"story": "S-ADM-07", "sql": "frozen_fields is the array [\"row_label\", \"seat_number\", \"seat_category_id\"]", "columns_implied": ["seat.row_label", "seat.seat_number", "seat.seat_category_id"]},
+    {"story": "S-ADM-07", "sql": "a hall carrying exactly one showtime whose starts_at is in the past and for which SELECT count(*) FROM booking_seat is 0 refuses identically to a hall carrying one future sold-out showtime", "columns_implied": ["showtime.screen_id (the freeze predicate counts rows, not future rows)"]},
+    {"story": "S-ADM-08", "sql": "Creating a showtime on a screen where the count of seats with is_active true is 0 returns 409 LAYOUT_FROZEN and SELECT count(*) FROM showtime is unchanged", "columns_implied": ["seat.is_active", "seat.screen_id"]},
+    {"story": "S-ADM-08 (statement published in PRD P-ADM-14 step 3)", "sql": "INSERT INTO showtime_seat (showtime_id, seat_id) SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true", "columns_implied": ["seat.id", "seat.screen_id", "seat.is_active", "showtime_seat.showtime_id", "showtime_seat.seat_id"]},
+    {"story": "S-ADM-14", "sql": "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'version' returns exactly movie, showtime, screen, seat_category and cinema; seat is absent", "columns_implied": ["cinema.version", "screen.version", "seat: NO version column"]},
+    {"story": "S-ADM-14", "sql": "On a seat, setting is_active to the value it already holds returns 409 LAYOUT_FROZEN while resubmitting an unchanged grid_row returns 200 with SELECT count(*) FROM audit_log unchanged", "columns_implied": ["seat.is_active", "seat.grid_row"]},
+    {"story": "S-ADM-16", "sql": "SELECT count(*) FROM showtime_seat WHERE showtime_id = :existing and SELECT seat_count_at_creation FROM showtime WHERE id = :existing are each identical before and after the toggle, and SELECT count(*) FROM showtime_seat WHERE showtime_id = :created_after AND seat_id = :id returns 0", "columns_implied": ["seat.is_active", "showtime_seat.seat_id"]},
+    {"story": "S-ADM-16", "sql": "SELECT count(*) FROM booking_seat WHERE seat_id = :id is identical before and after the toggle, and GET /api/me/bookings/{reference} for that booking still renders the seat's original row_label and seat_number", "columns_implied": ["seat.row_label", "seat.seat_number", "booking_seat.seat_id"]},
+    {"story": "S-ADM-17", "sql": "SELECT count(*) FROM showtime WHERE screen_id = :id, SELECT count(*) FROM seat WHERE screen_id = :id and SELECT count(*) FROM booking_seat joined to that screen are each identical before and after the withdrawal", "columns_implied": ["screen.is_active", "seat.screen_id", "showtime.screen_id"]},
+    {"story": "S-ADM-17", "sql": "GET /api/reports for that hall still returns a row for it after the withdrawal, because the record points at screen_id and not at a name string", "columns_implied": ["screen.id", "screen.name"]},
+    {"story": "S-ADM-17", "sql": "SELECT count(*) FROM screen is unchanged by every request in this story", "columns_implied": ["screen"]},
+    {"story": "S-ADM-19", "sql": "SELECT count(*) FROM showtime WHERE screen_id = :id is 0, and a manager_screen_assignment row; ripgrep over backend/app for the pattern DELETE FROM|[.]delete[(][)] returns hits naming only the tables seat and manager_screen_assignment", "columns_implied": ["seat (the only domain entity with a real DELETE)", "manager_screen_assignment"]},
+    {"story": "S-ADM-19", "sql": "SELECT count(*) FROM information_schema.referential_constraints joined to information_schema.key_column_usage ... WHERE constraint_schema = current_schema() AND delete_rule = 'CASCADE' returns 0", "columns_implied": ["screen.cinema_id FK on_delete RESTRICT", "seat.screen_id FK on_delete RESTRICT", "seat.seat_category_id FK on_delete RESTRICT"]},
+    {"story": "S-ADM-29", "sql": "Every seeded cinema name matches ^DEMO CINEMA$, every seeded screen name matches ^SCREEN [1-6]$, ... each asserted by the same row-by-row SELECT against the same regex", "columns_implied": ["cinema.name", "screen.name"]},
+    {"story": "S-SCP-05", "sql": "SELECT count(*) FROM cinema returns exactly 1 after the seed runs; information_schema.table_constraints and key_column_usage show table screen carrying a NOT NULL cinema_id column under a FOREIGN KEY constraint referencing cinema(id); and GET /api/reference returns a body whose cinemas key is an array of length exactly 1. All four assertions are positive: each fails if the thing is absent.", "columns_implied": ["cinema.id", "screen.cinema_id NOT NULL", "FK screen.cinema_id -> cinema(id)"]},
+    {"story": "S-SCP-08", "sql": "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name='seat' returns no name matching those same tokens [accessible|wheelchair|pair|couple|companion|gap|group]", "columns_implied": ["seat: NO accessible/wheelchair/pair/couple/companion/gap/group column — this is a NEGATIVE schema assertion and it will be run"]},
+    {"story": "S-XCT-08", "sql": "the same request as manager 88, who is assigned screens 2 and 5, returns 200 with a non-empty result when seat 312 is on screen 2 and 403 FORBIDDEN ... when it is on screen 4", "columns_implied": ["seat.screen_id", "manager_screen_assignment.screen_id"]},
+    {"story": "S-XCT-09", "sql": "SELECT conname, confdeltype FROM pg_constraint WHERE contype = 'f' AND confdeltype <> 'r' returning 0 rows", "columns_implied": ["EVERY foreign key in this cluster must be ON DELETE RESTRICT"]},
+    {"story": "S-XCT-09", "sql": "SELECT table_name FROM information_schema.tables t WHERE table_schema = 'public' AND table_name <> 'alembic_version' AND NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_name = t.table_name AND c.column_name = 'created_at') returns 0 rows", "columns_implied": ["cinema.created_at", "screen.created_at", "seat.created_at"]},
+    {"story": "S-XCT-09", "sql": "exactly two entities are ever removed from the database - a seat, through DELETE /api/admin/seats/{seat_id} (EP-ADM-21), permitted only while its hall has no showtime rows at all, and a manager_screen_assignment row", "columns_implied": ["seat (hard-deletable in the configuration window only)", "cinema and screen are NEVER deleted"]},
+    {"story": "S-XCT-34", "sql": "SELECT b.reference, s.label, bs.price_paise FROM booking b JOIN booking_seat bs ON bs.booking_id = b.id JOIN seat s ON s.id = bs.seat_id WHERE b.reference = 'K7M2QX9B'", "columns_implied": ["seat.id", "booking_seat.seat_id", "DEFECT: s.label does not exist — the schema has row_label + seat_number (FR-ADR-016 rejected a single label string). This query will fail as written."]},
+    {"story": "S-XCT-44", "sql": "rows are labelled A onward with the letter I skipped, so Screen 1's nine rows are A B C D E F G H J and SELECT count(*) FROM seat WHERE label LIKE '%I%' returns 0", "columns_implied": ["seat.row_label", "DEFECT: `label` is not a column. Rewritten against the real schema this is SELECT count(*) FROM seat WHERE row_label LIKE '%I%' — and note it must stay a SEED assertion, never a CHECK constraint (OPEN-SEATALPHA-01)."]},
+    {"story": "S-XCT-44", "sql": "SELECT count(*) FROM (SELECT screen_id, label FROM seat GROUP BY 1, 2 HAVING count(*) > 1) x returns 0", "columns_implied": ["seat.screen_id", "DEFECT: `label` is not a column; the equivalent over the real schema is (screen_id, row_label, seat_number), which the unique constraint already guarantees."]},
+    {"story": "S-XCT-44", "sql": "each count read back with SELECT count(*) FROM seat JOIN seat_category ...", "columns_implied": ["seat.seat_category_id", "seat_category.id", "seat_category.name"]},
+    {"story": "S-XCT-44", "sql": "scripts/seed.py creates DEMO CINEMA with zone Asia/Kolkata; six screens of 90, 120, 150, 180, 200 and 220 seats laid out 9x10, 10x12, 10x15, 12x15, 10x20 and 11x20", "columns_implied": ["cinema.name", "cinema.timezone", "screen.name", "seat.grid_row", "seat.grid_col", "ASSUMED sizes — never a constraint"]},
+    {"story": "S-XCT-46", "sql": "the write ordering is vocabulary, then screens and seats, then films, then showtimes, asserted by the first INSERT per table in the captured SQL log", "columns_implied": ["seat_category before seat", "cinema/screen before seat", "screen before showtime"]},
+    {"story": "S-XCT-46", "sql": "one line printed before the first INSERT INTO showtime, and it is exactly 'NOTICE: the next write freezes the seat layout of all six halls. Renumbering, removing or recategorising a seat is refused with 409 LAYOUT_FROZEN from now on.'", "columns_implied": ["the freeze predicate is a count of showtime rows on the screen; there is no schema-level freeze flag"]}
+  ],
+  "notes": [
+    "PRIMARY KEYS ARE INTEGERS, NOT UUIDs, AND THE DOCUMENTS ARE UNANIMOUS. Every endpoint block in E6 S6 spells the path parameter `integer, positive` (screen_id, seat_id, cinema_id) and every response body spells `\"id\": \"integer\"`. E1's seat-map wire example carries `{\"id\": 4821, ...}` and `\"screen\": {\"id\": 4, ...}`. Every Bible fixture uses small integers. The word uuid appears nowhere in the PRD sections, the ADRs or the Bible in connection with these tables. The brief's uuid default is overridden here by the documents, as the brief itself permits — flagged loudly because six clusters must agree.",
+
+    "THE LAYOUT FREEZE IS NOT A SCHEMA OBJECT. Asked directly: P-ADM-14 and FR-ADR-022 both say the refusal is 'a check in the domain layer, not only in the interface, because the admin CRUD is not the only caller'. The mechanism is: inside the write transaction, count showtime rows on the screen; if > 0 and the change touches row_label, seat_number or seat_category_id (or is a DELETE), refuse with 409 LAYOUT_FROZEN and write nothing — not even an audit row. S-ADM-07 asserts this positively by calling the domain function directly with a database session and no HTTP request and expecting LayoutFrozen, and by asserting `ripgrep over backend/app/api/admin/ for showtime_count|LAYOUT_FROZEN returns 0 hits` so the check cannot live in the handler. NO document specifies a trigger, a rule, or a CHECK for the freeze, and no document forbids one either — but a trigger would be a second implementation of a rule the ADR placed in the domain layer, and it could not produce the 409 body (which carries screen_id, seat_id, showtime_count and frozen_fields). Recommend: no trigger. The schema's only contribution is that the predicate is cheap — it is a count over showtime(screen_id), which E7 already requires an index for.",
+
+    "WHAT `seat` MUST EXPOSE FOR `showtime_seat` (owned by the catalogue cluster) TO WORK. The contract is one statement, published verbatim in P-ADM-14 step 3: `INSERT INTO showtime_seat (showtime_id, seat_id) SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true`. So seat must expose id, screen_id and is_active, and nothing else. The boundary, as I read it: (1) `seat` is the PERMANENT physical seat, one row per seat per hall, created at hall configuration; `showtime_seat` is the MATERIALISED membership set of one showtime, written once at showtime creation inside the same SELECT ... FOR UPDATE on the screen row, and never edited afterwards by any endpoint. (2) showtime.seat_count_at_creation is the count of rows that INSERT wrote — the occupancy denominator — and E7:373 explicitly forbids recomputing it from `SELECT count(*) FROM seat WHERE screen_id = ...` or from seat.is_active. (3) A seat added later is absent from every existing showtime and nothing back-fills; a seat retired later STAYS in every existing set (so a paid seat is never lost) and is absent from sets created afterwards; restoring a retired seat does not add it back to a set created while it was retired. All three are consequences of the set being materialised rather than computed from a predicate — which is the whole point of the design. (4) showtime_seat carries a unique (showtime_id, seat_id), and S-ADM-08 states that index is explicitly NOT the oversell guard — the oversell guard stays the unique constraint on booking_seat (showtime_id, seat_id), and a test asserts both indexes exist by name. (5) Membership is what makes a seat sellable: a hold or a booking may only name a seat in that showtime's set; E2 P-HLD-01 owns that refusal. (6) FK direction: showtime_seat.seat_id -> seat(id) ON DELETE RESTRICT, which is what makes EP-ADM-21's hard seat delete safe — it can only succeed while the hall has no showtimes, hence no showtime_seat rows point at the seat.",
+
+    "SEAT CATEGORY: A LOOKUP TABLE, AND THE DOCUMENTS SAY SO IN TERMS — this is not my preference. FR-ADR-016's 'Alternatives rejected' contains: 'A PostgreSQL enum for seat categories. Rejected. Adding a value to a PostgreSQL enum is a migration, the values cannot carry the price uplift, and OPEN-SEAT-01 was answered \"you pick\" — which is exactly the kind of answer that gets revised.' P-ADM-11 repeats it: 'They are rows in a seat_category table and not a PostgreSQL enum, so a fourth category costs an insert and not a migration. Nothing in this specification may treat the three names as ruled.' So: seat.seat_category_id is a non-null integer FK, and there is NO enum in this cluster. The names Standard / Premium / Recliner are ASSUMED under SRC-003 OPEN-SEAT-01 ('you pick') and appear only in the seed and in worked examples; they must never appear in a constraint, a type, a column name or application branching — S-XCT-44 asserts the pricing formula runs identically for Standard by requiring `ripgrep over backend/app/domain/pricing.py for uplift_basis_points == 0|if not uplift|Standard returns 0 hits`.",
+
+    "HALL SIZES ARE ASSUMED AND NOTHING VALIDATES THEM. Six halls of 90/120/150/180/200/220 seats on 9x10, 10x12, 10x15, 12x15, 10x20 and 11x20 grids (SRC-003 OPEN-SCALE-02, 'pick random'). P-ADM-13 states it directly: 'Nothing validates a hall against those numbers. They are what the seed script creates and what the seat map is designed and tested against, and no more than that.' No capacity column, no capacity CHECK, no seat-count column on screen — seat_count_total and seat_count_in_service on EP-ADM-15 are computed per response.",
+
+    "OUT-OF-SCOPE COLUMNS: I found NONE, and the absence is itself asserted. There is no accessible-seat flag, no pair/couple linkage, no companion column, no gap or group column on seat (SRC-003 OPEN-SEAT-02/-03/-04, FR-ADR-016). S-SCP-08 runs `SELECT column_name FROM information_schema.columns WHERE table_name='seat'` and requires no name matching accessible|wheelchair|pair|couple|companion|gap|group — a negative schema assertion that will be executed. Excluded is not blocked, and nothing here makes them impossible: adding an accessible flag later is one nullable column on seat, and pairing would be a new table — but S-SCP-08's regex means the column names themselves become a schema-visible decision, so whoever adds one is knowingly changing a test.",
+
+    "EXCLUDED-IS-NOT-BLOCKED IS ALREADY DOING VISIBLE WORK IN THIS CLUSTER, AND A LATER READER WILL BE TEMPTED TO UNDO IT. The `cinema` table holds exactly one row and has no create endpoint, no delete endpoint and no is_active column. Do NOT add a CHECK forcing one row, do not collapse it into a constant, and do not make screen.cinema_id nullable or defaulted. S-SCP-05 exists specifically to fail if any of that happens, and its Description says so: 'Three things exist in the schema precisely because v1 does not use them, and a later session reading the exclusions could delete all three as dead weight. This story fails if any of them is missing.' FR-ADR-010: removing the entity and adding it back later is a migration on live booking data. One cinema with six screens is PROVISIONAL under SRC-003 C-2 — one message from the client reverses it.",
+
+    "THE UNIQUE-INDEX ASYMMETRY IS DELIBERATE AND MUST SURVIVE THE MERGE. cinema.name, screen.name, seat_category.name and the four lookup vocabularies are all unique on lower(trim(name)) — expression indexes. seat's identity index (screen_id, row_label, seat_number) is on RAW columns with no normalisation at all. That looks like an oversight and is not: normalising row_label would answer OPEN-SEATLABEL-01 (reserved, irreversible) in the schema, and P-ADM-14 freezes the column so the answer could never be corrected. If someone 'fixes' the asymmetry during the merge they have committed this project's cardinal sin. J-ADM-09 is the journey defect that found it; DEFECTS_RESOLUTION.tsv records the resolution as 'open-article-x — Not a PRD fix: the question is filed as OPEN-SEATLABEL-01 and only the client may answer it.'",
+
+    "THE PRD CONTRADICTS ITSELF ON row_label CASE AND I HAVE NOT RESOLVED IT. P-ADM-13's validation table row reads 'row_label | string | 1..4 characters, letters only, stored uppercase'. Eleven lines later the same row says 'This is a different question from OPEN-SEATLABEL-01 and this row decides neither... it settles nothing about case, normalisation or the unique constraint.' EP-ADM-19 and EP-ADM-20 state only '1..4 letters' and say nothing about case. The Bible's S-ADM-06 description says its criteria 'normalise no case and ban no letter'. Three documents, three positions. I have modelled the column with NO normalisation, because that is the position CONSTITUTION.md line 436 states as current fact ('unique per screen and unnormalised') and because it is the only one of the three that does not pre-empt a reserved row. The merge owner should know that if the client rules 'C12 and c12 are one seat', the fix is a stored-uppercase normalisation plus an unchanged raw unique index — NOT a lower() expression index, because upper-casing changes what is stored and lower() would not match what the receipt prints.",
+
+    "NO CHECK CONSTRAINTS ARE PROPOSED ON ANY TABLE IN THIS CLUSTER, AND THAT IS A DECISION WORTH SEEING. Every bound the PRD publishes for these tables (seat_number >= 1, grid_row/grid_col >= 1, name lengths, row_label 1..4 letters, timezone resolves in the zone database) is published under the heading 'Server-side validation' with an HTTP 422 and a verbatim user-facing sentence attached. None is stated as a database constraint. Two of them must never become one (row_label's alphabet and case). The others are candidates for a defence-in-depth CHECK but that would be design, not extraction — routed to the merge owner via the gaps entry on bound placement. Note that the timezone bound CANNOT be a CHECK in any case: P-ADM-25 says the zone is validated against the zone database at write time and that a hardcoded list goes stale.",
+
+    "TABLE NAMES: all three of mine are correct and none looks wrong. `screen` is the table and `hall` is the word every user-facing string uses ('That hall no longer exists at this address.'); the divergence is deliberate and consistent, so do not rename either. `cinema` is singular, matching every citation.",
+
+    "TWO TABLES THIS CLUSTER DEPENDS ON ARE MISSING FROM THE BRIEF'S FIXED LIST: `seat_category` (seat.seat_category_id is a NON-NULL FK to it, and S-ADM-14 asserts it carries a version column) and `manager_screen_assignment` (screen_id FK; one of only two genuinely-deleted entities in the product; S-ADM-18 asserts it carries ZERO check constraints and ZERO non-internal triggers, because the 'two managers per hall' shape is a seed convention and not a rule). The four lookup vocabularies (language, certification, genre, format) are also absent from that list and are real tables. If no cluster claims them the merged schema will not build. I did not model any of them — they are not mine — but seat cannot be created without seat_category existing first, and S-XCT-46 asserts the seed's write ordering is exactly vocabulary, then screens and seats, then films, then showtimes.",
+
+    "A SMALL WIRE/SCHEMA MAPPING THE MERGE OWNER WILL NEED. The seat-map payload (E1 P-BRW-08, EP-BRW-06) abbreviates: `row` = row_label, `num` = seat_number, `gr` = grid_row, `gc` = grid_col, `cat` = seat_category_id, plus a server-computed `price_paise` and a `state` that is not a column. `screen.rows` and `screen.cols` on that payload are DERIVED per response as max(gr)/max(gc) over THAT SHOWTIME'S seat set — there is no rows or cols column on screen and EP-ADM-16 accepts only cinema_id and name. Do not add them.",
+
+    "SEAT IS THE ONLY DOMAIN ENTITY IN THIS CLUSTER WITH A REAL DELETE, AND IT IS NARROW. EP-ADM-21 hard-deletes a seat row, permitted only while its hall has zero showtime rows (so nothing references it). cinema and screen are NEVER deleted — no DELETE route is mounted for either and both answer 405 METHOD_NOT_ALLOWED from a global handler. That means the FK from seat to screen and from screen to cinema being RESTRICT is not defensive decoration: it is the last line of the never-delete rule (FR-ADR-012), and S-XCT-09 verifies every FK in the whole schema is confdeltype 'r'."
+  ]
+}

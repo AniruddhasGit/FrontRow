@@ -81,13 +81,13 @@ Numbered in **dependency order**, not generation order. Each is derived from the
 | `03 PRD/` | **The document the code is written from.** Plus the generated API contract. **Written, but `BLOCKED` — see the Status block.** | **written** |
 | `05 Bible/` | Stories and binary acceptance criteria. The scope arbiter. | empty |
 | `05 B DesignSystem/` | Tokens + real CSS. Every contrast figure computed, not claimed. | **written** |
-| `06 DataModel/` | A **package**: `datamodel.json` (spec of record) → generated `schema.sql`, `TRACEABILITY.tsv`. | empty |
+| `06 DataModel/` | A **package**: `datamodel.json` (spec of record) → generated `schema.sql`, `TRACEABILITY.tsv`. 22 tables, 152 columns, every one cited. **Applies to PostgreSQL 16 and the seat guarantee has been red-proofed** — but `verify_invariants.sql`, the seed expectations and `fingerprints.json` are NOT written, so `GOAL_08` is **part done**, not Done. Read `AGENT_CONTRACT.md` before using it. | **part written** |
 | `07 Architecture/` | `for_llm/` to orient a session · `for_humans/` to decide from, including the accepted weaknesses. | empty |
 | `08 SIT/` · `09 NegativeTesting/` | Positive cases (one per acceptance criterion) + the cases that try to break it. | empty |
 | `10 EngineeringLedger/` | Derived from the Bible. **`/ss` reads this for the frontier.** Only `Status` is hand-edited. | empty |
 | `11 Journeys/` | Persona journeys, each walk naming the seam it crosses. Five walks, 313 steps, **81 defects against the PRD** — 25 of them `blocks-code`. | **written** |
 | `12 DesignReview/` | **The gate before code.** | empty |
-| `13`–`40` | Lifecycle. **`30 Deployment/` is written** — it holds the client's AWS prep queue, 19 rows — 18 `REQUESTED` and one `BLOCKED` (row 14, the ACM certificate, waiting on `OPEN-TLS-01`). The rest are empty. | **part written** |
+| `13`–`40` | Lifecycle. **`30 Deployment/` is written** — it holds the client's AWS prep queue, 20 rows — 19 `REQUESTED` and one `BLOCKED` (row 14, the ACM certificate, waiting on `OPEN-TLS-01`). The rest are empty. | **part written** |
 
 **Authority on conflict** (`CONSTITUTION.md` Art II.1): raw `SRC-001` → raw `SRC-002` → a client
 ruling → an `APPROVED` ADR → PRD → BRD → Bible → everything else. **Stricter always wins.**

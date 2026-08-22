@@ -15961,7 +15961,12 @@ to them breaks a stated rule.
 **Why there is no honest actor to name.** `P-ADM-19` makes `actor_user_id` a **non-null** foreign key
 to the acting user and forbids **both** a role name and a service account. The seed **creates the
 first admin itself**, so at the moment of its earliest writes — the cinema, the screens, the seats, the
-twelve lookup rows — no user row exists that any actor column could point at. The three ways out are
+eleven lookup rows — no user row exists that any actor column could point at.
+*(Corrected 2026-08-23: this read **twelve** in all four places while the seed it describes
+enumerates eleven — DEMO LANGUAGE A/B/C, DEMO RATING 1/2, DEMO GENRE 1-4, DEMO FORMAT 1/2 =
+3+2+4+2. `S-XCT-44` asserts eleven and reads each back, so the criterion and the prose
+disagreed by one and only the prose was wrong. The same class as the twelve/thirteen
+cross-field count corrected earlier today: a count written once and never recounted.)* The three ways out are
 each worse than the absence:
 
 | The way out | Why it is refused |
@@ -16020,7 +16025,7 @@ refuses publication without a poster. With the seed publishing nothing, `docker 
 by a seed produced a customer landing page reading **"Nothing is showing right now."** — and three
 statements elsewhere silently became false: `P-BRW-04`'s worked example asserts the eight films are
 *all published and inside their display windows* and derives which filter controls render from that;
-this row's own consequence that **every one of the twelve lookup rows is referenced by a visible
+this row's own consequence that **every one of the eleven lookup rows is referenced by a visible
 film** is only true of visible films; and **Phase 3's acceptance was not demonstrable at all.** A seed
 whose entire output is invisible is not demonstration data.
 
@@ -16089,7 +16094,7 @@ genres          i mod 4       = 3            -> DEMO GENRE 4
 
 Two consequences, both of which the browse surface depends on: **every film carries at least one of
 every filterable vocabulary**, so no filter control is rendered against a film that has nothing to
-show; and **every one of the twelve lookup rows is referenced by at least one film**, so an endpoint
+show; and **every one of the eleven lookup rows is referenced by at least one film**, so an endpoint
 that returns only rows in use returns all twelve against the seeded catalogue.
 
 ##### The six hall layouts
@@ -16224,7 +16229,7 @@ occupancy, which is the number this correction confirms rather than changes.
 ##### The showtime's placeholder identity, and what a second run does
 
 **Every other seeded entity has a placeholder identifier the skip logic keys on** — `DEMO MOVIE nn`,
-`DEMO CINEMA`, the screens, the seats, the categories, the twelve lookup rows, the sixty-three
+`DEMO CINEMA`, the screens, the seats, the categories, the eleven lookup rows, the sixty-three
 addresses. **Showtimes had none**, and that is not a cosmetic omission: the window is anchored to the
 injected clock, so a run tomorrow addresses a different span, and because `film_index = (k + d) mod 8`
 is a **global** index over the 720, every overlapping showtime would come back carrying a different

@@ -1,0 +1,2705 @@
+{
+  "$comment": [
+    "SPEC OF RECORD. schema.sql and TRACEABILITY.tsv are GENERATED from",
+    "this file by generate.py and must never be hand-edited.",
+    "Assembled 2026-08-23 from six independent reads of the PRD, the",
+    "ADRs and the Bible's 200 acceptance criteria."
+  ],
+  "meta": {
+    "assembled": "2026-08-23",
+    "postgres_min": 16,
+    "currency": "configuration - INR with minor-unit ratio 100 (SRC-003 OPEN-LOCALE-01). The ratio is NEVER baked into a column name, comment or constraint: it is a one-way door, because reinterpreting the unit later rewrites what every past customer paid.",
+    "timezone": "configuration - Asia/Kolkata (SRC-003 OPEN-LOCALE-01, RULED). Every instant is timestamptz in UTC and is rendered in the cinema's zone (FR-ADR-018).",
+    "primary_keys": "bigint GENERATED ALWAYS AS IDENTITY on every table (FR-ADR-017). UUID is rejected by name in that ADR, and the deciding argument is this schema's most contended index: two 8-byte integers make a 16-byte key where two UUIDs make a 32-byte one."
+  },
+  "seat_guarantee": {
+    "table": "booking_seat",
+    "constraint": "uq_booking_seat__showtime_id_seat_id",
+    "cite": "SRC-001 §2.2, §7.1; FR-ADR-024; P-PAY-11; S-XCT-02/03/04",
+    "why": "The product's central promise, and the half that may not be waived. TOTAL, with no WHERE: S-XCT-02/03/04 read pg_get_constraintdef back and require no predicate, and S-PAY-09 requires exactly one unique index on the table. A cancelled booking's seats are therefore NOT freed, which is the ruled answer - both FR-ADR-024 and P-PAY-11 carry the same revisit trigger: if cancellation is ever added, this constraint has to be revisited FIRST."
+  },
+  "non_guard_seat_pairs": [
+    "showtime_seat.uq_showtime_seat__showtime_id_seat_id"
+  ],
+  "tables_beyond_bible": {
+    "seat_category": "FR-ADR-016 - a lookup table, not a database enum, because a fourth category should cost an INSERT and not a migration, and because the category carries a price uplift an enum cannot hold. seat.seat_category_id is NOT NULL, so seat cannot exist without it.",
+    "manager_screen_assignment": "FR-ADR-011, P-ADM-17. UNIQUE (user_id, screen_id), asserted by name by S-ADM-18.",
+    "movie_genre": "the many-to-many join between movie and genre (P-ADM-23).",
+    "genre": "P-ADM-23, one of four admin-maintained vocabularies.",
+    "language": "P-ADM-23.",
+    "certification": "P-ADM-23.",
+    "format": "P-ADM-23."
+  },
+  "bible_reference_exceptions": {
+    "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
+    "screen.cols": "the same; see screen.rows",
+    "screen.name": "prose naming the column of `screen` in a sentence, not a qualified SQL reference",
+    "seat.is_active": "prose; the column exists on seat and resolves normally, listed only because the Bible writes it dotted in prose",
+    "booking.py": "a Python filename, not a table reference",
+    "screen.exploded": "a DELIBERATELY INVALID audit action. S-ADM-02 constructs AuditAction from this string and requires ValueError, proving the vocabulary is closed. Declaring it as a real action would break the very test it exists for.",
+    "showtime.sales_closed": "a JSON field in the seatmap response, not a column. The sales cut-off has NO column: it is starts_at + SALES_CUTOFF_MINUTES, and S-BRW-10 and S-SEA-11 both assert the column's absence."
+  },
+  "audit_actions": [
+    "movie.created",
+    "movie.updated",
+    "movie.poster_uploaded",
+    "movie.poster_replaced",
+    "movie.display_window_changed",
+    "movie.published",
+    "movie.unpublished",
+    "showtime.created",
+    "showtime.updated",
+    "showtime.base_price_changed",
+    "seat_category.created",
+    "seat_category.updated",
+    "seat_category.uplift_changed",
+    "cinema.updated",
+    "cinema.timezone_changed",
+    "screen.created",
+    "screen.updated",
+    "screen.deactivated",
+    "screen.reactivated",
+    "seat.created",
+    "seat.updated",
+    "seat.deleted",
+    "seat.deactivated",
+    "seat.reactivated",
+    "manager.created",
+    "manager.screen_assigned",
+    "manager.screen_unassigned",
+    "language.created",
+    "certification.created",
+    "genre.created",
+    "format.created",
+    "language.withdrawn",
+    "language.restored",
+    "certification.withdrawn",
+    "certification.restored",
+    "genre.withdrawn",
+    "genre.restored",
+    "format.withdrawn",
+    "format.restored"
+  ],
+  "roles": [
+    {
+      "name": "frontrow_owner",
+      "why": "owns every table and runs migrations. NEVER the role the application connects as.",
+      "cite": "SRC-002 (build against a restricted role) - the role NAMES are a [JUDGMENT CALL]: no document in the repository contains a single CREATE ROLE, GRANT or REVOKE.",
+      "grants": []
+    },
+    {
+      "name": "frontrow_app",
+      "why": "the application role. Not a superuser and not the owner. The two-role split is FORCED, not stylistic: S-XCT-07 asserts that table_privileges for audit_log and current_user returns EXACTLY two rows. Observed on PostgreSQL 16.14 - a table's OWNER sees seven (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE), so a single-role design cannot satisfy that criterion at all. With a separate owner the same query returns exactly INSERT and SELECT.",
+      "cite": "S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11",
+      "grants": [
+        "GRANT USAGE ON SCHEMA public TO frontrow_app",
+        "GRANT SELECT, INSERT ON audit_log TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON booking TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON booking_seat TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON certification TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON cinema TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON format TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON genre TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_record TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON language TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON manager_screen_assignment TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON movie TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON movie_genre TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON outbox_message TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON password_reset_token TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON payment TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON receipt_dispatch TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON screen TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON seat_category TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON showtime TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON showtime_seat TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON users TO frontrow_app",
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app"
+      ]
+    }
+  ],
+  "enums": [],
+  "tables": [
+    {
+      "name": "audit_log",
+      "purpose": "One append-only row per privileged write, inserted in the same database transaction as the change itself, recording who, when, which action, which row, and the changed fields before and after.",
+      "cite": "P-XCT-03 · E8 S7.3 · P-ADM-19 · FR-ADR-019",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 and P-ADM-19 and FR-ADR-019 all spell it '`bigint` identity' · P-RPT-11 step 3 (cursor on `id`, ordered descending)",
+          "note": "THE ONLY PRIMARY KEY IN THIS CLUSTER A DOCUMENT GIVES A GENERATION MECHANISM FOR. EP-RPT-04's `cursor` is a positive integer audit row id and is a BOUND, not a lookup: a well-formed id naming no row returns 200, never 404.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19 · S-XCT-06 (`SELECT data_type ... column_name='occurred_at'` returns 'timestamp with time zone')",
+          "note": "UTC. S-XCT-06 additionally asserts the value the APPLICATION BINDS is an aware datetime whose utcoffset() is zero — so it is written by the application from the injected clock, not by a database default.",
+          "reserved_row": null
+        },
+        {
+          "name": "actor_user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19 · P-XCT-03 server-side validation · S-XCT-06 (`is_nullable` returns NO, and one foreign key row in pg_constraint)",
+          "note": "NEVER A ROLE NAME AND NEVER A SERVICE ACCOUNT — both substitutes are forbidden in terms. The seed script is the ONLY exemption from the same-transaction audit rule anywhere in the product, precisely because at its earliest writes no user row exists to point at (P-XCT-30); it writes zero audit rows and no application code path inherits that exemption.",
+          "reserved_row": null
+        },
+        {
+          "name": "actor_role",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19 · S-XCT-06 (asserted still to read 'admin' after user 17's role is changed to manager)",
+          "note": "THE ROLE THE ACTOR HELD AT THE TIME, COPIED RATHER THAN JOINED. Never resolved by a join at read time. NO DOCUMENT STATES THE COLUMN TYPE — `text` is reported rather than `enum:user_role` because the point of the column is that it is a frozen copy, and a shared enum type ties historical rows to a live vocabulary. See gaps; this is the merge owner's call.",
+          "reserved_row": null
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19's controlled vocabulary table (the single source of the strings for the whole product) · FR-ADR-019",
+          "note": "A CLOSED controlled vocabulary, enumerated by P-ADM-19 and by no one else. ENFORCED IN THE APPLICATION, NOT IN THE DATABASE: S-ADM-02 requires a closed Python enum `AuditAction`, S-XCT-07 requires a module-level tuple `AUDIT_ACTIONS` in backend/app/domain/audit.py, and a non-member is refused at a boundary check BEFORE THE TRANSACTION OPENS (asserted by a statement listener recording zero statements). No document asks for a database CHECK or a Postgres enum, so none is proposed. The string already got wrong once: a base-price change is `showtime.base_price_changed`; `showtime.price_changed` is NOT a member and never has been, although FR-ADR-019's own example text still shows it.",
+          "reserved_row": null
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19",
+          "note": "The table the change landed on. Values seen in the vocabulary table: movie, showtime, seat_category, cinema, screen, seat, user, manager_screen_assignment, language, certification, genre, format.",
+          "reserved_row": null
+        },
+        {
+          "name": "entity_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19",
+          "note": "The primary key of the changed row. NO FOREIGN KEY MAY EXIST ON THIS COLUMN — S-ADM-18 asserts the FK count on audit_log.entity_id is 0, because for `manager.screen_unassigned` it deliberately names a row that no longer exists and 'a column that resolves by lying about what it points at is worse than one that honestly points at something gone'. Nothing may join it to a live table for that action. Width is not stated by any document — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "before",
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19 · P-XCT-03 server-side validation",
+          "note": "ONLY THE FIELDS THAT CHANGED, never a whole-row snapshot (S-XCT-06 asserts jsonb_object_keys(before) counts 1 for a single-field change). NULL FOR A CREATION. Carries no credential (`password_hash`, `password_version` excluded from every entity_type='user' row), no card-shaped key, and no poster bytes — only the S3 object key.",
+          "reserved_row": null
+        },
+        {
+          "name": "after",
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19",
+          "note": "Null for a withdrawal that changes nothing else — including `manager.screen_unassigned`, whose `before` carries exactly `{\"user_id\": n, \"screen_id\": n}`. Same credential and card-data exclusions as `before`. Returned VERBATIM by EP-RPT-04 and never unit-converted.",
+          "reserved_row": null
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E8 S7.3 · P-ADM-19 · P-XCT-03 happy path step 4 and preconditions · FR-ADR-056",
+          "note": "The request id from the log context, so an audit row joins to the log lines. Matches ^[0-9a-f]{8}$ (S-XCT-06). NO DOCUMENT STATES ITS NULLABILITY EXPLICITLY — reported NOT NULL because P-XCT-03's precondition requires it to be available before the transaction opens and every audit row is written from a request; flag it if the merge disagrees.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "actor_user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "P-XCT-03 ('non-null foreign key to the acting user') · S-XCT-06 (one pg_constraint FK row on audit_log) · S-XCT-09 (every FK in the schema is confdeltype 'r')",
+          "on_update": "RESTRICT",
+          "name": "fk_audit_log__actor_user_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "occurred_at"
+          ],
+          "unique": false,
+          "cite": "P-RPT-11 happy path step 2 (a half-open UTC window from `from`/`to`) and step 4 (`available_actions` and `available_actors` computed over the same window)",
+          "why": "Every read of this table is bounded by the date window, deliberately, because audit_log is the largest table in the system and never shrinks. DERIVED FROM THE NAMED QUERY — no document declares an index on this table.",
+          "name": "ix_audit_log__occurred_at"
+        }
+      ]
+    },
+    {
+      "name": "booking",
+      "purpose": "One confirmed purchase: one user, one showtime, one captured payment, one unique customer-facing reference, and a stored total.",
+      "cite": "E3 P-PAY-01 · E3 P-PAY-10 step 7 · FR-ADR-014 · FR-ADR-039",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 (idempotency_record.id is 'bigint identity') · E6 P-ADM-19 audit_log id table ('bigint identity') · S-XCT-08 ('booking_id 9008')",
+          "note": "NOT uuid. No document in this project uses a uuid primary key anywhere; the two places a PK type is spelled out both read 'bigint identity', and every id in every criterion and every endpoint body is a small integer (booking_id 9008, user_id 4471, showtime_id 7/41/77, seat_id 312/402). EP-PAY-01's 201 body declares booking_id as 'integer'. The brief's uuid default is overridden here by the sources, as the brief permits.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "reference",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-01 · FR-ADR-015 · S-TKT-01",
+          "note": "THE COLUMN IS NAMED `reference`, not reference_code and not booking_reference. Exactly 8 characters, uppercase, drawn from 23456789ABCDEFGHJKMNPQRSTVWXYZ, with NO `FR-` prefix and NO hyphens stored (those are presentation only). `SELECT length(reference), reference = upper(reference) FROM booking WHERE id=:b` must return 8, true. NO CHECK CONSTRAINT ON THE ALPHABET and no length CHECK is added here: OPEN-REFCHAR-01 is reserved (irreversible) and expires at Phase 4; narrowing the alphabet or adding a check character is the client's call. P-TKT-01 states the validation is performed in application code before insert, and that the UNIQUE constraint (not the alphabet) is the guard.",
+          "reserved_row": "OPEN-REFCHAR-01"
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "S-ACC-10 (verbatim: 'booking.user_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT') · FR-ADR-014 · E4 EP-TKT-01 authorisation_rule",
+          "note": "Type spelled `integer` (not bigint) by S-ACC-10. It must match users(id); see notes[] — the merge owner must reconcile this with booking.id being bigint. The owner is always taken from the JWT, never from the request body (S-ACC-10 route-table walk).",
+          "reserved_row": null
+        },
+        {
+          "name": "showtime_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E7 P-RPT-03 formula ('JOIN booking b ON b.showtime_id = st.id') · S-PAY-06 · S-PAY-15 · EP-PAY-01 201 body",
+          "note": "Integer, matching E6 P-ADM-14's showtime_seat.showtime_id 'integer'.",
+          "reserved_row": null
+        },
+        {
+          "name": "payment_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-07 ('booking.payment_id points at payment.id, not the reverse') · E3 P-PAY-01 ('no state in which a booking exists without a captured payment') · S-PAY-05 · S-SCP-12 · E7 P-RPT-12",
+          "note": "THE DIRECTION IS LOAD-BEARING AND SETTLED IN FIVE PLACES. payment carries NO booking_id column: the payment row is inserted at P-PAY-10 step 6 and the booking at step 7, so a payment.booking_id could not be satisfied at insert time. NOT NULL is what makes 'no booking without a payment record' a database fact rather than a test; see gaps[] for the half that is not expressible (the payment being in a terminal captured state).",
+          "reserved_row": null
+        },
+        {
+          "name": "total_paise",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-04 · FR-ADR-039 · S-PAY-01 · S-SEA-16",
+          "note": "Integer minor unit. The sum of the ALREADY-ROUNDED per-seat prices; the total is never itself rounded. Deliberately denormalised (FR-ADR-039) — the equality total_paise = SUM(booking_seat.price_paise) is asserted at write time as a TEST, explicitly NOT as a database constraint, because a constraint would need a trigger. The minor-unit ratio 100 is CURRENCY_MINOR_UNIT_RATIO, a named configuration value, and appears in no column name, comment or constraint.",
+          "reserved_row": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-013 · E3 P-PAY-12 · E7 P-RPT-03 (\"b.status = 'confirmed'\") · S-PAY-11 · S-SCP-14",
+          "note": "EXCLUDED IS NOT BLOCKED (SRC-001 §6.6). Written exactly once, by the confirm insert, to 'confirmed'. No v1 endpoint reads or writes it; it appears in no v1 request or response schema. `SELECT DISTINCT status FROM booking` must return exactly one row after the whole suite. TYPE IS UNSOURCED — no document says whether this is a Postgres enum or text, and no document names any value other than 'confirmed'. Declaring an enum here would mean naming a 'cancelled' value, which is the reserved question OPEN-CANCEL-01/OPEN-SHOWCANCEL-01. Reported as a gap rather than decided.",
+          "reserved_row": "OPEN-SHOWCANCEL-01"
+        },
+        {
+          "name": "cancelled_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-013 · E3 P-PAY-12 · E4 P-TKT-09 · S-PAY-11 · S-SCP-14",
+          "note": "EXCLUDED IS NOT BLOCKED (SRC-001 §6.6). Stays null for every row v1 ever creates: `SELECT count(*) FROM booking WHERE cancelled_at IS NOT NULL` returns 0. Exists because adding a column to a table already holding real bookings is a migration on live data with a backfill nobody can verify. S-SCP-04 explicitly permits it while banning refund/tax/fee/discount/points/used_at names on this table.",
+          "reserved_row": "OPEN-CANCEL-01"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 preconditions ('Every table carries created_at') · S-XCT-08 ('SELECT b.id, b.user_id, b.created_at ...') · S-XCT-09 · E5 P-ACC-11 ordering tie-breaker",
+          "note": "UTC instant. Serialised to customers with the CINEMA ROW's UTC offset (never Z, never a hardcoded zone) — EP-PAY-01 returns it as created_at, EP-ACC-07 as booked_at. It is also an ordering tie-breaker for the bookings list (S-ACC-12: upcoming ordered by showtime.starts_at asc, booking.created_at desc, booking.id asc).",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "reference"
+          ],
+          "cite": "E4 P-TKT-01 preconditions ('The booking.reference column exists with a UNIQUE constraint on it') · FR-ADR-015 · S-TKT-01",
+          "why": "The reference is the customer's ONLY proof of purchase and their only way into the hall. Generation draws 8 random characters and RELIES ON THIS CONSTRAINT as the collision guard, retrying up to five times and then failing the request with 500 rather than looping. P-TKT-01: 'The arithmetic is not the guard; the constraint is.'",
+          "name": "uq_booking__reference"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ACC-10 (verbatim) · FR-ADR-014 · FR-ADR-012 · S-XCT-09",
+          "note": "Red-proofed: the constraint is temporarily redefined CASCADE, the delete is watched destroying the booking and its snapshotted prices, then restored to RESTRICT and the restore verified. DELETE FROM users with a booking present must raise SQLSTATE 23503.",
+          "on_update": "RESTRICT",
+          "name": "fk_booking__user_id"
+        },
+        {
+          "columns": [
+            "showtime_id"
+          ],
+          "references": {
+            "table": "showtime",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 ('SELECT conname, confdeltype FROM pg_constraint WHERE contype = \\'f\\' AND confdeltype <> \\'r\\' returns 0 rows')",
+          "on_update": "RESTRICT",
+          "name": "fk_booking__showtime_id"
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "references": {
+            "table": "payment",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "E3 P-PAY-07 · E7 P-RPT-12 ('The join runs payment.id = booking.payment_id, not the reverse') · S-XCT-09",
+          "on_update": "RESTRICT",
+          "name": "fk_booking__payment_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "showtime_id"
+          ],
+          "unique": false,
+          "cite": "E7 P-RPT-12 ('Required indexes ... booking(showtime_id)') · S-RPT-16",
+          "why": "The dashboard aggregate drives from showtime, filtered by period and screen, then joins booking on showtime_id. Named as a required index by the PRD and asserted by S-RPT-16 against pg_indexes.",
+          "name": "ix_booking__showtime_id"
+        },
+        {
+          "columns": [
+            "payment_id"
+          ],
+          "unique": false,
+          "cite": "E7 P-RPT-12 ('Required indexes ... booking(payment_id)') · S-RPT-16",
+          "why": "The takings query joins payment on p.id = b.payment_id.",
+          "name": "ix_booking__payment_id"
+        }
+      ]
+    },
+    {
+      "name": "booking_seat",
+      "purpose": "One row per booked seat: the seat-occupancy record that carries the oversell guard and the immutable per-seat price snapshot.",
+      "cite": "FR-ADR-024 ('The unique constraint is declared on the seat-occupancy table — one row per (booking, seat)') · FR-ADR-039 · E3 P-PAY-05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "project id convention: FR-ADR-020, E6 P-ADM-19 ('bigint identity')",
+          "note": "NO DOCUMENT NAMES A PRIMARY KEY FOR THIS TABLE. See gaps[] — the merge owner must choose between a surrogate id and a composite PK on (booking_id, seat_id). Nothing in any criterion selects a booking_seat id.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-10 step 7 · S-PAY-03 · S-PAY-07 · S-SCP-13 · S-XCT-08 · E7 P-RPT-03 formula",
+          "note": "Every criterion in the Bible that reads a booked seat filters on booking_id.",
+          "reserved_row": null
+        },
+        {
+          "name": "showtime_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-024 · E3 P-PAY-11 · S-XCT-01 · S-XCT-02 · S-XCT-03 · S-PAY-09 · S-SEA-13 · S-SEA-16 · S-SEA-18 · S-SEA-20",
+          "note": "DENORMALISED FROM booking.showtime_id ON PURPOSE. It exists so the oversell unique constraint can be (showtime_id, seat_id) — the guarantee has to be at seat granularity across the whole showtime, not per booking. At least nine acceptance criteria run `SELECT count(*) FROM booking_seat WHERE showtime_id=? AND seat_id=?` directly. Nothing in the documents states how showtime_id is kept consistent with booking.showtime_id.",
+          "reserved_row": null
+        },
+        {
+          "name": "seat_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-024 · S-PAY-09 ('seat_id is an integer foreign key and seat_label carries the human form such as F7; a query comparing seat_id to a label string raises invalid input syntax for type integer against a correct schema') · S-XCT-08 · S-XCT-34",
+          "note": "INTEGER, NOT A LABEL. The human-readable form (F7, C12) lives on the `seat` table and is joined for display (S-XCT-08: `JOIN seat s ON s.id = bs.seat_id`); it is never copied onto booking_seat.",
+          "reserved_row": null
+        },
+        {
+          "name": "price_paise",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-039 · E3 P-PAY-05 · S-PAY-01 · S-SEA-16 · E7 P-RPT-03",
+          "note": "The rounded per-seat price the customer actually paid, snapshotted at HOLD acquisition (not at confirm) and copied onto this row; never recomputed by any display path, receipt, bookings list or dashboard. Integer minor unit, bigint.",
+          "reserved_row": null
+        },
+        {
+          "name": "base_price_paise_applied",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-039 · E3 P-PAY-05 (column table) · S-PAY-03 · S-SEA-16",
+          "note": "The showtime base price that produced price_paise. Stored so the figure is auditable — SRC-001 §7.6 requires the system to answer for its own records; storing only price_paise makes it impossible to tell a 33.33% uplift on Rs 275.00 from a 20% uplift on something else. Money column: bigint, name ends _paise.",
+          "reserved_row": null
+        },
+        {
+          "name": "uplift_basis_points_applied",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-039 · E3 P-PAY-05 (column table) · S-PAY-03 · S-SEA-16",
+          "note": "The seat category's uplift in basis points at the time of booking. NOT a money column — its name deliberately does not end in _paise, and S-PAY-01's assertion (money columns on booking/booking_seat/payment ending in _paise are EXACTLY total_paise, price_paise, base_price_paise_applied, amount_paise) depends on that.",
+          "reserved_row": null
+        },
+        {
+          "name": "seat_category_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-039 ('the category at the time of booking, copied, not joined for display') · E3 P-PAY-05 ('integer, positive, non-null') · S-PAY-03",
+          "note": "Copied rather than joined, so a later category rename or re-categorisation cannot rewrite what a past receipt says.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries created_at') · S-XCT-09",
+          "note": "S-XCT-09 asserts information_schema returns zero public tables lacking created_at.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "showtime_id",
+            "seat_id"
+          ],
+          "cite": "SRC-001 §2.2 · SRC-001 §7.1 · SRC-002 §8.1.5 · FR-ADR-024 · E3 P-PAY-11 · E8 P-XCT-01 · S-XCT-02 · S-XCT-03 · S-XCT-04 · S-PAY-09",
+          "why": "THE PRODUCT. The second half of the double-booking guarantee, and the half that may not be waived at any confidence for any reason (waiving a quality check is reserved to the client, CONSTITUTION Art III.8). TOTAL, NOT PARTIAL — the documents settle this explicitly and in five places. FR-ADR-024: 'The constraint is total, not partial. No WHERE status <> cancelled clause.' P-PAY-11: 'The constraint is total, not partial. There is no WHERE status <> cancelled clause, because P-PAY-12 rules out cancellation in v1. If cancellation is ever added, this constraint has to be revisited first — a cancelled booking holding a seat forever is what a total constraint would then produce.' Three criteria assert the absence of a WHERE clause directly against the catalogue: S-XCT-02 and S-XCT-03 read pg_get_constraintdef and require no WHERE; S-XCT-04 requires `SELECT indexdef FROM pg_indexes WHERE tablename = 'booking_seat'` to contain no WHERE and requires the guard to be a CONSTRAINT rather than a partial index; S-PAY-09 requires pg_indexes to return EXACTLY ONE unique index on this table. So a cancelled booking's seats are NOT freed, and that is the ruled behaviour, not an oversight. It must be created in the SAME Alembic revision as create_table('booking_seat') (S-XCT-04), so no window exists in which a seat row can be written without it, and no later revision may drop it.",
+          "name": "uq_booking_seat__showtime_id_seat_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "references": {
+            "table": "booking",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_booking_seat__booking_id"
+        },
+        {
+          "columns": [
+            "seat_id"
+          ],
+          "references": {
+            "table": "seat",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-08 ('JOIN seat s ON s.id = bs.seat_id') · S-XCT-34 · S-XCT-09",
+          "note": "S-XCT-09's blanket rule: every FK on a path that can reach a booking is ON DELETE RESTRICT; `SELECT conname, confdeltype FROM pg_constraint WHERE contype='f' AND confdeltype <> 'r'` returns 0 rows. Note that DELETE /api/admin/seats/{seat_id} exists but is permitted only while the hall has no showtime rows at all, so it is unreachable from a booking.",
+          "on_update": "RESTRICT",
+          "name": "fk_booking_seat__seat_id"
+        },
+        {
+          "columns": [
+            "showtime_id"
+          ],
+          "references": {
+            "table": "showtime",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (blanket ON DELETE RESTRICT rule)",
+          "note": "UNCERTAIN — no document states that this FK exists, only what its on_delete would have to be if it does. See gaps[]: the alternative is a composite FK to showtime_seat(showtime_id, seat_id), which would additionally guarantee the booked seat is actually on that showtime. Do not treat this row as sourced.",
+          "on_update": "RESTRICT",
+          "name": "fk_booking_seat__showtime_id"
+        },
+        {
+          "columns": [
+            "seat_category_id"
+          ],
+          "references": {
+            "table": "seat_category",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "E3 P-PAY-05 · FR-ADR-039 · S-XCT-09",
+          "on_update": "RESTRICT",
+          "name": "fk_booking_seat__seat_category_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "unique": false,
+          "cite": "E7 P-RPT-12 ('Required indexes ... booking_seat(booking_id)') · S-RPT-16",
+          "why": "Every read of a booking's seats — the receipt, the bookings list, the confirmation page, the takings sum — joins booking_seat on booking_id.",
+          "name": "ix_booking_seat__booking_id"
+        }
+      ]
+    },
+    {
+      "name": "certification",
+      "purpose": "One of the four hand-typed lookup vocabularies; the certificate a film carries, referenced by movie.certification_id.",
+      "cite": "P-ADM-23 kind table ('`certification` | `certification` | `movie.certification_id` (`P-ADM-01`)'); FR-ADR-021",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY. Identical to `language`.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; E1_browse.md S4 ('The certification is `{id, name}` and there is no `code` anywhere … `P-ADM-23` … fixes it at `id`, `name`, `is_active`, `created_at`, saying in terms that there is no code'); S-BRW-02",
+          "note": "1..60 after trimming. **THERE IS NO `code` COLUMN AND THIS IS ASSERTED BY TEST.** S-BRW-02 asserts 'the string ''code'' appears nowhere in the response body'. The PRD's own merge report records this as 'a wire correction, not a judgment call': the wire once said {id, code}, nothing could ever have populated it, so the wire changed and **no `code` column was added** — 'that would be a data-model change made from a display field'. Do not add one.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; S-ADM-22",
+          "note": "Identical to `language`. Server-set true on insert; 400 REQUEST_INVALID if supplied.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ADM-23 ('`created_at` | `timestamptz`, UTC'); EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only. Withdrawn rows participate.",
+          "name": "uq_certification__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**. A CHECK is a stricter restatement.",
+          "name": "ck_certification__1"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard.",
+          "name": "ix_certification__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "cinema",
+      "purpose": "The venue. Exactly one row in v1, created by the seed and never by an endpoint; it is the only authority for local time and the parent of every screen.",
+      "cite": "P-ADM-25 (E6 S4) · FR-ADR-010 · SRC-003 C-2 (PROVISIONAL) · SRC-001 §6.6",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "EP-ADM-29 path_params `cinema_id: integer, positive`; EP-ADM-28 body `{id, name, timezone, screen_count, showtime_count, version}`",
+          "note": "INTEGER, not uuid. Every id in this cluster is spelled `integer, positive` in the PRD's endpoint blocks and the Bible's fixtures use small integers (screen 3, seat 312, showtime 501). No document anywhere in the PRD, the ADRs or the Bible mentions a uuid primary key. How the integer is generated (identity / sequence) is not stated — see gaps.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-25 server-side validation table; EP-ADM-29 request body",
+          "note": "1..120 characters after trimming; unique on lower(trim(name)). The 120 is explicitly labelled a technical bound, not a ruling. No document says whether the bound is a varchar(n) or an application check — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-26 · FR-ADR-018 · P-ADM-25 validation table",
+          "note": "IANA zone name, 1..64 characters, validated against the zone database at write time (zoneinfo.ZoneInfo must resolve it) and NEVER against a list typed into a document. Seeded from CINEMA_TIMEZONE once; after that the row wins over the variable, always. There is deliberately NO timezone column on screen or on showtime — S-ADM-04 asserts that absence with a query. The zone is configuration in the sense that it is data, not a constant: `Asia/Kolkata` is the seeded value (SRC-003 OPEN-LOCALE-01, RULED) and must not be a literal in code.",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-12 · FR-ADR-035 · S-ADM-14 · S-ADM-03",
+          "note": "Optimistic concurrency. Starts at 1, increments by exactly 1 on a write that actually changes something. S-ADM-14 asserts by query that the set of tables carrying a `version` column is EXACTLY {movie, showtime, screen, seat_category, cinema} — so cinema and screen must have it and seat must not. Application-maintained; no document specifies a trigger.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 (acceptance criterion: every table in the public schema except alembic_version carries created_at)",
+          "note": "Required by a query that will be run as a test. No document states a database-side default; a DEFAULT now() would read the wall clock rather than the injected clock the project mandates — flagged in gaps rather than decided here.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-25 validation table; EP-ADM-29 `unique on lower(trim(name))`; S-ADM-03 'a second row whose lower(trim(name)) matches an existing one returns 422'",
+          "why": "EXPRESSION index, not a plain unique constraint. The index is the guard, not a prior read (P-ADM-23, restated at E6:2956). Two venues differing only in case cannot both exist.",
+          "name": "uq_cinema__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-25 validation table",
+          "why": "Serves the uniqueness refusal on EP-ADM-29 and the case-insensitive duplicate test in S-ADM-03. No other index on cinema is named by any document; the table holds one row.",
+          "name": "ix_cinema__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "format",
+      "purpose": "One of the four hand-typed lookup vocabularies; the presentation format of a SHOWTIME (not of a film), referenced by the optional showtime.format_id and by the customer's format filter.",
+      "cite": "P-ADM-23 kind table ('`format` | `format` | **`showtime.format_id`, which this epic does own** … The field is **optional**, so a FrontRow with no format rows at all still works'); P-ADM-07; EP-BRW-07",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; S-ADM-21",
+          "note": "1..60 after trimming. Same rules as the other three.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; P-ADM-07 precondition 6 ('If `format_id` is supplied, it names an **active** row of the `format` vocabulary')",
+          "note": "format is the ONE of the four where is_active is checked on a WRITE path other than the vocabulary's own: P-ADM-07 refuses a showtime naming a withdrawn format. Existing showtimes already carrying a withdrawn format are untouched and still resolve.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ADM-23; EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only; withdrawn rows participate.",
+          "name": "uq_format__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**.",
+          "name": "ck_format__1"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard.",
+          "name": "ix_format__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "genre",
+      "purpose": "One of the four hand-typed lookup vocabularies; a film's genres, reached through the many-to-many movie_genre join table rather than a column on movie.",
+      "cite": "P-ADM-23 kind table ('`genre` | `genre` | the `movie_genre` join rows (`P-ADM-01`)'); FR-ADR-021 ('`genre` is **many-to-many** through a join table. A film is routinely two genres and a single column forces either a lie or a delimiter.')",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries'",
+          "note": "GENERATED ALWAYS AS IDENTITY.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries'; EP-ADM-26; S-ADM-21",
+          "note": "1..60 after trimming. The worked example in P-ADM-23 uses the genre vocabulary: 'Drama' / '  drama  ' / 'DRAMA' all collide, 'Dramas' does not, and a `format` called 'Drama' does not collide with a `genre` called 'Drama'.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23; P-ADM-24; S-ADM-22",
+          "note": "Identical to `language`.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ADM-23; EP-ADM-26; S-XCT-09",
+          "note": "No clock default — injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "P-XCT-04; S-XCT-09 Description",
+          "note": "Same tension as `language` — see gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-23; S-ADM-21",
+          "why": "Unique within this vocabulary only; withdrawn rows participate. S-ADM-21 asserts creating genre 'Drama' then format 'Drama' both return 201 and produce two rows with different ids in different tables.",
+          "name": "uq_genre__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table; EP-ADM-26; S-ADM-21",
+          "why": "Server-side bound, provenance **technical**.",
+          "name": "ck_genre__1"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard.",
+          "name": "ix_genre__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "idempotency_record",
+      "purpose": "The per-user idempotency guard for booking confirmation: inserted first, inside the booking transaction, so two simultaneous retries collide in the database rather than both booking.",
+      "cite": "FR-ADR-020 · E3 P-PAY-09 · SRC-002 §8.3.1 · SRC-001 §5.3.2",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 column table (verbatim: 'id | bigint identity')",
+          "note": "The one place in this cluster where a primary key type is spelled out in a source document.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 ('non-null foreign key. The key is scoped per user') · E3 P-PAY-09 ('Scope is per user')",
+          "note": "SCOPE IS PER USER, NOT GLOBAL. P-PAY-09: 'Two customers can generate the same key — a weak client generator, or a copied request — and a global scope would hand one of them the other's booking.' S-PAY-06 asserts the same key from a different user id inserts cleanly and confirms normally. Type follows booking.user_id / users(id).",
+          "reserved_row": null
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 ('the client''s header value, text') · E3 P-PAY-09 · EP-PAY-01 headers · S-PAY-06",
+          "note": "1..255 characters, REQUIRED — a missing header is 400 REQUEST_INVALID, never a permitted omission. Compared as an EXACT BYTE SEQUENCE: never trimmed, lowercased, casefolded or unicode-normalised. S-PAY-06 proves it by inserting a key, the same key with one trailing space, and the same key uppercased, and asserting three rows. The value is minted by the CLIENT (crypto.randomUUID(), 36 chars, 122 random bits), once per confirm attempt, never by the server.",
+          "reserved_row": null
+        },
+        {
+          "name": "request_fingerprint",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 ('a hash of the canonicalised request body') · E3 P-PAY-09",
+          "note": "For EP-PAY-01 the canonicalised body is hold_token + showtime_id. A same-key request whose fingerprint differs is 422 IDEMPOTENCY_KEY_REUSED, permanently, because the record is never deleted.",
+          "reserved_row": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-020 ('status | in_progress or completed') · E3 P-PAY-09",
+          "note": "TYPE NAME IS UNSOURCED. The two values are a closed, fully documented set, but no document says whether the SQL type is a Postgres enum or text — payment_state is the only type in this cluster the Bible pins as an enum (S-PAY-11). The enum name here is a placeholder the merge owner may replace with text. closed vocabulary, enforced by a CHECK rather than a PostgreSQL enum type",
+          "reserved_row": null
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-020 ('nullable foreign key, set when the booking commits') · E3 P-PAY-09 happy path step 4 · E3 P-PAY-10 step 11",
+          "note": "Null while in_progress; written at step 11 together with response_body and status='completed'.",
+          "reserved_row": null
+        },
+        {
+          "name": "response_body",
+          "type": "jsonb",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-020 ('jsonb, the response that was returned') · E3 P-PAY-09 · S-PAY-06",
+          "note": "Returned BYTE FOR BYTE to a duplicate whose winner is completed — never a second booking and never a second capture. Null while in_progress.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "FR-ADR-020 ('created_at, completed_at | timestamptz') · E8 P-XCT-04 · S-XCT-09",
+          "note": "",
+          "reserved_row": null
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-020 ('created_at, completed_at | timestamptz') · E3 P-PAY-09",
+          "note": "Null while in_progress.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "user_id",
+            "idempotency_key"
+          ],
+          "cite": "FR-ADR-020 ('Unique constraint on (user_id, idempotency_key)') · E3 P-PAY-09 · EP-PAY-01 idempotency block · S-PAY-06",
+          "why": "THE CHECK AND THE ACT IN ONE STATEMENT. The row is inserted FIRST, in the same transaction as the booking, before any other work. The insert either succeeds — this request owns the key — or it violates the constraint, in which case this request is a duplicate. There is no check-then-act window, which is exactly the trap GOTCHAS.md records: 'An idempotency key stored after the work is done is not idempotent. Two simultaneous retries both check, both find nothing, both book.' The three duplicate behaviours are the whole set: winner completed -> replay the stored response_body with the original status code; winner in_progress -> 409 IDEMPOTENCY_IN_FLIGHT with Retry-After (never a wait, because holding a connection open ties up one of ~110 on a db.t3.micro); fingerprint differs -> 422 IDEMPOTENCY_KEY_REUSED.",
+          "name": "uq_idempotency_record__user_id_idempotency_key"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "FR-ADR-020 ('non-null foreign key') · S-XCT-09 (blanket RESTRICT rule)",
+          "on_update": "RESTRICT",
+          "name": "fk_idempotency_record__user_id"
+        },
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "references": {
+            "table": "booking",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "FR-ADR-020 ('nullable foreign key, set when the booking commits') · S-XCT-09",
+          "on_update": "RESTRICT",
+          "name": "fk_idempotency_record__booking_id"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_idempotency_record__status",
+          "expression": "status IN ('in_progress', 'completed')",
+          "cite": "FR-ADR-020 ('status | in_progress or completed') · E3 P-PAY-09",
+          "why": "the idempotency_status vocabulary. A CHECK rather than a PostgreSQL enum so that adding a value is an ordinary migration."
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "language",
+      "purpose": "One of the four hand-typed lookup vocabularies a film is built from; the language a movie is listed in and one of the customer's browse filters.",
+      "cite": "P-ADM-23 ('Create the lookup vocabularies a film is built from', kind table: `language` -> table `language`, referenced by `movie.language_id`); FR-ADR-021 ('`language` and `certification` are **lookup tables**, not free text and not PostgreSQL enums')",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017; P-ADM-23 'What a row carries' table ('`id` | integer identity, the value `P-ADM-01` stores on the film')",
+          "note": "GENERATED ALWAYS AS IDENTITY. P-ADM-23 says 'integer identity'; FR-ADR-017 fixes the width at bigint on every table and outranks the prose gloss. `id` is not accepted from the request — supplying it is 400 REQUEST_INVALID, never a silently dropped field (P-ADM-23 validation table, S-ADM-21).",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries' ('`name` | the displayed text. This is the only thing the admin types'); EP-ADM-26 body ('string, 1..60 characters after trimming, unique within this vocabulary on lower(trim(name)), required'); S-ADM-21",
+          "note": "1..60 after trimming (60 returns 201, 61 returns 422 — S-ADM-21). Stored exactly as typed with case preserved and only outer whitespace trimmed: submitting '  Drama  ' stores 'Drama', and GET never returns the lowercased form (S-ADM-21). NEVER RENAMED — there is no PUT and no PATCH route that changes a lookup name (P-ADM-24; S-ADM-21 asserts the route walk finds none); sending `name` to the PATCH address is 400 REQUEST_INVALID.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-23 'What a row carries' ('`is_active` | boolean, `true` on creation'); P-ADM-24 ('Withdrawal is `is_active = false`, and the column is on the row from the first migration'); S-ADM-22",
+          "note": "Written true by the server on insert; NOT accepted from the request (400 REQUEST_INVALID if supplied). Withdrawal replaces deletion (FR-ADR-012). A withdrawn row still participates in the unique index, is still resolved by every film already carrying it, and is still returned by EP-BRW-07 when a visible film carries it (P-ADM-24; EP-BRW-07: 'is_active is deliberately NOT a filter on this endpoint'). No document states whether `true` is a DATABASE default or an application-set value — see gaps; I have left default null rather than invent DEFAULT true.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ADM-23 'What a row carries' ('`created_at` | `timestamptz`, UTC'); EP-ADM-26 201 body ('created_at: string, ISO-8601 instant in UTC'); P-XCT-04; S-XCT-09",
+          "note": "This is the ONE lookup column the PRD types explicitly. No clock default — injected clock (FR-ADR-018, Art IX.5). Returned by EP-ADM-25 in every item.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "P-XCT-04 ('tables that mutate carry `updated_at`'); S-XCT-09 Description (delegates 'which tables those are' to the data model)",
+          "note": "CONFLICT THE MERGE OWNER MUST SEE: P-ADM-23 enumerates 'The same four fields in all four tables' — id, name, is_active, created_at — and lists no updated_at. But these rows DO mutate (EP-ADM-27 writes is_active), so P-XCT-04's rule reaches them. S-XCT-09 explicitly hands the call to the data model. Included per the crosscutting rule; flagged in gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-23 ('`lower(trim(name))` is unique **within one vocabulary**, enforced by a unique index and not by a prior read'); S-ADM-21; EP-ADM-26 idempotency",
+          "why": "Two entries a person cannot tell apart in a select are two entries a person will pick the wrong one of. Scope is ONE vocabulary: a `genre` called Drama and a `format` called Drama are two unrelated rows in two unrelated tables and neither collides. WITHDRAWN ROWS PARTICIPATE — a withdrawn Drama blocks a new Drama and the 422 says to restore it instead (P-ADM-23 exception 6b, asserted verbatim by S-ADM-21).",
+          "name": "uq_language__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 60",
+          "cite": "P-ADM-23 validation table ('`name` | string | 1..60 characters after trimming | **technical**'); EP-ADM-26; S-ADM-21",
+          "why": "Stated as server-side validation with provenance marked **technical** (a bound chosen by the build session because a column needs one, explicitly NOT a business figure). A CHECK is a stricter restatement, not a new rule. Note it is 60 here and 40 on seat_category.",
+          "name": "ck_language__1"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-23",
+          "why": "The uniqueness guard; a functional index is the only way to express it.",
+          "name": "ix_language__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "manager_screen_assignment",
+      "purpose": "One row per (manager user, screen) pair — the whole of manager scope; the router dependency resolves the caller's screen ids from it and every manager query filters on that set.",
+      "cite": "FR-ADR-011 (APPROVED) · P-ADM-17 · E8 S7.5 · S3.1 · P-XCT-05 preconditions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-19 ('For `manager.screen_unassigned` it is the primary key the removed `manager_screen_assignment` row had') · S-ADM-18 (`SELECT count(*) FROM manager_screen_assignment WHERE id = :that_entity_id` returns 0)",
+          "note": "A surrogate key is required because the audit row records the id the deleted row held. Generation mechanism not stated.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-011 ('one row per (manager user, screen)') · S-ADM-18 (`(user_id, screen_id)` unique, asserted by name in information_schema) · P-ADM-19 (`before` carries exactly the keys user_id and screen_id)",
+          "note": "Must reference an account whose role is `manager`: EP-ADM-24 returns 422 'That account is not a manager account. Screens can only be assigned to managers.' That check is application-side; no document asks for a database constraint on it.",
+          "reserved_row": null
+        },
+        {
+          "name": "screen_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-011 · EP-ADM-23/EP-ADM-24 (`screen_ids`: array of integer) · S-ADM-18",
+          "note": "OWNED JOINTLY WITH THE VENUE CLUSTER — the referenced table is `screen`.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 — no table in `public` other than `alembic_version` may lack a `created_at` · FR-ADR-018",
+          "note": "Required by the schema-wide rule rather than by a row that names this column. Flagged so the merge owner can see the derivation.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "user_id",
+            "screen_id"
+          ],
+          "cite": "FR-ADR-011 ('unique on the pair') · P-ADM-17 · S-ADM-18 ('(user_id, screen_id) is unique on manager_screen_assignment, asserted by name in information_schema')",
+          "why": "One assignment per manager per hall. EP-ADM-24 replaces the complete set and rejects a duplicate screen_id in the request body with 422 before it reaches the constraint.",
+          "name": "uq_manager_screen_assignment__user_id_screen_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (every FK in the schema is confdeltype 'r') · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_manager_screen_assignment__user_id"
+        },
+        {
+          "columns": [
+            "screen_id"
+          ],
+          "references": {
+            "table": "screen",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (every FK in the schema is confdeltype 'r') · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_manager_screen_assignment__screen_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "cite": "P-XCT-05 step 3 · EP-RPT-01's authorisation_rule ('manager means the set from manager_screen_assignment, possibly empty')",
+          "why": "Resolved once per manager request by the router dependency. DERIVED FROM THE NAMED QUERY; the unique index above already leads on user_id, so this may be redundant — the merge owner should collapse it.",
+          "name": "ix_manager_screen_assignment__user_id"
+        }
+      ]
+    },
+    {
+      "name": "movie",
+      "purpose": "One film, typed in by hand by an admin; carries the six details a customer chooses on, the poster key, and the two independent visibility gates (publication and the display window).",
+      "cite": "P-ADM-01 (docs/03 PRD/sections/E6_admin.md S4) + FR-ADR-021 + SRC-001 §5.1.1",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017",
+          "note": "NOT uuid. FR-ADR-017 rules bigint identity on EVERY table, database-generated, explicitly rejecting UUIDv4/v7/ULID; the oversell index (showtime_id, seat_id) is named as the deciding reason. Every criterion addresses movies by small integers (GET /api/movies/11; poster key regex ^posters/\\d+/[0-9a-f]{32}$; GET /api/movies/abc returns 422). This contradicts the BRIEF's uuid default and the 'application generates ids' default — reporting the source as instructed.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01 server-side validation table; EP-ADM-02",
+          "note": "1..200 characters after trimming, enforced at the API (422). DELIBERATELY NOT UNIQUE — FR-ADR-021: 'No natural key. No unique constraint on title.' A re-release is a legitimate second row.",
+          "reserved_row": null
+        },
+        {
+          "name": "synopsis",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01 server-side validation table; EP-ADM-02 body",
+          "note": "EP-ADM-02 declares it 'string, 0..4000, required' — required on the wire, so NOT NULL, but an empty string is a legal value. Plain text, no markup (P-BRW-02).",
+          "reserved_row": null
+        },
+        {
+          "name": "runtime_minutes",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01; SRC-001 §5.1.1",
+          "note": ">= 1, whole minutes. Read by the showtime form to PREFILL ends_at, never to derive it — S-ADM-09 asserts changing runtime_minutes leaves every stored showtime.ends_at byte-identical.",
+          "reserved_row": null
+        },
+        {
+          "name": "certification_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01; FR-ADR-021",
+          "note": "FK to the certification lookup table. FR-ADR-021: a lookup table, not free text and not a PostgreSQL enum. P-BRW-02: the wire shape is {id, name} and THERE IS NO code COLUMN — 'No code column is added.'",
+          "reserved_row": null
+        },
+        {
+          "name": "language_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01; FR-ADR-021; SRC-001 §5.1.3",
+          "note": "FK to the language lookup table. It is a customer-facing filter facet (P-BRW-04), applied to the movie row and not to a showtime.",
+          "reserved_row": null
+        },
+        {
+          "name": "poster_object_key",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ADM-03; FR-ADR-021; FR-ADR-061",
+          "note": "The S3 OBJECT KEY, never a URL — 'moving buckets does not rewrite every row' (FR-ADR-021). Nullable because a film is drafted before its poster is uploaded; a film cannot be PUBLISHED with a null key, and that is a publish-time check inside the transaction, explicitly NOT a column constraint (P-ADM-05, FR-ADR-021). Key shape asserted by S-ADM-25: ^posters/\\d+/[0-9a-f]{32}$, carrying no part of the client's filename. NAME COLLISION — see notes: two Bible stories call this column poster_key.",
+          "reserved_row": null
+        },
+        {
+          "name": "published_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-BRW-01; P-ADM-05; FR-ADR-021",
+          "note": "Gate 1 of 2. Null means draft. Server-stamped from the injected clock at publish, never typed by an admin, so it keeps its zone and is serialised as a real instant (EP-ADM-03). The read path tests ONLY 'IS NOT NULL' and NEVER compares it to the clock — a future-dated published_at would duplicate display_from. Unpublish sets it back to null (P-ADM-06). Also the default listing sort key: ORDER BY published_at DESC (P-BRW-03, FR-ADR-021).",
+          "reserved_row": null
+        },
+        {
+          "name": "display_from",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ADM-04; P-BRW-01; FR-ADR-021",
+          "note": "INCLUSIVE lower bound of gate 2. Stored as a UTC instant converted from the naive local Asia/Kolkata value the admin typed; the server 'adds no day, rounds nothing to midnight and derives neither end from the other'. NULLABLE and a null FAILS the window predicate — 'there is no three-valued subtlety'; the query carries no COALESCE (asserted by S-BRW-01).",
+          "reserved_row": null
+        },
+        {
+          "name": "display_until",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ADM-04; P-BRW-01; FR-ADR-021",
+          "note": "EXCLUSIVE upper bound. The ADMIN types the exclusive end instant; the server shifts nothing. Nullable, and null fails the predicate. Must be strictly greater than display_from IN THE MERGED ROW (a PATCH sending one half alone is checked against the stored other half). Also carried on the customer listing payload, because the date strip is built from max(display_until) (P-BRW-02, P-BRW-04).",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-02; FR-ADR-035; S-ADM-14",
+          "note": "Optimistic concurrency. Set to 1 by the application on insert; incremented by exactly 1 on every successful mutating write. S-ADM-14 asserts the EXACT set of tables carrying a column named version: movie, showtime, screen, seat_category, cinema — and no others. A no-op write does not increment it. Default is application-set, not database-side, per P-ADM-01 step 4 ('inserts the movie row with ... version = 1').",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23",
+          "note": "Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' No document states whether the default is now() or application-set.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "certification_id"
+          ],
+          "references": {
+            "table": "certification",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "P-ADM-01 precondition 3; FR-ADR-021; S-ADM-19",
+          "on_update": "RESTRICT",
+          "name": "fk_movie__certification_id"
+        },
+        {
+          "columns": [
+            "language_id"
+          ],
+          "references": {
+            "table": "language",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "P-ADM-01 precondition 3; FR-ADR-021; S-ADM-19",
+          "on_update": "RESTRICT",
+          "name": "fk_movie__language_id"
+        }
+      ],
+      "checks": [],
+      "indexes": []
+    },
+    {
+      "name": "movie_genre",
+      "purpose": "The many-to-many join that gives a film its genres.",
+      "cite": "FR-ADR-021 ('genre is many-to-many through a join table'); P-ADM-01 happy path step 4; E1_browse.md P-BRW-04 ('at least one currently visible film has a movie_genre row pointing at it')",
+      "columns": [
+        {
+          "name": "movie_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01 step 4; FR-ADR-021",
+          "note": "Written in the SAME transaction as the movie insert.",
+          "reserved_row": null
+        },
+        {
+          "name": "genre_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-01 (genre_ids: array of integer, 1..10, unique, each must exist); FR-ADR-021",
+          "note": "1..10 rows per film; a duplicate genre_id in the request is 422. A film with zero rows here is legal on the wire (genres is []) even though the create endpoint refuses an empty array — S-BRW-02 asserts the empty case renders.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "movie_id",
+        "genre_id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "references": {
+            "table": "movie",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-19 (zero CASCADE rules anywhere in the schema)",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_genre__movie_id"
+        },
+        {
+          "columns": [
+            "genre_id"
+          ],
+          "references": {
+            "table": "genre",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-19",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_genre__genre_id"
+        }
+      ],
+      "checks": [],
+      "indexes": []
+    },
+    {
+      "name": "outbox_message",
+      "purpose": "The whole product's transactional outbox: one row per asynchronous job, inserted in the same database transaction as the business change and relayed to SQS/ElasticMQ afterwards, so the job commits with the change or does not exist.",
+      "cite": "FR-ADR-031 Decision; E4 P-TKT-04 'Enqueue the receipt through a transactional outbox' Preconditions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('An `outbox_message` table: `id`, ...'); Bible S-TKT-06 `SELECT status FROM outbox_message WHERE id=:o`",
+          "note": "THE TYPE IS NOT STATED BY ANY DOCUMENT. Reported as bigint against project evidence, not against the brief's uuid default: E8 S7.3 / E6 P-ADM-19 both give `audit_log.id` as `bigint identity`, and Bible S-PAY-07 casts `(o.payload->>'booking_id')::bigint`, which forces booking.id — and therefore receipt_dispatch.booking_id — to be bigint. See gaps: the PK convention is a merge-owner decision, not this cluster's.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 Preconditions; Bible S-TKT-06 ('outbox_message.created_at is written from the injected clock and the age threshold is bound into that statement from the same clock')",
+          "note": "NO DATABASE-SIDE DEFAULT. S-TKT-06 asserts `rg -n 'now\\(\\)|CURRENT_TIMESTAMP|statement_timestamp' backend/app/workers` returns 0 hits, because the database clock does not move when the injected clock does and a relay written against it would select the row at 29 s and at 31 s alike. A `DEFAULT now()` here would let the relay test pass by accident and is a defect. The application supplies the value.",
+          "reserved_row": null
+        },
+        {
+          "name": "topic",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 'topic is a controlled vocabulary with exactly two members in v1'",
+          "note": "Exactly two members in v1: 'receipt.send' and 'password_reset.send'. E6 P-ADM-19 records that `receipt.send` is an `outbox_message.topic` and is NOT an `audit_log.action` — 'a different column in a different namespace'. Modelled as text + CHECK rather than a native enum: no document mandates a type. See enums.",
+          "reserved_row": null
+        },
+        {
+          "name": "payload",
+          "type": "jsonb",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`payload` (`jsonb`)'); E4 P-TKT-04 payload table",
+          "note": "Key set is fixed per topic and is exhaustive. `receipt.send`: booking_id, dispatch_seq, request_id, message_version. `password_reset.send`: user_id, reset_token_id, request_id, message_version. 'No customer data travels in the payload — no email address, no seat list, no amount' (P-TKT-04, FR-ADR-059). NO CARD DATA anywhere. The reset token value never travels here (see gaps, OPEN-RESETTOKEN-01).",
+          "reserved_row": "OPEN-RESETTOKEN-01"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`status` (`pending` / `sent`)'); E4 P-TKT-04 Preconditions and happy path steps 1, 3, 4",
+          "note": "TWO values only — `pending` and `sent`. This is the state of the RELAY TO THE QUEUE, not of the email. E3 P-PAY-10 step 15: 'Step 15 marks the outbox row and not the dispatch row.' No DB default is stated; the application writes 'pending' explicitly at insert.",
+          "reserved_row": null
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 happy path step 3 ('updates the row to `status = 'sent'`, `sent_at = now()`')",
+          "note": "Set only when the queue accepted the message. Bible S-TKT-06: 'with the queue reachable the same confirm leaves that row `sent` with sent_at non-null'. Never cleared; `sent` rows are kept forever as the record that the receipt was dispatched (P-TKT-04 step 5, FR-ADR-012).",
+          "reserved_row": null
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-031 Decision; E4 P-TKT-04 happy path step 1 ('`attempts = 0`') and exception row 5 ('the row stays `pending` and `attempts` increments')",
+          "note": "Written 0 at insert by the application; no DB default is stated. Bible S-TKT-05 asserts `SELECT topic, status, attempts FROM outbox_message WHERE payload->>'booking_id'=:b` returns `receipt.send, pending, 0`. No maximum, no backoff and no terminal state is specified for this counter — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "FR-ADR-031 Decision ('`attempts`, `last_error`'); E4 P-TKT-04 Preconditions",
+          "note": "The column is required by two documents but NO specification states when it is written. P-TKT-04 exception row 5 says only that the relay 'logs at ERROR and retries on the next loop; the row stays `pending` and `attempts` increments' — it does not say last_error is set. Reported as specified, with the write rule listed in gaps.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "topic IN ('receipt.send', 'password_reset.send')",
+          "cite": "E4 P-TKT-04 ('A row whose `topic` is not in this table is rejected at insert'); Bible S-TKT-05",
+          "why": "Bible S-TKT-05 requires that an insert with topic='receipt.render' does not commit and that SELECT count(*) FROM outbox_message WHERE topic='receipt.render' returns 0 afterwards. The criterion explicitly says it 'asserts the observable outcome and names no mechanism, so GOAL_08 may implement the guard as a CHECK constraint, a trigger or application validation'.",
+          "name": "ck_outbox_message__1"
+        },
+        {
+          "expression": "status IN ('pending', 'sent')",
+          "cite": "FR-ADR-031 Decision",
+          "why": "The relay state is a closed two-member vocabulary. No document asserts this as a test, so it is a stricter-than-required guard, not a criterion.",
+          "name": "ck_outbox_message__2"
+        },
+        {
+          "expression": "(topic <> 'receipt.send' OR (payload ?& ARRAY['booking_id', 'dispatch_seq', 'message_version', 'request_id'] AND payload - 'booking_id' - 'dispatch_seq' - 'message_version' - 'request_id' = '{}'::jsonb)) AND (topic <> 'password_reset.send' OR (payload ?& ARRAY['message_version', 'request_id', 'reset_token_id', 'user_id'] AND payload - 'message_version' - 'request_id' - 'reset_token_id' - 'user_id' = '{}'::jsonb))",
+          "cite": "E4 P-TKT-04 Server-side validation; Bible S-TKT-05",
+          "why": "FR-ADR-059 enumerates the payload keys exhaustively. Stated as prose by the reader, which is not a constraint. `?&` alone proves every required key is PRESENT but not that no others are, and PostgreSQL forbids a subquery in a CHECK - so the 'and no others' half is done by subtracting the known keys and requiring an empty object. See X-11: whether the fourth key belongs here is flagged by the PRD itself as a question for 06 DataModel.",
+          "name": "ck_outbox_message__payload_keys_exact"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "unique": false,
+          "cite": "FR-ADR-031 ('before each poll of the queue, the worker checks for `pending` outbox rows older than a short threshold... The relay's claim is `SELECT ... FOR UPDATE SKIP LOCKED`'); E4 P-TKT-04 happy path step 4; Bible S-TKT-06",
+          "why": "The relay's own query, run before every queue poll for the life of the system: select `pending` rows older than OUTBOX_RELAY_MIN_AGE_SECONDS with FOR UPDATE SKIP LOCKED in a bounded batch. NOTHING IS EVER DELETED from this table (FR-ADR-012, P-TKT-04 step 5), so it grows one row per booking forever and an unindexed scan for `pending` degrades on every loop. NO DOCUMENT SPECIFIES ANY INDEX — this is derived from a stated query, not from a stated index.",
+          "name": "ix_outbox_message__status_created_at"
+        }
+      ]
+    },
+    {
+      "name": "password_reset_token",
+      "purpose": "One row per password-reset request: the SHA-256 of a token that is never stored, its expiry, whether it was spent, and the two separate columns that track the worker's send of the reset email.",
+      "cite": "P-ACC-07 step 5 and its two-column table · P-ACC-08 step 4 · E4 P-TKT-12",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-TKT-12 server-side validation — '`reset_token_id`: integer, positive, existing' · S-TKT-15 (`WHERE id=:t`)",
+          "note": "The queue message carries this id and NEVER the token. No document states the generation mechanism.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-07 step 5 ('a `password_reset_token` row holding `user_id` ...') · S-ACC-07 (`WHERE user_id=:id`)",
+          "note": "The account the link is for. P-TKT-12 validates that the message's `user_id` matches this column; a mismatch is dead-lettered, never sent.",
+          "reserved_row": null
+        },
+        {
+          "name": "token_sha256",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-07 step 5 ('`token_sha256` (the SHA-256 of the token, hex)') · S-ACC-07",
+          "note": "SHA-256 hex of a 43-character URL-safe token drawn from 32 CSPRNG bytes. ONLY THE HASH IS STORED — 'somebody who can read the table cannot mint a session from it'. P-ACC-08 step 1 looks the row up by this value. S-ACC-07 asserts the 43 characters appear in `SELECT password_reset_token::text`, in the 202 body and in DEBUG-level stdout NOWHERE. DO NOT ADD A PLAINTEXT TOKEN COLUMN — see gaps, OPEN-RESETTOKEN-01.",
+          "reserved_row": "OPEN-RESETTOKEN-01"
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-07 step 5 and its worked example ('`expires_at = created_at + PASSWORD_RESET_TTL_SECONDS`')",
+          "note": "PASSWORD_RESET_TTL_SECONDS default 1800 (a [JUDGMENT CALL], configuration, not a ruled number). Compared against the INJECTED clock in UTC (FR-ADR-018). The 1800 must not appear as a literal in a constraint or a message — every customer-visible '30 minutes' is rendered from the variable.",
+          "reserved_row": null
+        },
+        {
+          "name": "used_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ACC-07 step 5 · P-ACC-08 step 4 · S-SCP-04 ('The password_reset_token.used_at column is explicitly excluded from the check and must still exist')",
+          "note": "THE THIRD AND SEPARATE TIMESTAMP: it records the CUSTOMER SPENDING the token and has nothing to do with the send. The single-use guarantee is the conditional update `UPDATE password_reset_token SET used_at = :now WHERE id = :id AND used_at IS NULL` affecting exactly one row inside the password-change transaction — not a prior read. P-ACC-07 step 3 also sets it on every outstanding unused token for that user, so at most one live token exists per account. NOTE THE NEAR-MISS: S-SCP-04's excluded-column sweep bans `used_at` on `booking` and MUST NOT trip over this column.",
+          "reserved_row": null
+        },
+        {
+          "name": "email_claimed_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ACC-07 step 5 and its column table ('a worker is holding this send job') · E4 P-TKT-12 step 2 and exceptions 3a, 4, 6",
+          "note": "A CLAIM, NOT A RECORD OF DELIVERY. Set by the conditional claim; CLEARED BACK TO NULL on an SES refusal or a SES_SEND_TIMEOUT_MS timeout (`UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL`); and overtaken by the age branch `email_claimed_at < now() - :stale_interval` (RECEIPT_CLAIM_STALE_SECONDS, 900) when a worker dies before it can clear anything. These are ONE reclaim mechanism with a fast path, not two.",
+          "reserved_row": null
+        },
+        {
+          "name": "email_sent_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ACC-07 step 5 and its column table ('an email went out … never cleared by anything') · E4 P-TKT-12 step 4 and exception 3",
+          "note": "TERMINAL. Set only after SES accepts, and NEVER CLEARED BY ANYTHING — that is what makes a duplicate credential email impossible even if the queue delete fails and SQS redelivers a day later (S-TKT-15 asserts a redelivery 24 injected hours later makes 0 SES calls).",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ACC-07 step 5 (the row holds `created_at`) · FR-ADR-018 · S-XCT-09 (every table carries created_at)",
+          "note": "See gaps: S-ACC-07 asserts `expires_at = created_at + 1800 seconds FROM THE INJECTED CLOCK`, which a database-side `now()` default cannot satisfy under an injected test clock.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 — `SELECT conname, confdeltype FROM pg_constraint WHERE contype = 'f' AND confdeltype <> 'r'` returns 0 ROWS, i.e. EVERY foreign key in the schema is RESTRICT · P-XCT-04 · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_password_reset_token__user_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "token_sha256"
+          ],
+          "unique": false,
+          "cite": "P-ACC-08 step 1 ('hashes the submitted token with SHA-256 and looks the row up by that hash') · P-ACC-08's rate-limit rationale ('it bounds the indexed lookup per guess')",
+          "why": "The confirm endpoint's only lookup. DERIVED FROM THE NAMED QUERY — no document declares this index, and no document says whether it is unique (see gaps).",
+          "name": "ix_password_reset_token__token_sha256"
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "cite": "P-ACC-07 step 3 ('marks every outstanding unused reset token for that user as used') · S-ACC-07 (`SELECT count(*) FROM password_reset_token WHERE user_id=:id AND used_at IS NULL`)",
+          "why": "The per-user sweep that keeps at most one live token per account. DERIVED FROM THE NAMED QUERY, not declared by any document.",
+          "name": "ix_password_reset_token__user_id"
+        }
+      ]
+    },
+    {
+      "name": "payment",
+      "purpose": "One row per booking ATTEMPT recording the simulated provider's state machine, the amount captured, the transition instants, and the idempotency key that produced it.",
+      "cite": "E3 P-PAY-07 · FR-ADR-041",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "project id convention: FR-ADR-020, E6 P-ADM-19 ('bigint identity') · referenced by booking.payment_id",
+          "note": "The payment row is inserted BEFORE the booking row (P-PAY-10 step 6 then step 7), so its id must be available to the booking insert.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-07 · FR-ADR-041 · E7 P-RPT-03 ('payment.state is one of pending, authorized, captured, failed') · S-PAY-11 ('SELECT unnest(enum_range(NULL::payment_state))') · S-SCP-12 ('the column is state')",
+          "note": "THE COLUMN IS NAMED `state`, NOT `status`. Two Bible criteria get this wrong — see notes[]. It is a real Postgres enum type named payment_state: S-PAY-11 asserts `enum_range(NULL::payment_state)` returns exactly four rows and no 'refunded'. Transitions are enforced in code: capture from pending is rejected (InvalidPaymentTransition), and failed is terminal. closed vocabulary, enforced by a CHECK rather than a PostgreSQL enum type",
+          "reserved_row": null
+        },
+        {
+          "name": "amount_paise",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-07 ('carrying the state, the amount in paise, the transition timestamps and the Idempotency-Key') · FR-ADR-041 · S-PAY-01 · S-PAY-05 · S-PAY-10",
+          "note": "The fourth and last money column in this cluster. S-PAY-10: payment.amount_paise, booking.total_paise and the figure on the checkout total are all the same integer, and `SELECT sum(price_paise) FROM booking_seat WHERE booking_id=B` also returns it. Never a float, never NUMERIC(x,2).",
+          "reserved_row": null
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-07 ('One payment row per booking attempt, carrying ... the Idempotency-Key that produced it') · FR-ADR-041 · S-PAY-05 · S-PAY-15",
+          "note": "NOT UNIQUE, AND THAT IS DELIBERATE. S-PAY-15 proves it: the same FAIL_-prefixed key sent twice leaves `SELECT count(*) FROM payment WHERE state='failed'` at 2 — two payment rows share one key, because each failed attempt commits its own row in its own transaction while the booking transaction (and its idempotency_record row) rolls back. Putting a unique constraint here would break the deliberate fail->retry->succeed drill. The idempotency guard lives on idempotency_record, not here.",
+          "reserved_row": null
+        },
+        {
+          "name": "pending_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "E3 P-PAY-07 happy path step 1 ('Insert a payment row in pending') · S-PAY-05 · S-SCP-12 ('pending_at <= authorized_at <= captured_at')",
+          "note": "The row is always created in pending, so this is always set.",
+          "reserved_row": null
+        },
+        {
+          "name": "authorized_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E3 P-PAY-07 happy path step 3 ('Transition to authorized, then to captured, recording each timestamp') · S-PAY-05 · S-SCP-12",
+          "note": "Null while pending and on a failed row that never authorised. American spelling `authorized` throughout the documents (matching the enum value), not `authorised`.",
+          "reserved_row": null
+        },
+        {
+          "name": "captured_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E3 P-PAY-07 happy path step 3 · S-PAY-05 ('SELECT state, captured_at FROM payment WHERE id=P still returns pending and null')",
+          "note": "Null unless the row reached captured. Likely the source of EP-TKT-01's `paid_at` wire field — see gaps[].",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries created_at') · S-XCT-09",
+          "note": "Required by the blanket rule even though pending_at will normally hold the same instant.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "name": "ck_payment__state",
+          "expression": "state IN ('pending', 'authorized', 'captured', 'failed')",
+          "cite": "E3 P-PAY-07 · FR-ADR-041 · E7 P-RPT-03 ('payment.state is one of pending, authorized, captured, failed') · S-PAY-11 ('SELECT unnest(enum_range(NULL::payment_state))') · S-SCP-12 ('the column is state')",
+          "why": "the payment_state vocabulary. A CHECK rather than a PostgreSQL enum so that adding a value is an ordinary migration."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "state"
+          ],
+          "unique": false,
+          "cite": "E7 P-RPT-12 ('Required indexes ... payment(state)') · S-RPT-16",
+          "why": "Every takings and dashboard aggregate filters `p.state = 'captured'`.",
+          "name": "ix_payment__state"
+        }
+      ]
+    },
+    {
+      "name": "receipt_dispatch",
+      "purpose": "One durable claim-and-outcome row per booking recording whether the receipt email was claimed, sent, failed or suppressed — the guard that makes two senders for one booking impossible, and the only record of what SES was asked to do.",
+      "cite": "FR-ADR-032 Decision; E4 P-TKT-05 'Send exactly one receipt per booking, and retry the ones that fail' Preconditions",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 happy path step 2 (the claim UPDATE ends `RETURNING id`)",
+          "note": "THE TYPE IS NOT STATED. Same evidence and same caveat as outbox_message.id — see gaps. The claim returns it; nothing else in any document reads or joins on it.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-032 Decision ('A `receipt_dispatch` claim row, unique on `booking_id`'); E4 P-TKT-05 Preconditions; Bible S-PAY-07",
+          "note": "TYPE IS FORCED BY A CRITERION'S SQL: S-PAY-07 runs `... WHERE r.booking_id = (o.payload->>'booking_id')::bigint`, so this column and booking.id must both be bigint or that test cannot run. This is the one hard type fact in this cluster.",
+          "reserved_row": null
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions ('`status` (`pending` / `sending` / `sent` / `failed` / `suppressed`)'); E4 P-TKT-04 'The `suppressed` state' block; E4 P-TKT-10 state table",
+          "note": "FIVE values. Created `pending` by the booking transaction; `suppressed` is written ONLY by the seed script and by nothing in the running application, has no incoming edge from any other state and no outgoing edge at all (P-TKT-05 state machine). `sent` means SES ACCEPTED the message for delivery and is never revised — P-TKT-11: 'evidence of dispatch, never of receipt'. Modelled as text + CHECK; no document mandates a native enum.",
+          "reserved_row": null
+        },
+        {
+          "name": "dispatch_seq",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions ('`dispatch_seq` (integer, `>= 1`)'); E4 P-TKT-04 happy path step 1 and Server-side validation; E4 P-TKT-07 happy path step 5; S8 merge report row X-10",
+          "note": "BUILD-SESSION EXTENSION, EXPLICITLY FLAGGED FOR 06 DataModel TO CONFIRM. It is the reconciliation of FR-ADR-032 (a `sent` claim is not retryable) against FR-ADR-048 (a resend control that re-enqueues the job): one row per booking stays unique on booking_id, and the worker's claim is conditional on the sequence so a stale redelivery cannot re-send. E4 lane notes: 'The merge pass and `06 DataModel` must confirm both, and if either is rejected the resend control needs a different mechanism.' Written 1 in the booking transaction; incremented only by an accepted resend.",
+          "reserved_row": null
+        },
+        {
+          "name": "claimed_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 2 (`claimed_at=now()` in the claim UPDATE, and `claimed_at < now() - :stale_interval` in its WHERE)",
+          "note": "THE WORKER'S CLAIM COLUMN. Null on a row the booking transaction just created ('every timestamp null', P-TKT-04 step 1). IT IS NOT CLEARED ON FAILURE — unlike password_reset_token.email_claimed_at, which P-TKT-12 exception 4 clears to NULL explicitly. A failed receipt send moves status to 'failed' and leaves claimed_at set; the 'failed' branch of the claim's WHERE clause is what makes it retryable. Bible S-TKT-07 requires claimed_at to be written from the INJECTED clock and the staleness threshold bound from the same clock, asserting `rg -n 'now\\(\\)|CURRENT_TIMESTAMP' backend/app/workers` returns 0 hits — see notes, this contradicts the literal `now()` in the PRD's published claim statement.",
+          "reserved_row": null
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 happy path step 5 ('`sent_at=now()`'); E4 P-TKT-04 'The `suppressed` state' block",
+          "note": "Set only when SES accepted. Never cleared. Bible S-TKT-08 asserts it reads null on a timed-out send.",
+          "reserved_row": null
+        },
+        {
+          "name": "ses_message_id",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 5 ('`ses_message_id=<the id SES returned>`'); FR-ADR-032 Consequences; FR-ADR-060",
+          "note": "The id SES returned on acceptance. FR-ADR-060: it 'is what makes \"did this send\" answerable'. Null on failure, on timeout and on a suppressed row.",
+          "reserved_row": null
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions and happy path step 2 ('`attempts=attempts+1`'); E4 P-TKT-04 happy path step 1 ('`attempts = 0`')",
+          "note": "Written 0 in the booking transaction; no DB default stated. LOAD-BEARING BEYOND COUNTING: P-TKT-07 steps 3 and 4 use attempts=0 versus attempts>0 to distinguish 'the first receipt has not been attempted yet' (202 queued:false, no token spent) from 'a resend is already in flight' (202 queued:false). It is 0 only on a row no worker has ever claimed.",
+          "reserved_row": null
+        },
+        {
+          "name": "last_error",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "E4 P-TKT-05 Preconditions, exception rows 2 and 2a; FR-ADR-049 dimension 5",
+          "note": "Carries the SES error. MUST DISTINGUISH A TIMEOUT FROM A REFUSAL: P-TKT-05 exception 2a — 'last_error records that the call timed out rather than that SES refused, so the two are distinguishable afterwards by the operator'. Bible S-TKT-08 tests exactly that: last_error contains 'timeout' and does not contain the SES refusal string, and an SES error is 'distinguishable from the timeout case by that string'.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "cite": "FR-ADR-032 Decision ('A `receipt_dispatch` claim row, unique on `booking_id`'); E4 P-TKT-05 Preconditions ('unique on `booking_id`'); Bible S-TKT-05",
+          "why": "One row per booking is the whole guarantee. S-TKT-05: 'a second `receipt_dispatch` insert for the same booking_id does not commit and SELECT count(*) FROM receipt_dispatch WHERE booking_id=:b stays at 1.' The resend raises dispatch_seq on the same row rather than inserting a second, precisely so this constraint survives FR-ADR-048.",
+          "name": "uq_receipt_dispatch__booking_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "references": {
+            "table": "booking",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "FR-ADR-032 Decision; FR-ADR-012 ('every relationship is `ON DELETE RESTRICT`. A cascade is a delete that happens without anyone writing the word delete')",
+          "note": "FR-ADR-012 fixes the action product-wide; no row in this cluster is ever deleted.",
+          "on_update": "RESTRICT",
+          "name": "fk_receipt_dispatch__booking_id"
+        }
+      ],
+      "checks": [
+        {
+          "expression": "status IN ('pending', 'sending', 'sent', 'failed', 'suppressed')",
+          "cite": "E4 P-TKT-05 Preconditions; E4 P-TKT-04 'The `suppressed` state' block",
+          "why": "Closed five-member vocabulary, enumerated identically in three P-rows and proved complete as a 5x3 state machine in P-TKT-05. No criterion asserts the constraint itself, so the mechanism is open as it is for outbox_message.topic.",
+          "name": "ck_receipt_dispatch__1"
+        },
+        {
+          "expression": "dispatch_seq >= 1",
+          "cite": "E4 P-TKT-05 Preconditions ('`dispatch_seq` (integer, `>= 1`)'); E4 P-TKT-04 Server-side validation ('`dispatch_seq`: integer, `>= 1`')",
+          "why": "Stated twice as a bound on the value, in two separate specifications. A 0 or negative sequence would make the worker's sequence-conditional claim meaningless.",
+          "name": "ck_receipt_dispatch__2"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "screen",
+      "purpose": "A hall. Six of them in v1, each belonging to the one cinema; it is the unit manager scope attaches to and the row every seat write takes SELECT ... FOR UPDATE on.",
+      "cite": "P-ADM-13 · P-ADM-16 · FR-ADR-010 · FR-ADR-011 · FR-ADR-022",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "EP-ADM-17 path_params `screen_id: integer, positive`; EP-ADM-16 201 body `{id: integer, ...}`",
+          "note": "Integer, as above. Referenced by showtime.screen_id, seat.screen_id and manager_screen_assignment (other clusters).",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "cinema_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-25 · FR-ADR-010 · EP-ADM-16 request body `cinema_id: integer, must exist, required` · S-SCP-05",
+          "note": "NOT NULL and never defaulted server-side to the only cinema row — S-ADM-03 asserts POST /api/admin/screens with no cinema_id returns 422 precisely so a second venue costs an insert and not a migration. S-SCP-05 asserts the NOT NULL column and the FK to cinema(id) exist, positively: the test fails if the column is missing, so this column may NOT be optimised away even though the parent table holds one row.",
+          "reserved_row": null
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table; EP-ADM-16 / EP-ADM-17 request bodies; S-ADM-05",
+          "note": "1..60 characters after trimming (0 -> 422, 60 -> 201, 61 -> 422), unique on (cinema_id, lower(trim(name))). Renaming stays permitted after showtimes exist — only seat identity freezes. The seed writes `SCREEN 1`..`SCREEN 6` (S-ADM-29 asserts the regex ^SCREEN [1-6]$ against seeded rows only; nothing in the running system enforces it).",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "cite": "P-ADM-16 · FR-ADR-012 · EP-ADM-16 201 body `is_active: true` · EP-ADM-15",
+          "note": "Withdrawal replaces deletion. A hall created through EP-ADM-16 starts in service; the PRD states the behaviour ('A hall starts empty and in service') but never says whether `true` is a database default or an application-set value — recorded here as a default because P-ADM-13's sibling rule for seat.is_active IS spelled 'default true'. A withdrawn hall keeps every showtime, seat and booking and still appears in reports (P-RPT-02 requires out-of-service halls in the dashboard's screens[]).",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-12 · FR-ADR-035 · S-ADM-14 (the version-column set is exactly movie, showtime, screen, seat_category, cinema) · S-ADM-05 · S-ADM-17",
+          "note": "Required on every PATCH of a screen, including the withdrawal toggle. Increments by exactly 1.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09",
+          "note": "Same universal created_at criterion as cinema.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "cinema_id",
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-13 validation table; EP-ADM-16 idempotency note; S-ADM-05 'the unique index is on (cinema_id, lower(trim(name)))'",
+          "why": "EXPRESSION index. Scoped to the cinema, not global — two venues may each have a `Hall 1`. A hall name differing only in case is the same name and is refused by the index rather than by a prior read.",
+          "name": "uq_screen__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "cinema_id"
+          ],
+          "references": {
+            "table": "cinema",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-SCP-05 (FOREIGN KEY constraint referencing cinema(id)) · S-XCT-09 (`SELECT conname, confdeltype FROM pg_constraint WHERE contype = 'f' AND confdeltype <> 'r'` returns 0 rows) · FR-ADR-010 · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_screen__cinema_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "cinema_id",
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "S-ADM-05",
+          "why": "The duplicate-name refusal on EP-ADM-16/EP-ADM-17, and the only index any document names on screen. E7's required-index list (showtime(starts_at), showtime(screen_id, starts_at), booking(showtime_id), booking_seat(booking_id), booking(payment_id), payment(state)) names none of this cluster's tables.",
+          "name": "ix_screen__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "seat",
+      "purpose": "One row per real, physical, individually sellable seat in a hall — created when the hall is configured, never per showtime; its id is half of the oversell guard's unique key.",
+      "cite": "P-ADM-13 · FR-ADR-016 · FR-ADR-022 · SRC-001 §5.2.1 · SRC-001 §5.2.3",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "EP-ADM-20 path_params `seat_id: integer, positive`; EP-ADM-18/19 body `array of {id, row_label, seat_number, grid_row, grid_col, seat_category_id, is_active}`; E1 P-BRW-08 wire example `{\"id\": 4821, ...}`",
+          "note": "Integer. This id is what showtime_seat.seat_id, booking_seat.seat_id and the Redis key `lock:seat:{showtime_id}:{seat_id}` all carry. FR-ADR-016 rejected a JSON-blob layout precisely because the oversell guard needs the seat to be a row with an id.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "screen_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 (identity is (screen_id, row_label, seat_number)) · FR-ADR-016 · S-ADM-06 (`SELECT count(*) FROM seat WHERE screen_id = :id`) · P-ADM-14 (`INSERT INTO showtime_seat (showtime_id, seat_id) SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true`)",
+          "note": "Seats belong to the screen, not to a showtime. Every seat write first takes SELECT ... FOR UPDATE on THIS screen row (P-ADM-13, P-ADM-14, P-ADM-15) — a build-session judgment call, stricter than any source, asserted by a pg_locks test in S-ADM-06.",
+          "reserved_row": null
+        },
+        {
+          "name": "row_label",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 / EP-ADM-20 request bodies · S-ADM-06 · S-ADM-07",
+          "note": "1..4 characters, letters only. TWO reserved questions sit on this one column and they are different questions; NEITHER may be expressed as a CHECK, a citext type, a lower()/upper() expression index, or a normalising trigger. (a) CASE — OPEN-SEATLABEL-01: whether C12 and c12 are one seat or two. CONSTITUTION.md line 436 states the current position in terms: 'row_label is unique per screen and unnormalised'. The unique index below is therefore on the RAW column. Note the contradiction inside the PRD: P-ADM-13's validation table says 'stored uppercase' while its own prose two paragraphs later says the row decides nothing about case or normalisation, and journey defect J-ADM-09 (blocks-code) records exactly this and was resolved as 'open-article-x — only the client may answer it'. The Bible's S-ADM-06 description says its criteria 'normalise no case and ban no letter'. Implement no normalisation. (b) ALPHABET — OPEN-SEATALPHA-01 / PROPOSED-SEATALPHA-01: whether the letter I may appear at all. The seed skips I (rows run A B C D E F G H J K L M) because I and 1 are misread on a row marker; P-ADM-13's bound refuses nothing and EP-ADM-19/20 accept row I exactly as they accept row J. No CHECK, no regex beyond 'letters only'. (c) DEADLINE — P-ADM-14 freezes row_label the moment ANY showtime row exists on the screen, so a rule the client gives later cannot repair a row already written; the seed's 720 showtime inserts close that window on all six halls at once.",
+          "reserved_row": "OPEN-SEATLABEL-01, OPEN-SEATALPHA-01"
+        },
+        {
+          "name": "seat_number",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19",
+          "note": ">= 1, an integer within the row. Decomposed from row_label deliberately: FR-ADR-016 rejected a single `A-12` label string because sorting A-2 after A-12 is the default a string produces and it is wrong, and because every render would become a parse. Frozen by P-ADM-14 alongside row_label.",
+          "reserved_row": null
+        },
+        {
+          "name": "grid_row",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 · E1 P-BRW-08 (`gr` on the wire)",
+          "note": ">= 1. Where the seat is DRAWN, deliberately separate from what it is CALLED — a hall with a mid-row gap has seat number 12 sitting at column 14. Not frozen: P-ADM-14 permits grid coordinate changes at any time, because a redrawn map changes nothing anyone bought.",
+          "reserved_row": null
+        },
+        {
+          "name": "grid_col",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table · FR-ADR-016 · EP-ADM-19 · E1 P-BRW-08 (`gc` on the wire)",
+          "note": ">= 1. Aisles, gaps and non-seat space are the ABSENCE of a seat at a coordinate — there is no placeholder, spacer or 'empty seat' row and no 'blocked' state.",
+          "reserved_row": null
+        },
+        {
+          "name": "seat_category_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-13 validation table ('must exist, non-null') · FR-ADR-016 · EP-ADM-19 · S-ADM-07 (frozen_fields)",
+          "note": "NON-NULL foreign key to seat_category — a LOOKUP TABLE, never a PostgreSQL enum (see notes). This is what makes SRC-001 §5.2.3's 'distinguish seat categories, since we price them differently' true. Frozen by P-ADM-14 once a showtime exists, because a category change would reprice a live selling showtime.",
+          "reserved_row": null
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "cite": "P-ADM-13 validation table ('boolean | default true | ruled (FR-ADR-022)') · P-ADM-15 · FR-ADR-022 · E1 P-BRW-08",
+          "note": "In service / out of service. NOT a seat state and not a fifth value of the seat-map state enum — E1 P-BRW-08 argues this explicitly: a fifth enum value would make 'retired' and 'sold' mutually exclusive and a seat can be both. It is read by exactly one write path — P-ADM-14's `INSERT INTO showtime_seat ... WHERE screen_id = :screen_id AND is_active = true` — and it is emphatically NOT the occupancy denominator (E7:373-374 forbids computing it from seat.is_active). Toggling it to the value it already holds returns 409 LAYOUT_FROZEN, not a no-op 200, because a seat carries no version for a no-op to protect.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09",
+          "note": "Same universal created_at criterion as cinema and screen.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "screen_id",
+            "row_label",
+            "seat_number"
+          ],
+          "cite": "P-ADM-13 validation table ('(screen_id, row_label, seat_number) | unique | ruled (FR-ADR-016)') · FR-ADR-016 · EP-ADM-19 idempotency note · S-ADM-06",
+          "why": "Seat identity. RAW COLUMNS, NO lower()/upper() expression and no citext — CONSTITUTION.md's OPEN-SEATLABEL-01 row states the current position as 'unique per screen and unnormalised', and normalising here would silently answer a reserved, irreversible question. Contrast every other unique name in the product (cinema.name, screen.name, seat_category.name, the four lookup vocabularies), which ARE lower(trim(name)) — the asymmetry is deliberate and load-bearing, and it is exactly what journey defect J-ADM-09 flagged.",
+          "name": "uq_seat__screen_id_row_label_seat_number"
+        },
+        {
+          "columns": [
+            "screen_id",
+            "grid_row",
+            "grid_col"
+          ],
+          "cite": "P-ADM-13 validation table ('grid_row, grid_col | integer | >= 1, unique together within the screen | derived (FR-ADR-016)') · P-ADM-13 exception 5 (duplicate_coordinates) · S-ADM-06",
+          "why": "Two seats cannot both be drawn at one coordinate. Provenance is stated as DERIVED, not ruled — it follows from FR-ADR-016 drawing the map by placing each seat at its coordinate. Also serves EP-ADM-18's mandated ORDER BY grid_row ASC, grid_col ASC, id ASC.",
+          "name": "uq_seat__screen_id_grid_row_grid_col"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "screen_id"
+          ],
+          "references": {
+            "table": "screen",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (every FK is confdeltype 'r'; no CASCADE and no SET NULL anywhere) · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_seat__screen_id"
+        },
+        {
+          "columns": [
+            "seat_category_id"
+          ],
+          "references": {
+            "table": "seat_category",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "FR-ADR-016 (non-null seat_category_id into a lookup table) · S-XCT-09 · S-XCT-44 (`SELECT count(*) FROM seat JOIN seat_category ...`) — NOTE: seat_category is NOT in the brief's fixed table list; see notes",
+          "on_update": "RESTRICT",
+          "name": "fk_seat__seat_category_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "screen_id",
+            "row_label",
+            "seat_number"
+          ],
+          "unique": true,
+          "cite": "FR-ADR-016",
+          "why": "Identity guard, and its leading `screen_id` column serves `SELECT count(*) FROM seat WHERE screen_id = :id` (S-ADM-06, S-ADM-17) and P-ADM-14's showtime_seat materialisation `SELECT :showtime_id, id FROM seat WHERE screen_id = :screen_id AND is_active = true`. No document names a separate seat(screen_id) index and none is invented here.",
+          "name": "ix_seat__screen_id_row_label_seat_number"
+        },
+        {
+          "columns": [
+            "screen_id",
+            "grid_row",
+            "grid_col"
+          ],
+          "unique": true,
+          "cite": "P-ADM-13",
+          "why": "Coordinate guard, and it is the index EP-ADM-18's ORDER BY grid_row, grid_col, id reads in order.",
+          "name": "ix_seat__screen_id_grid_row_grid_col"
+        }
+      ]
+    },
+    {
+      "name": "seat_category",
+      "purpose": "The priced seat band a seat belongs to: a lookup ROW (never a PostgreSQL enum) carrying the integer basis-point uplift applied uniformly to every hall's and every show's base price.",
+      "cite": "FR-ADR-016 (Decision: 'Categories: a `seat_category` lookup table, not a database enum'); P-ADM-11 (E6_admin.md, 'Set a seat category's percentage uplift, uniform across every hall and every show'); FR-ADR-037",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (APPROVED): 'Primary keys are `bigint` identity columns — `GENERATED ALWAYS AS IDENTITY` — on every table.'",
+          "note": "GENERATED ALWAYS AS IDENTITY. No application-generated id and no uuid: FR-ADR-017 rejects UUIDv4, UUIDv7/ULID, integer, a parallel public uuid column, and natural keys, each by name. The API contract spells this field 'integer' on the wire (EP-ADM-12/13/14 response bodies) — that is JSON typing, not a storage type, and does not contradict bigint.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-11 + SCR-ADM-04 ('Category name … 1..40 characters, unique on `lower(trim(name))`'); EP-ADM-13 request body ('string, 1..40 after trimming, unique on lower(trim(name)) (P-ADM-11), required')",
+          "note": "Bound is 1..40 AFTER trimming — narrower than the four vocabularies' 1..60. Stored as the admin typed it, case preserved, with only leading/trailing whitespace trimmed; the lowercased trimmed form is the comparison key and is never displayed (P-ADM-23, worked example). Seat category names Standard / Premium / Recliner are ASSUMED, never a constraint.",
+          "reserved_row": null
+        },
+        {
+          "name": "uplift_basis_points",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-037 ('The uplift is stored as an integer number of basis points, `uplift_basis_points`, where one basis point is 0.01%. 12.5% is `1250`.'); P-ADM-11; S-ADM-13",
+          "note": "MONEY-ADJACENT AND NEVER A FLOAT: FR-ADR-037 rejects `numeric` percentage by name because it 'puts a non-integer type on the money path'. **bigint, not integer, and this is load-bearing**: S-ADM-13 asserts the value 368934881464190 (~3.7e14) is ACCEPTED — that overflows PostgreSQL `integer` (2^31-1). The PRD prose calls the field 'integer' generically; the criterion that will be run requires 64-bit storage. Standard is a row whose uplift happens to be 0 and is NOT a special case in code (FR-ADR-037; S-ADM-13 asserts ripgrep for `uplift_basis_points == 0|if not uplift|Standard` in pricing.py returns 0 hits). Seeded values 0 / 1250 / 3333 are ASSUMED (P-XCT-30).",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-035 ('Two admins editing the same row: optimistic concurrency with a `version` integer … This applies to `movie`, `showtime`, `screen` and `seat_category`.'); S-ADM-14; E6_admin.md 'Optimistic concurrency and the VERSION_CONFLICT path'",
+          "note": "S-ADM-14 runs a literal catalogue query asserting the set of tables carrying `version` is EXACTLY {movie, showtime, screen, seat_category, cinema}. seat_category is IN that set; the four vocabulary tables below are NOT. EP-ADM-13's 201 body returns version '1', so a new row starts at 1; a successful write increments by exactly 1; a no-op write does not increment. Whether the 1 is a database DEFAULT or set by the application is not stated anywhere — see gaps.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-XCT-04 precondition: 'Every table carries `created_at`; tables that mutate carry `updated_at`.'; S-XCT-09 (literal catalogue query asserting zero tables lack created_at)",
+          "note": "NO DATABASE-SIDE DEFAULT. No now(), no CURRENT_TIMESTAMP — time is injected (FR-ADR-018, CONSTITUTION Art IX.5). The application supplies the instant from the injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "P-XCT-04 precondition: 'Every table carries `created_at`; tables that mutate carry `updated_at`.'; S-XCT-09 Description: 'tables that are edited after creation are expected to carry updated_at as well as created_at; which tables those are is a judgement that follows from the data model and is checked there rather than here.'",
+          "note": "seat_category mutates (EP-ADM-14 changes name and uplift), so the P-XCT-04 rule reaches it. Nullable because no document says what the value is before the first edit; S-XCT-09 explicitly delegates the decision to the data model. See gaps — the merge owner must settle null-until-first-edit vs equal-to-created_at. No clock default here either.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "cite": "P-ADM-23 ('Every name this epic makes unique is unique on `lower(trim(name))`: a **seat category** (`P-ADM-11`) …, enforced by a unique index and not by a prior read'); S-ADM-13 ('A name colliding on lower(trim(name)) returns 422 with A seat category with that name already exists.'); EP-ADM-13 idempotency note ('A repeat fails with VALIDATION_FAILED on the unique index over lower(trim(name))')",
+          "why": "A FUNCTIONAL unique index, not a plain column unique. The index is the guard, not a prior read — two simultaneous identical creates must produce one row and one 422. The reason reaches the customer here and not only the admin: the category is the primary non-colour carrier of price band on the seat map, so `Premium` and `premium` coexisting would draw two legend rows on every seat map for what a customer reads as one category (P-ADM-23).",
+          "name": "uq_seat_category__name_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "expression": "uplift_basis_points >= 0",
+          "cite": "PRD field-bound table for P-ADM-11: '`uplift_basis_points` | integer | `>= 0` | **derived** — a negative uplift is a discount, and `SRC-003 OPEN-PRICE-02` rules out discount codes, concession pricing and every other reduction (`FR-ADR-040`)'; S-ADM-13 ('-1 returns 422 VALIDATION_FAILED with The uplift cannot be negative. This system has no discounts.')",
+          "why": "The documents state this as a SERVER-SIDE bound, not as a database constraint. Expressing it as a CHECK is a stricter adoption of a ruled bound (Art III.10) and needs no signature — but the merge owner should know the document did not ask for a CHECK.",
+          "name": "ck_seat_category__1"
+        },
+        {
+          "expression": "char_length(btrim(name)) BETWEEN 1 AND 40",
+          "cite": "SCR-ADM-04 fields table ('1..40 characters'); EP-ADM-13/EP-ADM-14 request body; P-ADM-11. Provenance is marked **technical** in the PRD's own provenance scheme — a storage bound chosen by the build session, not a business figure.",
+          "why": "Same status as the row above: stated as server-side validation, and a CHECK is a stricter restatement. It is 40 here and 60 on the four vocabularies, and the two must not be unified.",
+          "name": "ck_seat_category__2"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(trim(name))"
+          ],
+          "unique": true,
+          "cite": "P-ADM-23; EP-ADM-13 idempotency",
+          "why": "The uniqueness guard itself — a functional unique index is the only way to express lower(trim(name)) uniqueness.",
+          "name": "ix_seat_category__name_ci",
+          "expression_index": true
+        }
+      ]
+    },
+    {
+      "name": "showtime",
+      "purpose": "One screening of one film in one hall at one instant, created by hand by an admin, carrying its own base price and its frozen occupancy denominator.",
+      "cite": "P-ADM-07 (docs/03 PRD/sections/E6_admin.md S4); FR-ADR-018; FR-ADR-022; FR-ADR-037",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017",
+          "note": "Public and enumerable on purpose — FR-ADR-017: 'Knowing that showtime 41 exists discloses nothing; the seat map for it is already public to guests.' Scrapeability is handled by rate limiting, not authorisation.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "movie_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-07 validation table; EP-ADM-10",
+          "note": "The film NEED NOT BE PUBLISHED — a showtime may be scheduled against a draft (S-ADM-09 asserts 201 against a movie whose published_at is null). Editable on PATCH (EP-ADM-11 accepts movie_id).",
+          "reserved_row": null
+        },
+        {
+          "name": "screen_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-07 validation table; P-ADM-09",
+          "note": "IMMUTABLE after creation. A PATCH carrying a different screen_id is 422 — 'Moving a showtime to another hall would move every existing booking onto seats that may not exist in the new hall.' Build-session judgment, Art III.9, stricter so unsigned. Screen must be is_active at create (409 LAYOUT_FROZEN otherwise).",
+          "reserved_row": null
+        },
+        {
+          "name": "starts_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-07 validation table; FR-ADR-018; SRC-003 OPEN-LOCALE-01",
+          "note": "The advertised start, stored as a UTC INSTANT. Accepted and returned as a NAIVE LOCAL Asia/Kolkata string on the admin API; a value carrying Z, an offset or a zone name is 422 and is NEVER coerced. Serialised WITH the cinema's +05:30 offset on every customer surface. The zone is read from the cinema row, never from CINEMA_TIMEZONE at request time — S-ADM-04 asserts information_schema returns 0 columns matching '%timezone%' on showtime and screen, 'so a showtime reaches its zone only as showtime to screen to cinema.timezone'.",
+          "reserved_row": null
+        },
+        {
+          "name": "ends_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-07 validation table; S-ACC-12",
+          "note": "STORED, never derived from movie.runtime_minutes. S-ACC-12 asserts SELECT is_nullable FROM information_schema.columns WHERE table_name='showtime' AND column_name='ends_at' returns NO. Strictly after starts_at in the MERGED row on a PATCH. Half-open interval [starts_at, ends_at) for the overlap predicate.",
+          "reserved_row": null
+        },
+        {
+          "name": "base_price_paise",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-10; P-PAY-03 exception 1; FR-ADR-037; SRC-003 OPEN-PRICE-01",
+          "note": "MONEY, INTEGER PAISE. P-PAY-03 exception 1: 'The column is bigint NOT NULL with no default, so the row cannot be created.' S-SEA-16 asserts schema.sql declares bigint for exactly showtime.base_price_paise, booking_seat.price_paise, booking_seat.base_price_paise_applied and booking.total_paise. That the price sits PER SHOWTIME rather than once globally is PROVISIONAL under SRC-003 OPEN-PRICE-01 / FR-ADR-037 — reversing it moves this column to a configuration value and backfills. Bound >= 1 at the admin write (P-ADM-10); P-PAY-03's pricing function separately states >= 0 — see notes.",
+          "reserved_row": "OPEN-PRICE-01 (PROVISIONAL) · OPEN-PRICEBOUND-01 (OPEN, reserved: money)"
+        },
+        {
+          "name": "format_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ADM-07 ('Format sits on the showtime, not on the film'); EP-ADM-10; EP-ADM-11",
+          "note": "OPTIONAL — 'one film runs 2D in one hall and 3D in another on the same day'. Null answers null on the browse surface and is EXCLUDED by any format filter. Must name an ACTIVE format row at write time; a showtime already carrying a withdrawn format keeps it. PATCH accepts null to clear it. This is the only place showtime.format_id is written.",
+          "reserved_row": null
+        },
+        {
+          "name": "seat_count_at_creation",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-14 (E6_admin.md, 'A showtime's seat set is materialised when the showtime is created'); FR-ADR-022",
+          "note": ">= 1, equal to the number of showtime_seat rows written in the same transaction, NEVER RECOMPUTED — it is the occupancy denominator, and recomputing it would change last month's reported occupancy. S-ADM-08 asserts SELECT count(*) FROM showtime s WHERE s.seat_count_at_creation <> (SELECT count(*) FROM showtime_seat ss WHERE ss.showtime_id = s.id) returns 0. Creating a showtime on a screen with zero in-service seats is 409 LAYOUT_FROZEN, 'so no showtime can carry a zero denominator'.",
+          "reserved_row": null
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-09; FR-ADR-035; S-ADM-14",
+          "note": "Application-set to 1 on insert, +1 per successful write. Unchanged by a no-op. In S-ADM-14's exact five-table set.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "references": {
+            "table": "movie",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-19: delete_rule CASCADE count is 0 and every FK on a path that can reach booking is RESTRICT or NO ACTION; S-ADM-28 asserts showtimes survive a film withdrawal",
+          "on_update": "RESTRICT",
+          "name": "fk_showtime__movie_id"
+        },
+        {
+          "columns": [
+            "screen_id"
+          ],
+          "references": {
+            "table": "screen",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-17 / S-ADM-19: withdrawing a hall leaves SELECT count(*) FROM showtime WHERE screen_id = :id identical",
+          "on_update": "RESTRICT",
+          "name": "fk_showtime__screen_id"
+        },
+        {
+          "columns": [
+            "format_id"
+          ],
+          "references": {
+            "table": "format",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "P-ADM-07 precondition 6; P-ADM-24 (a withdrawn format is kept by showtimes already carrying it)",
+          "on_update": "RESTRICT",
+          "name": "fk_showtime__format_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "starts_at"
+          ],
+          "unique": false,
+          "cite": "S-RPT-16",
+          "why": "Verbatim: 'SELECT indexdef FROM pg_indexes contains an index on each of showtime(starts_at), showtime(screen_id, starts_at) ...' — the dashboard computes every figure live from stored rows with no rollup and no materialised view.",
+          "name": "ix_showtime__starts_at"
+        },
+        {
+          "columns": [
+            "screen_id",
+            "starts_at"
+          ],
+          "unique": false,
+          "cite": "S-RPT-16",
+          "why": "Same criterion. Also serves the admin day list (EP-ADM-09: screen_id + local date) and the P-ADM-08 overlap predicate run inside the screen row lock.",
+          "name": "ix_showtime__screen_id_starts_at"
+        }
+      ]
+    },
+    {
+      "name": "showtime_seat",
+      "purpose": "The showtime's MATERIALISED SEAT SET: one row per seat that was in service on that screen at the instant the showtime was created. Written once, by showtime creation, and edited by nothing, ever.",
+      "cite": "P-ADM-14 (docs/03 PRD/sections/E6_admin.md, heading 'A showtime's seat set is materialised when the showtime is created — this row owns that rule'); FR-ADR-022",
+      "columns": [
+        {
+          "name": "showtime_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-14 server-side validation table ('must exist; written only by showtime creation ... never client-supplied')",
+          "note": "",
+          "reserved_row": null
+        },
+        {
+          "name": "seat_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ADM-14 server-side validation table ('must be a seat of the showtime's screen and in service at the creation instant ... never client-supplied')",
+          "note": "",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "showtime_id",
+        "seat_id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "showtime_id",
+            "seat_id"
+          ],
+          "cite": "P-ADM-14 server-side validation table; S-ADM-08",
+          "why": "'a seat listed twice on one showtime would double that showtime's denominator'. THIS IS NOT THE OVERSELL GUARD — see notes. S-ADM-08: '(showtime_id, seat_id) is unique on showtime_seat, and that index is not the oversell guard - the oversell guard stays the unique constraint on booking_seat (showtime_id, seat_id), and a test asserts both indexes exist by name in information_schema.'",
+          "name": "uq_showtime_seat__showtime_id_seat_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "showtime_id"
+          ],
+          "references": {
+            "table": "showtime",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-19 (no CASCADE anywhere; nothing is ever deleted)",
+          "on_update": "RESTRICT",
+          "name": "fk_showtime_seat__showtime_id"
+        },
+        {
+          "columns": [
+            "seat_id"
+          ],
+          "references": {
+            "table": "seat",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-ADM-19; P-ADM-14 ('a seat retired later stays on every showtime that already existed')",
+          "on_update": "RESTRICT",
+          "name": "fk_showtime_seat__seat_id"
+        }
+      ],
+      "checks": [],
+      "indexes": []
+    },
+    {
+      "name": "users",
+      "purpose": "One row per person who holds an account — customer, manager or admin; the identity every booking, audit row and reset token points at.",
+      "cite": "P-ACC-01 (E5 S4, 'The complete field list of the user row') · E8 S7.5 · FR-ADR-050",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-09 — 'booking.user_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT'; EP-ADM-22/EP-ADM-23 return user_id as 'integer'; P-XCT-03's worked example uses actor_user_id 17",
+          "note": "INTEGER, not uuid. Three documents spell the referencing column `integer`, so the brief's uuid default does not apply here. NO DOCUMENT STATES THE GENERATION MECHANISM (identity column vs sequence) — audit_log is the only table where a document says 'identity'.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-01 step 5 and its validation table · E8 S7.5 · P-XCT-06 preconditions",
+          "note": "Stored AS ENTERED, 3..254 characters after trimming. Uniqueness is a unique index on `lower(email)` — E8 S7.5 explicitly refuses a second lowercased column ('two fields to keep in step'), so this is NOT citext and NOT a stored lowercase column. Written once by P-ACC-01 and never updated by anything (S-ACC-06 asserts the mapper's changed-attribute set never contains `email`).",
+          "reserved_row": null
+        },
+        {
+          "name": "password_hash",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-01 (field table: `text`, NOT NULL) · P-ACC-03 (bcrypt, BCRYPT_COST default 12) · S-ACC-02",
+          "note": "bcrypt. The ALGORITHM IS NAMED BY THE DOCUMENTS (P-ACC-03: 'Algorithm bcrypt'; E8 S7.5; FR-ADR-050) — nothing is inferred. NOT NULL on every row without exception: a manager account with no usable password carries a real bcrypt digest of 32 discarded CSPRNG bytes, drawn PER ROW so two such rows never share a value (S-ACC-02 asserts count(*) - count(DISTINCT password_hash) = 0 over rows with last_signed_in_at IS NULL). A nullable column is refused by name, because a null test before the verification is the early return P-ACC-03's timing property forbids.",
+          "reserved_row": null
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "S3.1 'The four roles' (Modelled as: `user.role = 'customer'` / `'manager'` / `'admin'`) · P-XCT-05 preconditions ('exactly one role value in a single column') · FR-ADR-009 · SRC-003 C-1",
+          "note": "PROVISIONAL that the manager value exists at all (SRC-003 C-1). Roles are mutually exclusive, one column, never a many-to-many table (S3.1, FR-ADR-050). Set to 'customer' by the application at registration and to 'manager' by P-ADM-17; NO ENDPOINT EVER CREATES 'admin' (S-ADM-18 asserts every /api/admin POST and PUT leaves the admin count unchanged and that `role = 'admin'` appears only in scripts/seed.py). NO DOCUMENT STATES THE DATABASE REPRESENTATION — see gaps. closed vocabulary, enforced by a CHECK rather than a PostgreSQL enum type",
+          "reserved_row": null
+        },
+        {
+          "name": "password_version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "P-ACC-05 ('an integer starting at 1 and incremented on every password change') · P-ACC-01 step 5 · P-ACC-08 step 4",
+          "note": "THE SESSION-INVALIDATION COUNTER. It is the JWT's `pv` claim; the authorisation dependency loads the user row by primary key on every authenticated request and rejects the token when `pv` does not match this column (P-ACC-05 exception 4). Written as 1 by the application at insert — no document states a database default. Incremented by P-ACC-08 only: `password_version = password_version + 1`.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "P-ACC-01 step 5 · FR-ADR-018 ('`created_at` and `updated_at` are `timestamptz` and default to `now()` at the database') · EP-ADM-22 returns it",
+          "note": "Required on every table in the schema — S-XCT-09 asserts that no table in `public` other than `alembic_version` lacks a `created_at`.",
+          "reserved_row": null
+        },
+        {
+          "name": "last_signed_in_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "P-ACC-01 (field table: timestamptz, UTC, nullable) · P-ACC-02 step 4 · P-ACC-08 step 4",
+          "note": "NULL means the account has never signed in — a real and expected state, not a defect. Written from the INJECTED CLOCK on every successful sign-in (`UPDATE users SET last_signed_in_at = :now WHERE id = :id`) and inside P-ACC-08's reset transaction. NOT written on a failed attempt. `has_signed_in` on EP-ADM-22 is DERIVED as `last_signed_in_at IS NOT NULL` and is never stored (S-ADM-18 asserts no `has_signed_in` column exists in information_schema).",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(email)"
+          ],
+          "cite": "P-ACC-01 step 3 · P-XCT-06 preconditions ('A unique index exists on `lower(email)`') · E8 S7.5",
+          "why": "Email is the identity, unique case-insensitively. It is an EXPRESSION index, not a column constraint — a second lowercased column is refused by name in S7.5. It is the guard, not a prior read: P-ACC-01 step 6 catches the unique violation and translates it to 409 EMAIL_ALREADY_REGISTERED, and S-ACC-01 asserts 20 simultaneous identical registrations produce exactly 1 success and 19 conflicts with no 500.",
+          "name": "uq_users__email_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [],
+      "checks": [
+        {
+          "name": "ck_users__role",
+          "expression": "role IN ('customer', 'manager', 'admin')",
+          "cite": "S3.1 'The four roles' (Modelled as: `user.role = 'customer'` / `'manager'` / `'admin'`) · P-XCT-05 preconditions ('exactly one role value in a single column') · FR-ADR-009 · SRC-003 C-1",
+          "why": "the user_role vocabulary. A CHECK rather than a PostgreSQL enum so that adding a value is an ordinary migration."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "lower(email)"
+          ],
+          "unique": true,
+          "cite": "P-XCT-06 preconditions · P-ACC-02 step 2",
+          "why": "Every sign-in and every reset request loads the row by `lower(email)`; registration checks it. Same object as the unique constraint above.",
+          "name": "ix_users__email_ci",
+          "expression_index": true
+        }
+      ]
+    }
+  ]
+}

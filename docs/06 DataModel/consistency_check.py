@@ -370,8 +370,21 @@ def r_reserved_not_decided(model):
             "; ".join(bad) or "no reserved question answered by a constraint")
 
 
-DOTTED = re.compile(r"\b(" + "|".join(sorted(INHERITED_TABLES, key=len, reverse=True))
-                    + r")\.([a-z_][a-z0-9_]*)\b")
+# Entity prefixes that appear before a dot in the documents.  This is NOT just
+# the table list: the audit vocabulary is keyed on entity names that include the
+# lookup tables and `manager`, which is a role and not a table.  An earlier form
+# built this from INHERITED_TABLES alone and so could not see
+# `certification.created` at all - which made the companion rule report 18
+# orphaned actions against a perfectly correct model.
+ACTION_PREFIXES = set("""
+manager user seat_category certification language genre format movie_genre
+manager_screen_assignment
+""".split())
+
+DOTTED = re.compile(
+    r"\b(" + "|".join(sorted(INHERITED_TABLES | ACTION_PREFIXES,
+                             key=len, reverse=True))
+    + r")\.([a-z_][a-z0-9_]*)\b")
 
 
 def bible_references():
