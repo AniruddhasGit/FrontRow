@@ -28,7 +28,7 @@ misses. `goals/README.md` carries the real execution order.
 | 01 | **ADR** | Decision records + `ADR_DECISION_RELEASE_LEDGER.tsv`. Fail-closed. `FR-ADR-nnn`. | **written** |
 | 02 | **BRD** | Business requirements — what and why. No technology. | **written** |
 | 03 | **PRD** | Every screen, rule, error and permission, plus the API contract. **The code is written from this.** | **written** |
-| 05 | **Bible** | Epics, stories, and binary acceptance criteria. The scope arbiter. | empty |
+| 05 | **Bible** | Epics, stories, and binary acceptance criteria. The scope arbiter. `FrontRow_Bible.csv` · `BIBLE_COLUMN_DICTIONARY.md`. | **written** |
 | 05 B | **DesignSystem** | Tokens and real CSS. Every contrast figure computed, not claimed. Where the seat map is designed. | **written** |
 | 06 | **DataModel** | A **package, not a document**: `datamodel.json` is the spec of record; `schema.sql` and `TRACEABILITY.tsv` are generated from it. Holds the unique constraint the whole product rests on. | empty |
 | 07 | **Architecture** | `for_llm/` to orient a cold session · `for_humans/` to decide from, including the accepted weaknesses. | empty |

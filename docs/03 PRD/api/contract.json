@@ -1283,7 +1283,7 @@
           "description": "The interval overlaps an existing showtime on that hall, or the hall is out of service or has no seats in service"
         },
         "422": {
-          "description": "A field failed its bound"
+          "description": "A field failed its bound, including P-ADM-07 precondition 7 - the film has a display window and starts_at falls outside it (exception 10)"
         },
         "503": {
           "description": "Postgres unreachable; nothing was written"

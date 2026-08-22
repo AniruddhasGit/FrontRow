@@ -10016,6 +10016,7 @@ group.**
 | 7 | The interval overlaps an existing showtime on that hall | 409 `SHOWTIME_OVERLAP` | see `P-ADM-08` |
 | 8 | `base_price_paise` fails its bounds | 422 `VALIDATION_FAILED` | see `P-ADM-10` |
 | 9 | Postgres unreachable | 503 `DEPENDENCY_UNAVAILABLE` | "The system cannot reach its database right now. Nothing was saved. Try again in a moment." |
+| 10 | The film has a display window and `starts_at` falls outside it | 422 `VALIDATION_FAILED` | "This film's display window does not cover that start time. Change the time, or widen the film's window first." |
 
 **Server-side validation.**
 
@@ -21661,7 +21662,7 @@ Creating a showtime. Nothing else in this system creates one, at any time, by an
     "403": {"description": "Authenticated but not an admin"},
     "404": {"description": "No film or no screen with that id"},
     "409": {"description": "The interval overlaps an existing showtime on that hall, or the hall is out of service or has no seats in service"},
-    "422": {"description": "A field failed its bound"},
+    "422": {"description": "A field failed its bound, including P-ADM-07 precondition 7 - the film has a display window and starts_at falls outside it (exception 10)"},
     "503": {"description": "Postgres unreachable; nothing was written"}
   },
   "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "FORBIDDEN", "NOT_FOUND", "SHOWTIME_OVERLAP", "LAYOUT_FROZEN", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],

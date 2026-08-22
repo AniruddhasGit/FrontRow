@@ -18,8 +18,10 @@ CONTEXT - read before starting
   - EVERY acceptance criterion is BINARY. It passes or it fails, and it names the command or the
     observation that decides. "The seat map works" is not a criterion. "GET /api/showtimes/7/seats
     returns 240 seats, of which A-12 has state 'sold' and A-13 has state 'available'" is.
-  - The MILESTONE column maps to SRC-002 §12's seven phases. A story cannot sit in a phase earlier
-    than the phase that provides what it depends on.
+  - The MILESTONE column maps to SRC-002 §12's EIGHT phases AS REVISED BY SRC-003 - phase 6 is
+    admin movie management (it was the TMDB sync, which is deleted) and phase 8 is the manager and
+    admin dashboard (new). A story cannot sit in a phase earlier than the phase that provides what
+    it depends on.
   - A story's AcceptanceCriteria cell is SELF-CONTAINED. An implementer working that story reads
     the cell and the PRD section it cites, and needs nothing else. There is no scope in a
     conversation.
@@ -43,8 +45,10 @@ DELIVERABLES
   2. BIBLE_COLUMN_DICTIONARY.md defining every column and every legal value of Type, Priority,
      Milestone and Status.
   3. Epics covering at minimum: browse and discover . seat selection and hold . checkout and
-     payment . tickets and entry . account and bookings . management and admin . movie sync and
-     publishing . operations and observability.
+     payment . tickets and entry . account and bookings . admin halls showtimes and pricing .
+     ADMIN MOVIE MANAGEMENT and publishing (NOT a sync - there is no external movie API) .
+     the manager and admin dashboard . operations and observability . and the SCOPE GUARDS, which
+     assert that an excluded capability has no surface (a P-SCP row is proved by ABSENCE).
 
 DEFINITION OF DONE - binary
   [ ] every P-row in the PRD is covered by at least one story. Print the two-way coverage table
@@ -59,6 +63,18 @@ DEFINITION OF DONE - binary
   [ ] every ADR that landed here has included_in_bible flipped with its cell cited
   [ ] the consistency check exits 0
   [ ] PROGRESS.md appended; a handoff is written by /tt
+
+CORRECTION APPLIED 2026-08-22 - two lines contradicted SRC-003 and would have shaped the output
+  "seven phases" - SRC-003 revised SRC-002 §12 to EIGHT: phase 6 became admin movie management and
+  phase 8, the dashboard, is new. A Milestone column built on seven would have had nowhere to put
+  the dashboard stories.
+  "movie sync and publishing" - there is no external movie API and no scheduled job
+  (SRC-003 OPEN-TMDB-01, OPEN-PROC-01). An epic named for a sync would have produced stories for a
+  feature that does not exist.
+  Also named the scope-guard epic explicitly: 18 P-SCP rows describe capabilities this product
+  deliberately lacks, and the DoD requires EVERY P-row to be covered by a story, so their coverage
+  has to be assertions of absence rather than being quietly skipped.
+  Corrected against SRC-003, which outranks a goal file (Art II.1). Reversible: git revert.
 
 GUARDRAILS
   - No scope beyond the PRD. A story nobody asked for is scope creep with a story id.
