@@ -505,8 +505,23 @@ These two do not.**
 **Each was raised by an agent that could have quietly decided it and did not.** That is the
 behaviour Art III.7 asks for, recorded here so the refusals are visible rather than invisible.
 
-**Total open rows: 26** - four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e, four in X.0f.
-**Nineteen are reserved and seven are not.** Count them from this file, never from this sentence.
+### X.0g - Raised by `GOAL_07` and its remediation, 2026-08-22 - filed, **not decided**
+
+Writing the Bible put every `P-row` under a test-writer's eye for the first time. Two questions
+surfaced that the build session may not answer. The first is a **contradiction in the PRD that no
+implementation can satisfy** - not a gap, not an ambiguity: three passages are jointly impossible.
+
+| ID | Question | Class |
+|---|---|---|
+| `OPEN-RESETTOKEN-01` | **The password-reset flow as specified cannot be built.** Three passages are jointly unsatisfiable: `E5_account.md` step 4 says *"the token itself is never stored"* (the row keeps only `token_sha256`); `E4_receipt_entry.md` says *"the reset token itself never travels in the queue"*; and `P-TKT-12` step 3 requires the worker to **render an email whose link is `...?token=<token>`**. **Nothing downstream holds the 43 characters**, so the link cannot be produced. Every resolution breaks one of the three rules: putting the token in the payload sends it through the queue; rendering the link at enqueue time sends the token through the queue *inside the link*; storing the plaintext defeats the hash. **Which rule gives is a decision about how a credential is handled**, so it is not the build session's. Found by the lane writing `S-ACC-07`, which now asserts only what it can observe and says why. | **reserved: secrets** |
+| `OPEN-PAYDEMO-01` | **`P-PAY-07`'s boot check makes the deliberate payment failure unreachable from a browser.** The simulator fires on a prefix of the `Idempotency-Key`, and the check forbids a generated key from carrying that prefix - so `PAYMENT_FAILED` is reachable only from a caller that sets the header by hand (`scripts/`, curl). That is defensible under *"exercised by hand"*, and the alternative - a demo control on the checkout screen - would be inventing scope. But **`GOAL_06`'s required customer walk is *"the simulated payment fails and they retry"***, and that walk is now unreachable from the product. **Is a browser-reachable failure required, and if so through what surface that is not a demo control?** | **reserved: product** |
+
+**`OPEN-RESETTOKEN-01` blocks a working feature, not a document.** Until it is ruled, the password
+reset path cannot be implemented as written, and it is reached in **Phase 2** by the seeded
+accounts' only specified route to a usable password (`P-XCT-32`).
+
+**Total open rows: 28** - four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e, four in X.0f, two in X.0g.
+**Twenty-one are reserved and seven are not.** Count them from this file, never from this sentence.
 
 > **The reserved count was wrong everywhere it was written before now.** `HANDOFF_2026-08-15_0425`
 > and `PROGRESS.md` both say *"18 open Article X rows, 7 reserved."* **Seven is the count of the rows

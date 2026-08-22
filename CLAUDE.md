@@ -50,9 +50,11 @@ its closure is not signed.**
 checks it, and it decayed twice inside the session that wrote this sentence.
 `py "docs/03 PRD/api/generate_api.py" --assemble` prints the current figure.)*
 
-**Twenty-six rows remain open, nineteen of them reserved.** They live in `CONSTITUTION.md` Article X
-— four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e, four in X.0f. **Count them
-from that file, never from this sentence.** `OPEN-SEATLABEL-01` is the one with a deadline rather than only a direction:
+**Twenty-eight rows remain open, twenty-one of them reserved.** They live in `CONSTITUTION.md`
+Article X — four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e, four in X.0f,
+two in X.0g. **Count them from that file, never from this sentence.** `OPEN-RESETTOKEN-01` is the
+one that blocks a working feature rather than a document: the password-reset flow as specified
+cannot be built, and Phase 2 reaches it. `OPEN-SEATLABEL-01` is the one with a deadline rather than only a direction:
 it stops being fixable once the first showtime exists, which is **Phase 2**.
 
 ### ⚠ Three rulings are `PROVISIONAL` — read `SRC-003` before relying on any of them
@@ -190,10 +192,10 @@ that writes anything is a defect, not a feature.
 | `ASSUMED` | inference; never hardens into a constraint |
 
 An agent that hits `OPEN` and fills in something sensible has committed the cardinal sin of this
-project. Open items live in `CONSTITUTION.md` Article X. **Twenty-six remain open, nineteen
+project. Open items live in `CONSTITUTION.md` Article X. **Twenty-eight remain open, twenty-one
 reserved** — the original four in X.0, thirteen raised by the PRD in X.0b, one by its fix waves in
-X.0c, one by its close-out in X.0d, three raised by the journeys in X.0e, and four by the PRD fix
-wave in X.0f. The 40 rows of `SRC-001 §10` were ruled on 2026-08-14 and live in
+X.0c, one by its close-out in X.0d, three raised by the journeys in X.0e, four by the PRD fix wave
+in X.0f, and two by the Bible in X.0g. The 40 rows of `SRC-001 §10` were ruled on 2026-08-14 and live in
 `SRC-003`. Count them from the file, never from this sentence.
 
 **The specific failure this project already produced, and what came of it:** `SRC-001 §10.9` asked
