@@ -21,8 +21,8 @@ CONTEXT - read before starting
   - A journey is a WALK, not a feature list. Each step names the surface, the state the user is
     in, what they do, and what they leave with.
   - EVERY step names the seam it crosses: a page boundary, a process boundary (API to worker),
-    a system boundary (application to Redis, to Postgres, to TMDB, to the payment provider), or
-    a time boundary (a TTL, a sales cut-off, a cancellation window).
+    a system boundary (application to Redis, to Postgres, to S3, to the queue, to SES, to the
+    simulated payment provider), or a time boundary (a TTL, a sales cut-off, a display window).
   - A defect found here is a defect IN THE PRD, and it is filed as such - not fixed silently in
     the journey document.
   - "Found zero defects" is a SUSPICIOUS result requiring an explanation, not a good one. If a
@@ -34,15 +34,30 @@ WRITE-SET
   docs/11 Journeys/JOURNEY_INDEX.md              (new)
   docs/11 Journeys/CUSTOMER_JOURNEY.md           (new)
   docs/11 Journeys/GUEST_JOURNEY.md              (new)
-  docs/11 Journeys/STAFF_JOURNEY.md              (new)
   docs/11 Journeys/MANAGER_JOURNEY.md            (new)
   docs/11 Journeys/ADMIN_JOURNEY.md              (new)
   docs/11 Journeys/DEFECTS_FOUND.tsv             (new - one row per PRD defect)
   CONSTITUTION.md                                (Article X only, to raise new OPENs)
   PROGRESS.md . handoffs/
 
-WRITE-SET NOTE: STAFF_JOURNEY.md is NOT written - SRC-003 removed the cinema-staff role. Remove it
-  from the write-set. Add RECEIPT_AND_ENTRY as a section of the customer journey instead.
+CORRECTIONS APPLIED 2026-08-22 - this goal contradicted SRC-003 in three places and was half-fixed
+  The DELIVERABLES block below was revised for the post-SRC-003 product on 2026-08-15. The CONTEXT
+  and DEFINITION OF DONE blocks were NOT, and still required work on features SRC-003 deleted.
+  Corrected against SRC-003, which outranks a goal file (CONSTITUTION.md Art II.1). Reversible:
+  git revert this file. Nothing was decided here - deleted scope was struck, not replaced by a guess.
+
+  1. STAFF_JOURNEY.md removed from the WRITE-SET. SRC-003 removed the cinema-staff role. The
+     2026-08-15 note said to remove it and the write-set line was left standing anyway; it is now
+     actually gone. RECEIPT_AND_ENTRY is a SECTION of the customer journey, not its own file.
+  2. TMDB struck from the system-boundary list. There is no external movie API (SRC-003
+     OPEN-TMDB-01) and nothing runs on a schedule (OPEN-PROC-01). The systems that DO exist are
+     named in its place; the payment provider is marked simulated (OPEN-PAY-01).
+  3. The DoD's "four time-boundary walks" are now THREE. Two of the original four walked features
+     that no longer exist: the cancellation window (no customer cancellation and no refunds,
+     SRC-003 OPEN-CANCEL-01) and the TMDB sync. As written the line was unsatisfiable, and
+     satisfying it would have meant writing journeys for out-of-scope features. The third walk is
+     the display window closing - already required by the Admin deliverable below, and moved into
+     the DoD where it belongs rather than invented to keep the number at four.
 
 DELIVERABLES - the walks that must exist (revised by SRC-003)
   Customer  : first visit to receipt in hand . returning customer books again . a seat is taken
@@ -70,9 +85,11 @@ DEFINITION OF DONE - binary
   [ ] DEFECTS_FOUND.tsv has one row per defect, each naming the PRD section it lands against and
       whether it is a gap, a contradiction, or an unhandled edge
   [ ] zero lanes report zero defects without a written explanation of why zero is believable
-  [ ] the four time-boundary walks exist and each states the exact user-visible outcome: hold
-      expires on the payment screen, sales cut-off passes mid-checkout, cancellation window
-      closes while the cancel page is open, TMDB sync runs mid-session
+  [ ] the three time-boundary walks exist and each states the exact user-visible outcome: the
+      3-minute hold expires on the payment screen (SRC-003 OPEN-HOLD-01), the sales cut-off
+      passes mid-checkout (SRC-003 OPEN-BOOK-03 - PROVISIONAL, 15 min AFTER the advertised
+      start), a film's display window closes while its showtimes still have unsold seats
+      (OPEN-BRWVIS-01 is OPEN - walk it, do not invent the policy)
   [ ] the consistency check exits 0
   [ ] PROGRESS.md appended; a handoff is written by /tt
 

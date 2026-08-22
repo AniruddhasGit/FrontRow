@@ -465,8 +465,25 @@ may not close them."* Rows X.0b and X.0c were filed the same way on 2026-08-15. 
 line was decided, reworded, or softened** — the question is registered, and the answer is the
 client's.
 
-**Total open rows: 19** — four in X.0, thirteen in X.0b, one in X.0c, one here. **Twelve are
-reserved and seven are not.** Count them from this file, never from this sentence.
+### X.0e - Raised by `GOAL_06`'s persona journeys, 2026-08-22 - filed, **not decided**
+
+Five lanes walked the product independently (`docs/11 Journeys/`). They filed **64 defects**; 48 are
+PRD fixes the build session may make, 13 were already rows in this Article, and **these three are
+questions the build session may not answer.** Each is stated in full in `docs/11 Journeys/`
+`DEFECTS_FOUND.tsv` under the DefectID given.
+
+| ID | Defect | Question | Class |
+|---|---|---|---|
+| `OPEN-DOORVERIFY-01` | `J-ENT-01` | **`P-TKT-08` has the person at the door compare the reference *"against the day's bookings by whatever means the venue uses"* - and no endpoint, screen or export in this product returns a showtime's bookings, or any booking reference, to anyone except that booking's own signed-in owner.** The reporting surface publishes no per-booking row, none of the 30 admin endpoints reads a booking, `EP-TKT-01` is ownership-only with no admin override by design, and no `audit_log` row exists for a booking because a customer booking is not a privileged action. **The venue cannot tell a real reference from an invented one.** The emailed reference is the customer's only proof of purchase and their only way into the hall, so this is the one surface where the product's central promise is actually redeemed. Giving the door a way to check it is a **new capability**, not a clarification. | **reserved: scope** |
+| `OPEN-DUPREF-01` | `J-ENT-02` | **`SRC-003 OPEN-TICKET-02` accepted that nothing prevents one reference being presented twice, but nothing rules what happens when it is.** A booking is a fixed set of numbered seats, so `P-TKT-08`'s exception 1 - *"both get in"* - is not a reachable outcome; two people cannot occupy seat `C12`. No document says which party is admitted, and no audit action exists for the incident, so it leaves no record. **A customer who paid is turned away, or loses their seats to whoever arrived first.** | **reserved: product** |
+| `OPEN-HOLDRECOVER-01` | `J-CUS-09` | **A customer who closes the tab mid-checkout cannot recover their own hold.** Closing it discards `sessionStorage` and releases nothing; the server-side key `holds:user:{user_id}:showtime:{showtime_id}` exists and is exposed by no endpoint. On return, their own held seats render `held_by_other` and are not tappable, so they cannot re-select them to reach `P-HLD-01` step 4's reuse-the-existing-token path; the ten-seat cap keeps counting those seats against them; and if they try again **the product tells them the seats were taken by another customer when the other customer is themselves.** Exposing a customer's live holds is a **new endpoint**, not a clarification. | **reserved: scope** |
+
+**These are registered, not answered.** The journeys walked each one to the point where the
+documents stop and went no further - `CONSTITUTION.md` Art III.7 and the `GOAL_06` guardrail both
+say an unknown becomes a row here, never a plausible guess.
+
+**Total open rows: 22** - four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e.
+**Fifteen are reserved and seven are not.** Count them from this file, never from this sentence.
 
 > **The reserved count was wrong everywhere it was written before now.** `HANDOFF_2026-08-15_0425`
 > and `PROGRESS.md` both say *"18 open Article X rows, 7 reserved."* **Seven is the count of the rows
