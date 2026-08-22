@@ -439,7 +439,7 @@ screen:
 
 | Code | What the banner does |
 |---|---|
-| `SEAT_UNAVAILABLE` | Names the lost seats from `details`, marks them `sold` on the map immediately, keeps the rest of the selection. |
+| `SEAT_UNAVAILABLE` | Names the lost seats from `details`, marks them **`held_by_other`** on the map, keeps the rest of the selection. **CORRECTED 2026-08-22 - this row said `sold` and that was wrong.** A seat lost to another customer's *hold* is not sold; it becomes `sold` only when that customer's booking commits, and it returns to `available` if their hold expires. `P-HLD-07` owns this and says so in terms. Marking it `sold` here told the customer a seat was gone for good when it may be free again in three minutes. |
 | `HOLD_EXPIRED` | Returns the customer to the seat map with the previous selection re-applied and the map refreshed (`FR-ADR-047`). |
 | `SEAT_LIMIT_EXCEEDED` | States the cap of ten and how many are currently selected. |
 | `SALES_CLOSED` | Disables the map and states that sales for this showtime have closed. |

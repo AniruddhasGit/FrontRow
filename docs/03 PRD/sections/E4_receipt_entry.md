@@ -1486,7 +1486,7 @@ and every fact needed at a door, without signing in.
 | Plain-text part | none | the authoritative part; every fact appears here | — |
 | HTML part | none | the same content, minimal markup, no external resource of any kind | no remote image, no web font, no tracking pixel |
 | Reference | none — a monospaced face is requested in the HTML part and is not guaranteed | rendered `FR-XXXX-XXXX` | re-formatted from the stored 8 characters at send time (`P-TKT-06`) |
-| Link to the booking page | none | `<PUBLIC_BASE_URL>/bookings/FR-ABCD-EFGH`, from configuration. **In the plain-text part the URL stands on its own line after the sentence that introduces it; in the HTML part the anchor text is the published sentence below and never the bare URL**, because a URL read aloud by a screen reader is unusable and `Click here` names nothing | signing in is required to open it; the link carries no token |
+| Link to the booking page | none | `<PUBLIC_BASE_URL>/bookings/FR-ABCD-EFGH`, from configuration. **In the plain-text part the URL follows the sentence that introduces it on the same line, as the verbatim body below publishes it; in the HTML part the anchor text is the published sentence below and never the bare URL**  *(corrected 2026-08-22: this clause said the URL stands on its own line, which the verbatim body four hundred lines below has never done. The body is the copy of record and a byte-exact acceptance criterion is written against it, so the rule is aligned to the body rather than the body to the rule.)*, because a URL read aloud by a screen reader is unusable and `Click here` names nothing | signing in is required to open it; the link carries no token |
 
 **States.**
 

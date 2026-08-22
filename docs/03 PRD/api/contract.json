@@ -1436,7 +1436,7 @@
       "request": {
         "body": {
           "name": "string, 1..40 after trimming, unique on lower(trim(name)) (P-ADM-11), required",
-          "uplift_basis_points": "integer, 0 or more, required. 100 basis points is 1 percent"
+          "uplift_basis_points": "integer, 0 or more, required. 100 basis points is 1 percent. UPPER BOUND, and it is arithmetic and not a business figure, mirroring EP-ADM-10's rule on base_price_paise: highest stored base_price_paise * (10000 + uplift_basis_points) + 5000 must be <= 9223372036854775807 (2^63 - 1), the ceiling P-ADM-11 states. A value breaching it is refused 422 VALIDATION_FAILED. Stated here and not only on the P-row because S1.2 ranks this block above it, so a bound absent here is a bound absent from the artefact the client and the server are built from (the defect J-ADM-07 recorded for base_price_paise)."
         }
       },
       "responses": {
@@ -1495,7 +1495,7 @@
         "body": {
           "version": "integer, required, must equal the stored value",
           "name": "string, 1..40 after trimming, unique on lower(trim(name)) (P-ADM-11), optional",
-          "uplift_basis_points": "integer, 0 or more, optional"
+          "uplift_basis_points": "integer, 0 or more, optional. UPPER BOUND, and it is arithmetic and not a business figure, mirroring EP-ADM-10's rule on base_price_paise: highest stored base_price_paise * (10000 + uplift_basis_points) + 5000 must be <= 9223372036854775807 (2^63 - 1), the ceiling P-ADM-11 states. A value breaching it is refused 422 VALIDATION_FAILED. Stated here and not only on the P-row because S1.2 ranks this block above it, so a bound absent here is a bound absent from the artefact the client and the server are built from (the defect J-ADM-07 recorded for base_price_paise)."
         }
       },
       "responses": {
