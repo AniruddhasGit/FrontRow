@@ -204,15 +204,29 @@ does not remove it by omission. **The fix is to add the step**, so the procedure
 fact and not only in form.
 
 This case has now been found twice, which is why it is a rule and not a correction. `P-PAY-10`'s
-confirm transaction listed eleven steps and a sixteen-row crash table and never mentioned the
-`receipt_dispatch` insert that `P-TKT-04` says happens inside it — build it from its owning row alone
-and **no receipt is ever sent**. `P-HLD-01` and `P-HLD-08` list the hold and release procedures and
-never mention the seat-map cache `DEL` that `P-BRW-12` — the declared owner of seat-map invalidation
-— requires after both. The consequence there is smaller and still observable: the live seat map moves
-in about three seconds or in about thirteen, on the one screen the product is about.
+confirm transaction listed eleven steps and a crash table walking every one of them, and never
+mentioned the `receipt_dispatch` insert that `P-TKT-04` says happens inside it — build it from its
+owning row alone and **no receipt is ever sent**. `P-HLD-01` and `P-HLD-08` listed the hold and
+release procedures and never mentioned the seat-map cache `DEL` that `P-BRW-12` — the declared owner
+of seat-map invalidation, whose invalidation table names a release as a trigger in the same breath as
+a booking — requires after both. The consequence there was smaller and still observable: the live
+seat map would move in about three seconds or in about thirteen, on the one screen the product is
+about.
 
 **Both were found by readers, not by the checks**, and that is the point worth keeping: a missing step
 resolves cleanly, produces no contradiction a grep can find, and every gate stays green.
+
+**Both have since been fixed at their sites, and both examples are written in the past tense for that
+reason.** `P-PAY-10` now carries the `receipt_dispatch` insert; `P-HLD-01` and `P-HLD-08` each now
+carry the `DEL`, and each states on its own row why it sits where it does in the order rather than
+leaving the position to be inferred. **A reader who checks this case against those rows will find the step already
+there, and that is the rule having been applied rather than the rule having been withdrawn.** The
+distinction is not decoration: an example that reads as live when its instance is closed is itself the
+drift this section exists to catch, and a reader who cannot tell which they are looking at will
+reasonably conclude the rule was dropped. **A case that has been closed everywhere it was found is
+still a case** — this rule stands on the shape of the situation, not on there being a live instance
+of it, and the next exhaustive step list written in this document will be silent about something in
+exactly the same way.
 
 **8. One owning row that contradicts itself.** The ranking compares passages of different kinds, so
 it has nothing to say when **a single row, declared owner of a thing, states it two ways.** There is
@@ -1153,13 +1167,44 @@ Two consequences that this document must not paper over:
 `[SRC: SRC-003 OPEN-ROLE-01 · SRC-003 OPEN-TMDB-01 · SRC-003 OPEN-TMDB-03 · SRC-003 OPEN-LOCALE-01 · FR-ADR-021 · FR-ADR-018]`
 `[BRD: R-BRW-06]`
 
-**Behaviour.** A movie appears on any customer-facing surface only when both gates pass:
+**Behaviour.** A movie appears on any **movie-addressed** customer-facing surface only when both gates
+pass:
 
 1. `published_at IS NOT NULL` — the admin published it deliberately.
 2. `display_from <= T < display_until` — the evaluation instant `T` falls inside the display window.
 
-A movie failing either gate is invisible to guests and customers alike. It is never deleted and never
-hidden from the admin (`FR-ADR-012`, `FR-ADR-021`).
+A movie failing either gate is invisible on every movie-addressed customer-facing surface: the
+listing, the film detail and the showtime list. It is never deleted and never hidden from the admin
+(`FR-ADR-012`, `FR-ADR-021`).
+
+**Three endpoints in this epic apply no gate, and this row is where that is stated rather than left to
+be found.**
+
+| Endpoint | Gates applied | Why, and what decides it |
+|---|---|---|
+| `EP-BRW-01` the listing · `EP-BRW-02` the film · `EP-BRW-04` the showtime list | **yes** | movie-addressed. A film failing a gate is absent from the array, or 404 with the same body a film that never existed returns |
+| `EP-BRW-03` the poster redirect | **no** | stated and accepted, not overlooked: a poster id discloses that a draft exists, on the same ground showtime ids are public (`FR-ADR-017`, `P-BRW-15`) |
+| `EP-BRW-05` the showtime header · `EP-BRW-06` the seat map | **no, today** | showtime-addressed. **Whether they should is `OPEN-BRWVIS-01`, which is `OPEN` and reserved, and this row does not answer it** |
+
+> **This overturns what this row said before, and the earlier text was the defect.** It said without
+> qualification that a movie failing either gate is *"invisible to guests and customers alike"* and
+> that the predicate is *"called from every such query"*, while `EP-BRW-05`'s own authorisation rule
+> states in terms that **it does not apply the movie visibility gates** and `EP-BRW-03` and
+> `EP-BRW-06` apply none either. **One of those sentences was wrong today and no ruling makes both
+> right.** A developer reading only this row would have gated the seat-map header; a developer reading
+> only the block would not; and the two choices differ by whether a withdrawn film's title, hall and
+> price are publicly displayed. **The row is corrected to the endpoints that actually filter**, which
+> is what the document specifies.
+
+**What is corrected here is the contradiction, not the policy, and the difference matters.** A film
+may leave its window while its showtimes still hold unsold seats. `FR-ADR-021` settles that the window
+governs the **browse surface** and not the **booking record**; it settles nothing about whether those
+showtimes may still be **sold**. Gating `EP-BRW-05` and `EP-BRW-06` would settle that in one direction
+and leaving them open settles it in the other, so **neither is decided here** — that is
+`OPEN-BRWVIS-01`, it is reserved, and inventing an answer is the cardinal sin of this project.
+**Until it is ruled, the specification of record is what the two endpoint blocks carry: no movie gate.**
+`SCR-BRW-03` correspondingly publishes no state for a film that has left its window; that gap is filed
+against the same open row and is not filled in here.
 
 **How the gates are evaluated, exactly.**
 
@@ -1217,9 +1262,11 @@ router applies no auth dependency to these routes (`SRC-001 §7.4`, `FR-ADR-014`
 (`FR-ADR-018`). A clock is injected into the domain layer.
 
 **Happy path.**
-1. A request arrives at any customer-facing movie, showtime or seat-map surface.
+1. A request arrives at a movie-addressed customer-facing surface — the listing, the film detail or the
+   showtime list.
 2. The service reads `T` from the injected clock.
-3. The visibility predicate — **one function, called from every such query** — is applied.
+3. The visibility predicate — **one function, called from every query the table above marks `yes`** —
+   is applied.
 4. Rows failing either gate are absent from the result. They are not returned with a flag.
 
 **Exception paths.**
@@ -1414,7 +1461,29 @@ last day  = the DAY BEFORE max(display_until) over the movies EP-BRW-01 returned
 **The day before, because `display_until` is exclusive.** A film with
 `display_until = 2026-08-21T00:00:00+05:30` shows through the **20th** and is invisible at the 21st
 (`P-BRW-01`). Rendering the 21st would put a day button on screen whose only possible result is the
-empty state — the state this row elsewhere says the strip must never be able to reach.
+empty state.
+
+**The strip bounds the range; it does not promise that every day inside the range has a showtime, and
+the two claims are not the same claim.** A day **past** the bound can only ever be empty, which is why
+it is not offered. A day **inside** the bound may still be empty — a film runs for a fortnight and the
+cinema schedules nothing on the Tuesday — and pressing it renders
+`Nothing is showing for the chosen filters.`, which is the ordinary filtered-empty state this screen
+already publishes and not a fault.
+
+> **This row previously justified the day-before rule on the ground that the strip "must never be able
+> to reach the empty state", and that justification was false of the strip this row specifies.** The
+> strip is computed on the **client**, from `display_until` and the injected clock and nothing else
+> (see below), and **`EP-BRW-01` carries no per-day showtime information at all** — so no test of
+> "does any film have a showtime on this day" is possible on that response, and none is specified. The
+> bound itself is correct and is unchanged; **only the reason given for it was overstated, and an
+> overstated reason is what a later reader implements.** Compare `P-BRW-06`'s
+> `next_date_with_showtimes`, which *does* test for a still-open showtime — it can, because it is
+> computed on the **server** for **one** film.
+>
+> **The accepted weakness, stated rather than absorbed:** a guest can press a day the product offered
+> and reach the empty state. It costs one re-request, the remedy is already on screen, and closing it
+> would need either a per-day aggregate on `EP-BRW-01` or one request per day — neither of which is
+> specified here, and neither of which is invented here.
 
 > **This row previously stated its own subject two ways, one day apart**, and that is a defect in the
 > row rather than something a reader may resolve. It said the strip runs "through the latest
@@ -1432,8 +1501,9 @@ that array. The strip needs no second request and no aggregate field.
 > maximum is taken "across the films currently visible to this caller (`P-BRW-01`)" — and `P-BRW-01`
 > is the **visibility gate**, which is explicitly filter-independent — while four paragraphs later it
 > said the client takes the maximum across `EP-BRW-01`'s array, **which is filtered**. The filtered
-> set wins: a strip offering days on which the current filters return nothing is the same defect
-> condition 3 of `next_date_with_showtimes` exists to prevent (`P-BRW-06`), and a client cannot
+> set wins: an unfiltered bound offers days on which nothing matching the current filters can be
+> showing **at all**, which is a stronger form of the emptiness condition 3 of
+> `next_date_with_showtimes` exists to reduce (`P-BRW-06`), and a client cannot
 > compute the unfiltered maximum from a filtered response without a second request nobody specified.
 
 **So the strip moves when the filters move, and that is the point rather than a side effect.** Three
@@ -1472,6 +1542,9 @@ cannot repair it.
 - **No fixed horizon anywhere.** `P-BRW-06` refuses one as "a number no source supports", and "the day
   before the last day anything in this listing is showing" is derived from the same column the
   visibility gate reads.
+- **The bound assumes every showtime falls inside its film's window, and nothing enforces that today**
+  (`P-BRW-06`). A showtime scheduled outside it is offered by no day button on this strip, by no other
+  browse surface either, and the missing check is `P-ADM-07`'s.
 
 > **Where the field comes from.** `EP-BRW-01` carried no `display_until` and no aggregate until this
 > pass, so the strip on the product's **entry page** could not be built at all — a rank-2 row requiring
@@ -1684,8 +1757,9 @@ did not ask about it, and the remedy — clear or change a filter — is identic
 
 **Who may do it.** guest · customer · manager · admin. Public.
 
-**Preconditions.** The reference data endpoint is reachable so the interface knows which controls to
-render.
+**Preconditions.** None that can fail silently. The reference data endpoint tells the interface which
+controls to render; **when it is unreachable the screen still renders and says so** — exception 5
+below, which exists because this precondition previously had no failure path at all.
 
 **Happy path.**
 1. The customer changes a control.
@@ -1701,6 +1775,35 @@ render.
 | 2 | `date` is not an ISO-8601 date | 422 `VALIDATION_FAILED` | "That date is not valid." |
 | 3 | `language_id`, `format_id` or `cinema_id` is not a positive integer | 422 `VALIDATION_FAILED` | "That filter is not valid." |
 | 4 | An id is well-formed but matches no row | 200, empty list | as row 1. An id for a deleted row cannot occur — nothing is deleted (`FR-ADR-012`) |
+| 5 | `EP-BRW-07` fails while the listing query succeeds | the listing returns 200 unaffected; `EP-BRW-07` returns 503 `DEPENDENCY_UNAVAILABLE` | the listing renders **in full**, **no reference-backed filter control renders**, and one line reads "Filters are unavailable right now." The date strip and `Clear filters` are unaffected |
+
+**A reference outage and an empty vocabulary render the same controls, so they may not render the same
+screen.** Day one and a 503 from `EP-BRW-07` both produce a listing with no language, format or cinema
+control — and this row says in terms that the day-one rendering is **correct** and carries **no
+message**. With no difference between them a guest cannot tell a working product from a degraded one,
+and neither can an operator holding a screenshot. **One published line is the entire difference**:
+`Filters are unavailable right now.` It states the fact and claims no cause, in the form
+`P-BRW-08`'s banner already uses. **`SCR-BRW-01` owns the string** (`S1.2.1` case 3) and publishes it
+in its copy table; no other section may publish a variant, and nothing else about the screen changes.
+
+**Three things are deliberately unaffected**, because none of them reads the reference data:
+
+- **The listing itself.** `EP-BRW-01` reads no vocabulary, and a filter already in the URL is still
+  applied in SQL — a guest arriving on a shared link carrying `language_id` gets the filtered listing
+  they asked for, whatever the reference endpoint is doing.
+- **The date strip.** It is computed from the injected clock and the `display_until` values the listing
+  response already carries. It is the one filter that is not reference-backed, which this row states
+  above, and an outage does not reach it.
+- **`Clear filters`.** It renders whenever at least one filter is set and needs no vocabulary to unset
+  one. Without it a guest whose URL carried a filter would hold a filter they can neither see nor
+  remove — the failure this row already names when a selected day leaves the strip: **a control that
+  vanishes along with the thing it repairs cannot repair it.**
+
+**`[JUDGMENT CALL]` — the line, not the behaviour.** That the controls are absent is `FR-ADR-046`
+applied to a vocabulary the client could not read, and it follows. **Whether the screen says so is
+what is decided here**, because no source addresses it and the alternative is two states that are
+byte-identical on screen and mean opposite things. It is recorded in the lane notes. Reversible: one
+string and one condition.
 
 **Server-side validation.** `date` is an ISO-8601 calendar date, `YYYY-MM-DD`, parsed strictly; a
 datetime, an offset or a zone name in that field is rejected rather than coerced. The three id
@@ -1805,6 +1908,29 @@ of the movie's display window** — that is, the day before `display_until` (`P-
 constant exists, because inventing "the next 14 days" would be a number no source supports, and a
 movie outside its window is not visible anyway. **This is `SCR-BRW-02`'s strip, where a movie has been
 chosen.** The listing screen has no movie and takes its strip from `P-BRW-04`.
+
+**Both browse paths to a date are bounded by the film's display window, so both assume every showtime
+falls inside it — and no row in this document makes that true.** This strip ends at the last day of
+the window, `P-BRW-04`'s listing strip ends at the last day of `max(display_until)`, and condition 2
+below never searches past `display_until`. A showtime whose `starts_at` falls **outside** its film's
+window is therefore reachable from **no guest browse surface at all**: not this strip, not the listing
+strip, not the next-date button, and not the listing's `date` filter, because no control anywhere
+offers the day. The showtime exists, it has a seat set, its sales are not closed, and only a
+hand-typed URL finds it.
+
+**The bound is not the defect and is not widened here.** Ranging a strip over `max(starts_at)` instead
+would offer days on which the film has left its window — the button `P-BRW-04` refuses to draw, for
+the reason stated there — and it would need a field no endpoint returns. **The condition belongs on
+the write path**: a showtime outside the window is the admin having said two different things about
+when the film runs, and `P-ADM-07` owns showtime creation. **This row states the dependency it has on
+that check and does not restate the check**, which does not exist today and is raised against
+`P-ADM-07`.
+
+**This is not `OPEN-BRWVIS-01`, and conflating the two would park a fixable defect behind a reserved
+row.** That row asks whether a showtime may still be sold **after** its film leaves the window — a
+boundary the clock crosses, with a customer possibly mid-checkout. This is a showtime scheduled
+outside the window in the first place: it is unreachable from the instant it is created, no clock
+moves, and no policy has to be chosen to see that it is wrong.
 
 **`next_date_with_showtimes` names the earliest date the customer can actually buy on, and this row
 owns its definition.** It is **the earliest local date in Asia/Kolkata satisfying all three of the
@@ -2365,7 +2491,18 @@ someone sees, never what they get.
 | 1 | A poll fails (network or 5xx) | — | **the last good map stays on screen.** A one-line strip appears at the top of the field: "The seat map is not updating. The seats shown may be out of date." Polling continues |
 | 2 | Polls keep failing | — | the strip stays. The map is never blanked mid-selection; a few-seconds-old map beats no map |
 | 3 | A poll returns 429 `RATE_LIMITED` | 429 with `Retry-After` | the strip appears and the client waits `Retry-After` seconds before the next poll rather than continuing at 3 seconds |
-| 4 | The first load fails | 4xx/5xx | the map is replaced by "The seat map could not be loaded." and a control reading "Try again". No partial grid |
+| 4 | The first load fails, **429 included** | 4xx/5xx | the map is replaced by "The seat map could not be loaded." and a control reading "Try again". No partial grid. **The rate-limited string is not rendered here** — see below |
+
+**A 429 on a poll and a 429 on the first load are two situations, they take two different strings, and
+this is where they are separated.** Exception 3 is a refused **poll**: a map is already on screen, the
+loop is already running, and the next request goes out on its own — so `SCR-BRW-03`'s
+`Too many requests. The seat map will update again shortly.` is a true sentence, and it is why
+`SCR-XCT-03` publishes no variant for that surface and points here instead. Exception 4 is a refused
+**first load**: there is no map on screen and **no poll loop exists yet**, so nothing will deliver the
+update that sentence promises. It takes the first-load error and its `Try again`, which is the only
+control that can produce the map at all. **A published string promising an action that nothing
+performs is the defect this split closes**, and it was reachable — `SCR-XCT-03` sent every 429 on this
+endpoint, first load and poll alike, to the polling sentence.
 
 **Server-side validation.** **`SEATMAP_POLL_INTERVAL_SECONDS` is server configuration, validated at
 boot, and returned to the client in the seat-map response.** The client polls at the interval it was
@@ -2383,11 +2520,27 @@ given and holds no constant of its own. Default **3**, from `SRC-002 §8.6.1`.
 - **Enforcement stays where it was: nowhere.** The server *publishes* the interval; it does not police
   it. A client polling faster is handled by the rate limiter and by nothing else — an interval the
   server tried to enforce per-caller would be a second limiter with a different bucket.
-- The per-IP rate limit of 120 requests a minute on this endpoint (`FR-ADR-058`) is far above what a
-  legitimate poller uses — one viewer at the default uses 20. **The two numbers are related and the
-  relation is checked at boot**, not asserted here: `S7.9` cross-check 10 owns it, along with
+- **The per-IP rate limit of 120 requests a minute on this endpoint (`FR-ADR-058`) is well above what
+  one legitimate poller uses and is not above what six of them use. The worse number goes first**
+  (Art VII.2): one viewer at the default uses `60 / 3 = 20` requests a minute, so the bucket holds
+  `120 / 20 = 6` concurrent viewers from one address — of any showtime, since the bucket is keyed on
+  the address and not on the showtime. **The two numbers are related and the relation is checked at
+  boot**, not asserted here: `S7.9` cross-check 10 owns it, along with
   `SEATMAP_CACHE_TTL_SECONDS + SEATMAP_POLL_INTERVAL_SECONDS <= 15`, which is the staleness bound this
   row states above.
+- **There is no per-user bucket on this endpoint, so guests sharing one public address share one
+  bucket — and the seventh is refused the central screen of the product.** The endpoint is
+  unauthenticated (`P-BRW-05`), so there is no user to key a second bucket on (`EP-BRW-06`,
+  `P-XCT-07`), and an office, a household, a campus or a mobile carrier NAT presents one address for
+  everybody behind it. What the seventh viewer sees is already specified and is not a new state:
+  exception 3 if their map is up — the last good map stays and the client waits `Retry-After` — and
+  exception 4 if they are still loading, which is the first-load error with a `Try again` that will
+  keep being refused for as long as the address stays at its limit.
+- **This document does not change the number, and says so rather than working around it.** `120` per
+  minute per IP is `FR-ADR-058`, an `APPROVED` record; lengthening the poll interval to fit more
+  viewers per address trades directly against the staleness bound above and `SRC-001 §3.3`. **Six is
+  derived from two configured numbers, not measured** — nothing in this project has run in AWS — and
+  it is what the Phase 3 measurement (`P-BRW-14`) should be read against.
 
 **Worked example — worst-case staleness, derived.**
 
@@ -3021,8 +3174,10 @@ map from a customer looking at one. Scarcity is consumed only at the hold.
 **Happy path.**
 1. Tap an `available` seat — it enters the local selection.
 2. Tap it again — it leaves the local selection.
-3. The selection is written to `sessionStorage` on every change, so it survives a reload and the
-   sign-in round trip (`FR-ADR-046`).
+3. The selection is written to `sessionStorage` under the key **`fr.selection`** on every change, so
+   it survives a reload of this screen (`FR-ADR-046`). **This is not the key that carries a selection
+   through sign-in** — that is `fr.pending_selection`, which `P-ACC-13` (lane E5) owns. The two keys
+   and the reason there are two are in the table below.
 4. The primary action is enabled once the selection is non-empty.
 
 **Exception paths.**
@@ -3047,10 +3202,42 @@ not signing in, and telling them so is a false statement about their own last th
 variant existed across the document and is deleted; **each of these two rows names the other**, so a
 reader who lands on either can tell the pair is a deliberate two rather than an accidental three.
 
-**"Still selected", never "still held".** Nothing is held before a hold request is made, and a hold is
-all-or-nothing, so a message on this path can never truthfully say seats are still held. Every string
-on both sides of the split says *selected* — `P-HLD-07`'s `Your other choices are still selected`,
-and `P-ACC-13`'s `Your other seats are still selected.`
+**"Still selected", never "still held".** Nothing is held before a hold request is made, so a message
+on *this* path can never truthfully say seats are still held. Every string on both sides of the split
+says *selected* — `P-HLD-07`'s `Your other choices are still selected`, and `P-ACC-13`'s
+`Your other seats are still selected.` **This rule is about the selection path and not about the hold
+endpoint**: a request that extends a live hold can fail while seats genuinely are still held, and
+`P-HLD-14` rows 2b and 3b publish the sentence for that.
+
+**Two `sessionStorage` keys, two jobs, and a reader must not collapse them into one.**
+
+| | `fr.selection` | `fr.pending_selection` |
+|---|---|---|
+| Owned by | **this row** | **`P-ACC-13`** (lane E5) |
+| What it carries | the live local selection on this screen: the chosen-but-not-yet-held seat ids | a one-shot snapshot handed to the authentication round trip, with a `stored_at` instant |
+| Written | **on every change** — every tap that adds or removes a seat | **once**, when a visitor who is not authenticated leaves this seat map for the authentication screen with a non-empty selection, before that step opens — **by either route out**, the primary action or the header's `Sign in` link (`E8 SCR-XCT-05`), because which control was pressed may not decide whether the selection survives (`P-ACC-13`) |
+| Read | on load of `/showtimes/{showtime_id}`, to restore what was chosen and re-check it against the fresh map; and by `P-SEA-02` step 2 to draw chosen cells | once, on return from the authentication step |
+| Deleted | when the selection empties, when those seats become a hold, and on sign-out | **immediately after that restore** (`P-ACC-13` step 8), and on sign-out |
+| Staleness rule | none — it is discarded with the tab, which is the only lifetime it needs | discarded on restore if `stored_at` is more than 30 minutes old (`P-ACC-13`) |
+
+**Both are inside the `fr.` namespace `P-ACC-13` sweeps on sign-out**, so neither needs its own
+sign-out clause and neither is enumerated in that row's table — the sweep is by prefix, not by list.
+
+**Why not one key, stated because one key is the obvious simplification.** `P-ACC-13` deletes its key
+**immediately after the restore**, and this row's key is written **on every change** and must survive
+a reload at any moment. Made one key, the return from sign-in would delete the only durable copy of a
+selection that is still on screen and still chosen, so a customer who reloaded the page one second
+after signing in would lose seats they can see are selected — the restore erasing the selection it
+had just re-applied. The two write policies are incompatible in one key, which is why there are two.
+
+**Where this row's exception-3 notice renders, and how a screen reader is told about it.** The string
+`C12 is no longer available. It has been removed from your choices.` is **not** an error response and
+carries **no error `code`** — nothing was requested, so nothing answered. It renders in `SCR-SEA-03`,
+the seat-map banner, as that screen's one **client-originated** notice: same container, same live
+region, no in-banner action, and dismissible because nothing is left to do. `SCR-SEA-03` names the
+state and `SCR-SEA-01` names it in its states table. **Without that, the only announced surface on
+this screen branched on a `code` this event does not carry**, and a screen-reader user was never told
+a seat had left their selection.
 
 **Server-side validation.** None applies, because nothing is sent. The interface limit in exception 1
 is a convenience; the enforcement point is the hold endpoint (`P-HLD-04`).
@@ -3216,6 +3403,16 @@ scarcity on behalf of somebody who has left. This is the one session event that 
 release from a closing page can arrive after the key has expired and been re-acquired. **Sign-out is a
 request the customer made, answered synchronously, with a session to end either way**, so it has none
 of those properties.
+
+**Every `No seats were held.` string in the machine is the *first-hold* form.** The machine describes
+one seat, so it cannot see whether the request that failed was this customer's first hold on the
+showtime or an extend of a live one — and the two are told different sentences, because on an extend
+the seats already held are not in this request's rollback set (`P-HLD-01`) and survive. **The
+substitution rule is `P-HLD-14`'s**, which owns this lane's message set: the closing clause reads
+`No seats were held.` on a first hold and `Your hold is unchanged.` on an extend, and rows 2b and 3b
+publish the two `SEAT_UNAVAILABLE` extend forms verbatim. Every `user_sees` value in the block below
+that ends `No seats were held.` is therefore the rendering when the customer held nothing on this
+showtime at the moment the request arrived — the ordinary case, and not the only one.
 
 **Server-side validation.** Every guard marked *server* in the table is enforced server-side. No guard
 is enforced only in the interface.
@@ -3609,8 +3806,8 @@ blank cell meant.
      "guard": "closing the tab abandons the response, not the request. The server completes the confirm and the booking may be made without the customer ever seeing the confirmation screen. The reference is in the customer's bookings list and on the emailed receipt independently of this screen",
      "user_sees": "(nothing - the customer has left)"},
     {"from": "held_by_me_paying", "input": "TAB_REFRESHED", "to": "held_by_me_paying",
-     "guard": "the restored page reads the hold token and the Idempotency-Key back from sessionStorage and re-sends the same confirm. The same key returns the original result once it exists, and is refused with 409 IDEMPOTENCY_IN_FLIGHT while it is still running. The wording is P-PAY-09's and is reproduced verbatim, not authored here",
-     "user_sees": "This booking is still being processed."},
+     "guard": "the restored page does NOT re-send the confirm. SCR-PAY-01 owns the checkout screen's behaviour and states in terms that it never replays EP-PAY-01 to find out what happened: a replay spends a rate-limit token whether or not it creates anything, and it can answer three different ways, to settle a question the client can answer from fr.last_booking_reference with no request at all. A refresh therefore abandons the RESPONSE and not the REQUEST, mechanically the same as TAB_CLOSED from this state, and the confirm in flight runs to its own answer with this seat unaffected. The restored page reads the hold token back from sessionStorage, the keys are still live because release is post-commit, so it re-renders the ordinary checkout panel with its countdown; the in-flight state itself died with the page and is not restorable. If the customer then presses the pay action, that is CONFIRM_START from this state - a second confirm carrying the same Idempotency-Key - and it is refused 409 IDEMPOTENCY_IN_FLIGHT, which is the path that keeps that branch reachable from the product",
+     "user_sees": "(nothing - the restored page renders the ordinary checkout panel and its countdown; the confirm in flight is invisible to it)"},
     {"from": "held_by_me_paying", "input": "SIGN_OUT", "to": "held_by_me_paying",
      "guard": "server: the release runs and the confirm is NOT cancelled - a request already sent cannot be un-sent, and there is no in-flight flag to consult (FR-ADR-025). This is mechanically identical to DESELECT from this state: the confirm passed its Redis re-validation at FR-ADR-029 step 2 and does not read Redis again before commit, so the outcome is settled by the database guard and both orderings are safe. A release landing BEFORE re-validation leaves no key and the confirm fails 409 HOLD_EXPIRED with nothing charged; a release landing AFTER the seats are booked finds a token that no longer matches and deletes nothing. The booking, if it commits, belongs to the account that was signed in when the request was sent",
      "user_sees": "(nothing from the release - the customer has left the session and the confirm's own answer is written to their bookings list and their emailed receipt)"},
@@ -3785,7 +3982,7 @@ blank cell meant.
      "guard": "ignored: the booking is committed and independent of any browser. The reference is in the customer's bookings list and on the emailed receipt",
      "user_sees": "(nothing - the customer has left)"},
     {"from": "sold", "input": "TAB_REFRESHED", "to": "sold",
-     "guard": "the restored selection is re-checked against the fresh map and this seat is dropped from it. For the buyer, re-sending the confirm with the same Idempotency-Key returns the original booking",
+     "guard": "the restored selection is re-checked against the fresh map and this seat is dropped from it. For the buyer, the restored checkout page finds fr.last_booking_reference in sessionStorage for this showtime and redirects to the confirmation screen for it WITH NO REQUEST - SCR-PAY-01 owns that rule and does not replay EP-PAY-01. Were the confirm re-sent, the same Idempotency-Key would return the original booking, so no second booking exists on either route; the route that runs is the one that spends no rate-limit token",
      "user_sees": "FR-2K7M-9QXD"},
     {"from": "sold", "input": "SIGN_OUT", "to": "sold",
      "guard": "ignored: the booking is committed and durable, and no session event can un-sell a booking_seat row (P-SEA-05). A residual key from the buyer's own hold is released if it is still present, which is harmless",
@@ -3920,8 +4117,9 @@ remainder of the 180 seconds and then free themselves. No cleanup job is needed 
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | One or more seats are already locked or sold | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats` lists them | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
-| 2 | A single named seat is unavailable and it was the only one chosen | 409 `SEAT_UNAVAILABLE` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1 | One or more seats are already locked or sold, **on a first hold for this showtime** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats` lists them | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | A single named seat is unavailable and it was the only one chosen, **on a first hold for this showtime** | 409 `SEAT_UNAVAILABLE` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1b / 2b | The same two triggers, but this request **extends a live hold** (step 4 found one) | 409 `SEAT_UNAVAILABLE`, unchanged; **the existing hold is untouched and its `expires_at` does not move** | **`P-HLD-14` rows 3b and 2b.** The closing clause is `Your hold is unchanged.`, never `No seats were held.` — those seats were never in this request's rollback set and are still held |
 | 3 | The same seat id appears twice in the body | 422 `VALIDATION_FAILED` | `Seat C12 was listed twice. Each seat can only be chosen once. No seats were held.` |
 | 4 | A seat id is not in this showtime's seat set — including a seat added to the hall after this showtime was created (`P-ADM-14`) | 422 `VALIDATION_FAILED` | `Seat C12 is not part of this hall. No seats were held.` |
 | 5 | The body names zero seats | 422 `VALIDATION_FAILED` | `Choose at least one seat.` |
@@ -4105,14 +4303,35 @@ it (Art IX.5, `FR-ADR-018`).
 
 ---
 
-#### `P-HLD-04` · Cap a customer at ten seats per showtime, counted across every live hold · `RULED`
+#### `P-HLD-04` · Cap a customer at ten seats held **at once** on one showtime · `RULED`
 `[SRC: SRC-003 OPEN-BOOK-01 · FR-ADR-026]`
 `[BRD: R-HOLD-04]`
 
-**Behaviour.** A customer may hold at most **ten** seats for one showtime, from the configuration value
-`MAX_SEATS_PER_BOOKING`. The count includes everything they are already holding for that showtime, not
-only the seats in this request. Two requests for six seats each on the same showtime is eleven seats
-held by one customer, and the second is refused **before any lock is taken**.
+**Behaviour.** A customer may hold at most **ten** seats **at any one moment** for one showtime, from
+the configuration value `MAX_SEATS_PER_BOOKING`. The count includes everything they are already
+holding for that showtime, not only the seats in this request. Two requests for six seats each on the
+same showtime is eleven seats held by one customer, and the second is refused **before any lock is
+taken**.
+
+**What this cap bounds, and what it does not, stated because the row's own name used to imply the
+other one.** It bounds **concurrent holds**, and through them the size of one booking. It does **not**
+bound how many seats one customer may buy on one showtime over time. `P-PAY-10` step 13 removes the
+hold's token from `holds:user:{user_id}:showtime:{showtime_id}` at commit **deliberately**, so the cap
+stops counting seats the customer now owns — for the same reason `P-HLD-08` step 8 removes it on a
+release: leaving it there would keep the cap consumed by a hold that no longer exists, and a customer
+who had just bought ten seats could buy nothing else on that showtime for the remainder of the 180
+seconds. **The consequence is that a customer may buy ten seats, then immediately hold and buy ten
+more, and repeat.** That is the specified behaviour, not a defect, and a test transcribed from an
+earlier reading of this row's title would assert a per-showtime lifetime limit the server does not
+enforce and never did.
+
+**No source states a lifetime limit.** `SRC-003 OPEN-BOOK-01` reads `"10 maxx"` against a question
+asking the maximum number of seats **in one booking**; `FR-ADR-026` decides only that the cap is ten,
+that it is enforced at the hold rather than only at confirmation, and that it counts the customer's
+live holds on that showtime. Neither reaches successive bookings, so this document adds no rule about
+them — **inventing one would be a scope change and scope is reserved.** Recorded as
+`PROPOSED-BULKBUY-01` in the lane notes: whether one customer should be able to buy out a hall in
+successive ten-seat bookings is a product question nobody has asked, and it is the client's.
 
 **The cap is per showtime.** One customer may hold seats on more than one showtime at a time — two
 films in one evening is a legitimate purchase pattern and nothing rules against it. There is no
@@ -4140,10 +4359,14 @@ seat count stored under each token — a lookup of at most ten known keys, never
 | 2 | The request plus existing holds exceeds ten | 422 `SEAT_LIMIT_EXCEEDED`, no lock touched | `You can hold up to 10 seats for one showtime. You are holding 6 and chose 5 more.` |
 | 3 | The customer selects an eleventh seat in the interface | no request is sent | `Up to 10 seats.` — the note under the total; the tap does not add the seat |
 | 4 | The customer holds ten on showtime A and requests four on showtime B | 201 — the cap is per showtime | `4 seats held by you`, and `1 seat held by you` had it been one — the count is interpolated and both forms are published (`SCR-SEA-01`) |
+| 5 | The customer **buys** ten seats on this showtime and immediately requests ten more on the same showtime | **201** — at commit `P-PAY-10` step 13 removed the token from `holds:user:{user_id}:showtime:{showtime_id}`, so the cap counts nothing and this request starts a fresh hold | `10 seats held by you` |
 
 **Server-side validation.** `len(seat_ids) <= MAX_SEATS_PER_BOOKING`, and
-`existing_held + len(seat_ids) <= MAX_SEATS_PER_BOOKING`. Enforced in the domain layer, so the
-interface limit is not the control.
+`existing_held + len(seat_ids) <= MAX_SEATS_PER_BOOKING`, where `existing_held` is read from the
+**live holds** index and therefore counts no seat the customer has already bought. Enforced in the
+domain layer, so the interface limit is not the control. **A test asserting that a customer who has
+bought ten seats is refused an eleventh on that showtime asserts a rule this document does not state
+and the server does not enforce**; the assertion that belongs here is exception row 5's `201`.
 
 **Every string in this lane that shows the number ten renders `MAX_SEATS_PER_BOOKING`. A literal `10`
 in any of them is a defect.** The rule is the document's, stated in `S7` and binding on every lane;
@@ -4311,10 +4534,20 @@ fourteen minutes. **Only the configured value and these three assertions change.
 map immediately, and **leaves the rest of the selection exactly as it was**, so the customer changes
 only what went.
 
-**The message never says any seats are still held after a lost multi-seat hold**, because none are —
-the hold is all-or-nothing and the won keys were released. This corrects the example copy in
+**After a lost *first* hold the message never says any seats are still held**, because none are — the
+hold is all-or-nothing and the won keys were released. This corrects the example copy in
 `COMPONENTS.md §6`, which reads *"Your other seats are still held"* while citing `FR-ADR-026`. It is
 reported in the lane notes.
+
+**A request that *extends* a live hold is the one case where seats genuinely are still held, and it is
+told so.** All-or-nothing is **over the seats the request names**, not over the hold: `P-HLD-01`
+step 4 acquires the new seats under the existing token, and the "distinguishing the two nils"
+rule keeps seats the customer already owned **out of this request's rollback set**, so a failure here
+cannot release them. Their `expires_at` does not move either. The closing clause is therefore
+`Your hold is unchanged.` and not `No seats were held.` — `P-HLD-14` rows 2b and 3b publish both
+sentences, and `SCR-SEA-01`'s **Hold live, further seats chosen** state renders them. **This is the
+only path in the lane on which "still held" is a true statement**, and it is why the flat rule above
+is stated with its scope rather than as an absolute.
 
 **The lost seats are marked unavailable, not sold.** A seat lost to another customer's hold is
 `held_by_other`; it becomes `sold` only when their booking commits. `COMPONENTS.md §6`'s instruction to
@@ -4333,8 +4566,10 @@ exclamation, no figure of speech.
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | Two of five seats lost at hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]` | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
-| 2 | One of one seat lost at hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1 | Two of five seats lost at a **first** hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]` | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | One of one seat lost at a **first** hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 2b | Two of the further seats lost on a request **extending a live hold** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]`; the existing hold and its `expires_at` are untouched | `C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.` (`P-HLD-14` row 3b) |
+| 2c | One of the further seats lost on a request **extending a live hold** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]`; the existing hold and its `expires_at` are untouched | `C12 was taken by another customer. Your hold is unchanged. Choose a different seat and try again.` (`P-HLD-14` row 2b) |
 | 3 | A seat lost at the database guard during confirm | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 4 | A seat found already sold during the hold's post-acquisition check | 409 `SEAT_UNAVAILABLE` | as row 2 |
 
@@ -4354,7 +4589,8 @@ compare-and-delete Lua script against that seat's key, using the hold's token, s
 release a lock it owns. **The rest of the hold survives, with the same `expires_at`** — giving a seat
 back does not buy more time on the others. If the released seat was the last one, the hold ends and the
 countdown disappears. Releasing the whole hold in one action is the secondary control on the price
-summary.
+summary, `Give up these seats`, and it is `EP-HLD-04`. **It has its own numbered procedure below**, and
+it is not the per-seat procedure run in a loop.
 
 **Who may do it.** The hold's owner. Enforced on the router as an authenticated dependency, plus an
 ownership check: the hold record's `user_id` must equal the caller's. **The token alone is not
@@ -4384,7 +4620,7 @@ the same rule.
 
 **Preconditions.** A live hold whose token the caller presents, containing the named seat.
 
-**Happy path.**
+**Happy path — the per-seat release (`EP-HLD-03`).**
 1. Look up the hold record by token. Assert its `user_id` matches the caller.
 2. Assert the named seat is in the hold's seat set.
 3. Run the compare-and-delete script against `lock:seat:{showtime_id}:{seat_id}` with the hold's token.
@@ -4400,6 +4636,53 @@ the same rule.
    that set would keep the customer's cap consumed by a hold that no longer exists** — `P-HLD-04`
    counts from that set, so a customer who gave back all ten seats could not take ten again until the
    TTL elapsed.
+
+**Happy path — the whole-hold release (`EP-HLD-04`), which is a second procedure and not the first one
+in a loop.** It reaches the same end state the per-seat path reaches on its last seat — every key
+released, the hold record gone, the cap index entry gone, the seat-map cache invalidated — but it
+performs the record, index and cache work **once** rather than testing for it after each seat:
+
+1. Look up the hold record by token. Assert its `user_id` matches the caller. **A token of the wrong
+   shape never reaches this step** — it is 400 `REQUEST_INVALID` before Redis is touched (`P-HLD-03`).
+2. For **every** seat in the hold, in ascending `seat_id` order, run the compare-and-delete script
+   against `lock:seat:{showtime_id}:{seat_id}` with the hold's token.
+3. Remove every one of those keys from `instance:{instance_id}:holds`.
+4. Delete the hold record.
+5. **Remove the token from `holds:user:{user_id}:showtime:{showtime_id}`.** Without this the customer
+   who just gave back all ten seats is capped by a hold that no longer exists for the remainder of the
+   180 seconds, and is told the seats were taken by another customer when the other customer is
+   themselves — **the exact failure step 8 above exists to prevent, on the other endpoint.**
+6. **`DEL cache:seatmap:{showtime_id}`** — `P-BRW-12` owns seat-map invalidation and requires the
+   delete after a release exactly as after a hold. It runs **after** step 2, never before: a `DEL`
+   issued first lets a rebuild land while the keys still exist and re-cache the seats as held. Without
+   it the seats show held to everyone else for up to the cache's TTL rather than about three seconds.
+7. Return **204** with no body. The hold is gone, so there is no remaining hold to describe.
+
+**Steps 2 to 6 are best-effort, and it is safe that they are.** Every structure they touch carries the
+hold's TTL, so an instance that dies part-way through costs the seats time and never correctness: the
+keys expire, the hold record expires, the index entry expires, and the cache entry expires. **Nothing
+here is a cleanup job and none is needed.**
+
+**Three cases the one-sentence version of this path left open, answered here.**
+
+- **A partial release.** There is no such thing on this endpoint — it names no seats, so it always
+  addresses the whole hold. What can be *partial* is the **effect**: a compare-and-delete returning 0
+  for one seat, because that key already expired or already carries another customer's token, is
+  **not an error and does not stop the loop.** The remaining seats are still released and the answer
+  is still 204. Refusing the whole request because one key had already gone would leave nine seats
+  locked for no reason.
+- **Releasing a seat another customer is waiting for.** Nothing is notified and nothing is queued.
+  That customer learns at their next 3-second poll, which step 6 is what makes about three seconds
+  rather than up to thirteen, and the seat repaints `available` with the changed-seat outline
+  (`SCR-SEA-01`). There is no reservation queue and no first-in-line claim on a released seat; the
+  next `SET NX` wins, exactly as at any other moment.
+- **Releasing a hold that already expired on its own.** 409 `HOLD_EXPIRED`, and **steps 2 to 6 do not
+  run.** There is nothing to release, and the hold record and the index entry carried the same TTL as
+  the keys and are gone with them. In particular **no `DEL cache:seatmap` runs on this path**: an
+  expiry frees seats without telling the cache anywhere in this document, which is why an expired
+  hold's seats can read held for up to the cache TTL and `P-HLD-02` exception 3 tells the customer the
+  next poll reports them. That is existing accepted behaviour, restated here because a reader adding
+  step 6 to the 409 branch would be inventing an invalidation the expiry path has never had.
 
 **Exception paths.**
 
@@ -4732,8 +5015,17 @@ gone. A unit test proves the function; only the signal proves the wiring.
 
 **Behaviour.** `scripts/stress_seats.py` fires 50 simultaneous hold requests for one seat and asserts
 exactly one succeeds. It runs against local Docker and against the deployed environment by changing a
-base URL. Then the unique constraint is dropped on purpose, the script is watched producing more than
-one winner, the constraint is restored, and the restore is verified.
+base URL. **That is Stage A of the proof, and it exercises the Redis lock layer.** The red-proof drill
+— drop the unique constraint, watch the guard fail, restore it, verify the restore — is **Stage B**,
+and it is a different run: it puts **two live holders on one seat** so that two confirms both reach
+`P-PAY-10` step 7, because that is the only state in which the constraint is reached at all.
+**`P-XCT-01` and `S7.1` own both stages and this row does not restate the procedure.**
+
+**Why the drop does not belong to this row's run, stated because it used to.** Every one of the
+forty-nine losers here is refused by Redis at `SET … NX`. **The unique constraint fires zero times in
+a passing run of this gate**, so dropping it leaves one winner and one `booking_seat` row exactly as
+before — and reading that as a red proof proves nothing, while reading it as a failure blocks a story
+for a defect that is not there.
 
 **Who may do it.** The build session locally; the client in their own environment. **The constraint
 drop is local only** — dropping a correctness constraint in a deployed environment is a destructive
@@ -4761,11 +5053,16 @@ restated here.**
 > 409 responses whose `error.code` is `SEAT_UNAVAILABLE`**, and a direct `SELECT count(*)` against
 > `booking_seat` for that pair returns **exactly 1**.
 >
-> With the same constraint dropped, the same run produces **more than one** committed `booking_seat`
-> row for that pair. With the constraint restored, the run again produces exactly one, and the
-> constraint is read back from `pg_constraint` and found present.
->
 > **Any other outcome fails, including zero winners.**
+>
+> **The constraint drop is not part of this criterion and may not be tested against this run.** With
+> the constraint dropped, this same run still produces exactly one winner and exactly one
+> `booking_seat` row, because every loser was refused by the Redis lock and the constraint was never
+> reached. **The red proof is `P-XCT-01`'s Stage B**, which produces two live holders on one seat and
+> then observes **two** committed `booking_seat` rows for one pair with the constraint dropped, one
+> row with it restored, and the constraint read back from `pg_constraint`. **A drill run against this
+> criterion instead reports failure against a correct implementation**, on the one gate that is never
+> waivable.
 
 **Why 201 and not 200, stated because the number is the assertion.** `CONSTITUTION.md` Art IX.3
 illustrates a binary criterion with "one 200 and 49 409s". **That is an example of the *shape* a binary
@@ -4785,7 +5082,8 @@ be changed together or not at all.**
 | 1 | The start-instant spread exceeds the threshold | the script fails with `not concurrent` | it does **not** report a pass; a proof that cannot distinguish a working system from a serialised client is not a proof |
 | 2 | Zero requests succeed | fail | the assertion is not "at most one"; zero winners means the endpoint is broken |
 | 3 | Any loser returns 500 rather than 409 `SEAT_UNAVAILABLE` | fail | a unique-constraint violation translated into a 500 misleads the customer and pollutes the error rate the operator watches |
-| 4 | Step 3 of the drill still produces one winner with the constraint dropped | **stop the line** | the test is not exercising the constraint and the whole proof is void. That is a finding, not a pleasant surprise |
+| 4 | **`P-XCT-01`'s Stage B** still produces one `booking_seat` row for the pair with the constraint dropped | **stop the line** | the run is not exercising the constraint and the whole proof is void. That is a finding, not a pleasant surprise |
+| 4a | **This row's own run** — Stage A — produces one winner with the constraint dropped | **expected, and not a finding** | the gate fires at the hold, where Redis decides the winner and the constraint is never reached. Reading it as a red proof proves nothing; reading it as a failure blocks a story for a defect that is not there |
 | 5 | Someone proposes disabling the rate limiter for the run | refused | disabling a control to make a test pass is the shape of a fake green, and waiving a quality check is reserved to the client |
 
 **Server-side validation.** The unique constraint is **total**, with no `WHERE status <> 'cancelled'`
@@ -4858,8 +5156,10 @@ countdown has no room for and the banner does.
 | # | Code · HTTP | What the user sees, verbatim |
 |---|---|---|
 | 1 | `AUTH_REQUIRED` 401 | `Sign in to hold seats. Your selection has been kept.` |
-| 2 | `SEAT_UNAVAILABLE` 409, one seat, at hold | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
-| 3 | `SEAT_UNAVAILABLE` 409, several seats, at hold | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | `SEAT_UNAVAILABLE` 409, one seat, at a **first** hold | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 2b | `SEAT_UNAVAILABLE` 409, one seat, at a hold that **extends a live hold** | `C12 was taken by another customer. Your hold is unchanged. Choose a different seat and try again.` |
+| 3 | `SEAT_UNAVAILABLE` 409, several seats, at a **first** hold | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 3b | `SEAT_UNAVAILABLE` 409, several seats, at a hold that **extends a live hold** | `C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.` |
 | 4 | `SEAT_UNAVAILABLE` 409, at confirm, **one** seat lost | `C12 was taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 4b | `SEAT_UNAVAILABLE` 409, at confirm, **two or more** seats lost | `C12 and C13 were taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 5 | `HOLD_EXPIRED` 409 | `The hold on your seats has ended and they have been released. You have not been charged. Choose them again if they are still free.` |
@@ -4883,6 +5183,64 @@ countdown has no room for and the banner does.
 | 23 | `VALIDATION_FAILED` 422, seats that are out of service, **two or more** offending seats | `Seats C12 and C13 are out of service. No seats were held.` |
 | 24 | `REQUEST_INVALID` 400, a malformed hold token on `EP-HLD-02`, `EP-HLD-03` or `EP-HLD-04` | `This request could not be processed. Return to the seat map and choose your seats again.` — the string `P-PAY-01` publishes for the same code, reproduced verbatim rather than reworded, because one code with two sentences is the drift this table exists to prevent |
 
+**First hold or extend, for every refusal at the hold endpoint: one substitution, applied
+identically.** Every sentence in this table that a hold request can produce ends with a clause saying
+what the request left behind, and **that clause has two forms**:
+
+| The request that failed | The closing clause |
+|---|---|
+| The customer held **nothing** on this showtime when it arrived — a first hold | `No seats were held.` |
+| The customer already held seats on this showtime — `P-HLD-01` step 4 found a live hold and this request was an **extend** | `Your hold is unchanged.` |
+
+**The server picks, and the client composes nothing** (`SCR-XCT-01`). The fact the server branches on
+is the same one step 4 already reads to decide whether to mint a token, so no new lookup is added.
+
+**Why `No seats were held.` cannot simply be left to cover both.** On an extend it is a **false
+statement about seats the customer is looking at**: their held cells are still drawn `held_by_me`, the
+countdown is still running from the unchanged `expires_at`, the heading still reads `3 seats held by
+you`, and `P-HLD-04` is still counting those three against their ten. The sentence would contradict
+four things on the same screen. All-or-nothing is over **the seats the request names**, never over the
+hold — `P-HLD-01`'s rollback set deliberately excludes keys the customer already owned, so a failed
+extend cannot release them (`P-HLD-07`).
+
+**Where the advice half also changes, and why.** Rows 2 and 3 end `press Hold these seats again`,
+which is the primary action's label on a first hold. **In the extend state that control reads
+`Hold 2 more seats` or `Hold 1 more seat`** (`SCR-SEA-01`), a label carrying an interpolated count, so
+rows 2b and 3b say `try again` instead: a server-rendered sentence may not name a button label that
+depends on how many seats the customer happens to have tapped.
+
+**The substitution applies to the other seat-level rows on the hold endpoint too** — rows 11, 12, 20,
+21, 22 and 23, the six `VALIDATION_FAILED` strings. A duplicate seat id or an out-of-service seat in a
+request that extends a live hold is rejected before any lock is touched, so the existing hold is
+untouched there for the same reason, and the clause reads `Your hold is unchanged.` Only rows 2 and 3
+get their own published pair, because only those two also change their advice half; the six take the
+clause substitution and nothing else. **Seventeen rows are unaffected** — 1, 4, 4b, 5, 6, 7, 8, 9,
+10, 13, 14, 15, 16, 17, 18, 19 and 24. Rows 4 and 4b are at confirm, where the whole hold is being
+bought and there is no extend to distinguish; **the other fifteen end with no such clause at all**, so
+there is nothing to substitute. Rows 2b and 3b are the extend forms themselves and are not a further
+case. **Eight affected, seventeen not, and both lists are written out rather than inferred**, because
+the phrase "every seat-level message" is what produced the last gap in this table.
+
+**Worked example — one extend, two seats lost.** A customer holds `J1`, `J2` and `J3` under token `T`
+with `expires_at = 19:35:37`, and presses `Hold 2 more seats` for `C12` and `C13`. Both are taken
+between the map render and the request:
+
+```
+step 4 finds a live hold on this showtime  ->  this is an EXTEND, not a first hold
+seats named by this request                ->  C12, C13        (J1, J2, J3 are not named)
+both SET NX return nil, neither key carries T
+rollback set                               ->  {}              (nothing was won)
+J1, J2, J3                                 ->  untouched; expires_at still 19:35:37
+offending seats, in submission order       ->  C12, C13
+count = 2, which is >= 2                   ->  the plural row (3b)
+closing clause                             ->  "Your hold is unchanged."
+message  ->  C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.
+```
+
+**Expected answer: 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]`, and a hold
+still carrying exactly three seats.** Had the customer held nothing, the same run would take row 3 and
+end `No seats were held.` instead — the only difference is the clause.
+
 **Singular and plural, for every seat-level message: a rule, not a judgement.** `SEAT_UNAVAILABLE`
 **at hold** always had an explicit pair (rows 2 and 3). Nothing else did. The three seat-level
 `VALIDATION_FAILED` strings had only a singular, and so did **`SEAT_UNAVAILABLE` at confirm** — a row
@@ -4890,7 +5248,9 @@ whose own rule pointed at a partner that did not exist. **`SCR-XCT-01` rules tha
 `message` and the client never composes it**, so with two offending seats the server had no sentence
 to send and would have had to emit a singular naming one seat while rejecting several, or a template
 the client was forbidden to fill. **Rows 4b, 21, 22 and 23 close that, and every seat-level message
-in this lane now has both forms.** The rule below governs all four pairs identically:
+in this lane now has both forms.** The rule below governs all four pairs identically — **and it
+governs rows 2b and 3b on the same terms**, which are the extend forms of rows 2 and 3 and are
+themselves a singular and a plural:
 
 - **Exactly one offending seat → the singular row.** Two or more → the plural row. The count is the
   number of *offending* seats, never the number of seats in the request: a five-seat request with one
@@ -4904,7 +5264,8 @@ in this lane now has both forms.** The rule below governs all four pairs identic
   internal ids, exactly as `P-HLD-07` requires.
 
 **Worked example — two offending seats.** A request names `[C12, C13, C14, C12, C13]` on a showtime
-whose hall has all three seats. `C12` and `C13` are each listed twice, so **two** seats offend and the
+whose hall has all three seats, **from a customer holding nothing on it** — so the closing clause is
+the first-hold form. `C12` and `C13` are each listed twice, so **two** seats offend and the
 plural is rendered in submission order:
 
 ```
@@ -4915,7 +5276,10 @@ message  ->  Seats C12 and C13 were listed more than once. Each seat can only be
 ```
 
 **With three**, the join is `C12, C13 and C14` and the sentence is otherwise identical. **With one** —
-`[C12, C13, C12]` — the count is 1 and row 11's singular is rendered verbatim. **The status and the
+`[C12, C13, C12]` — the count is 1 and row 11's singular is rendered verbatim. **Had the same request
+come from a customer already holding seats on this showtime**, everything above is unchanged except
+the final clause, which reads `Your hold is unchanged.` — the two rules compose and neither
+overrides the other. **The status and the
 code do not change between singular and plural**; only the sentence does, and the interface branches
 on `code` in both cases (`P-HLD-14`'s opening rule).
 
@@ -5006,7 +5370,7 @@ authentication dependency, never inside the handler (`SRC-001 §7.4`).
 | 1 | No JWT, or an expired one | `401` `AUTH_REQUIRED` | "Sign in to complete this booking." |
 | 2 | The hold token is unknown, or its Redis keys are gone | `409` `HOLD_EXPIRED` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 3 | The hold token exists but was issued to a different user | `403` `HOLD_NOT_OWNED` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
-| 4 | The simulated capture returns `failed` | `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **This row owns both strings.** They are **not** `P-HLD-14`'s: that row's message set carries no `PAYMENT_FAILED` entry at all, so the earlier attribution pointed at a row that does not have it. `P-PAY-01`'s own note below already says E3 keeps its own copy for the codes E2 does not publish, and this is one of them. |
+| 4 | The simulated capture returns `failed` | `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. You can try again while the countdown is still running. If it has reached zero your hold has ended and you will need to choose your seats again." **One string, unconditional. This row owns it.** It is **not** `P-HLD-14`'s: that row's message set carries no `PAYMENT_FAILED` entry at all, so the earlier attribution pointed at a row that does not have it. `P-PAY-01`'s own note below already says E3 keeps its own copy for the codes E2 does not publish, and this is one of them. |
 | 5 | A seat was already sold — the unique constraint fires | `409` `SEAT_UNAVAILABLE` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 6 | Redis is unreachable | `503` `DEPENDENCY_UNAVAILABLE` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 7 | Over the rate limit | `429` `RATE_LIMITED`, with `Retry-After` | "Too many attempts. Try again in 6 seconds." — the span is computed from the emptied bucket's refill rate, never from its capacity, and is rendered by **S7.20**. The arithmetic is under **Worked example — the `Retry-After` span**, below |
@@ -5024,6 +5388,22 @@ and nowhere else.** E3 keeps its own copy only for the codes E2 does not publish
 `IDEMPOTENCY_IN_FLIGHT`, `IDEMPOTENCY_KEY_REUSED`, `REQUEST_INVALID`, and the generic
 `AUTH_REQUIRED`, `RATE_LIMITED` and `INTERNAL_ERROR` lines. `SALES_CLOSED` is not an error of this
 endpoint at all (`P-PAY-10` step 4).
+
+**Why `PAYMENT_FAILED` is one sentence and not two, and what the earlier pair claimed that the server
+cannot know.** Exception 4 published two strings and chose between them on whether the hold had
+survived the capture, attributing that knowledge to *"the confirm re-validates the hold"*. **The
+confirm re-validates the hold at step 2 and the capture is step 6** (`P-PAY-10`), and lane E2's seat
+lifecycle machine states that Redis is not read again between re-validation and commit. **So at the
+moment the `402` is composed the server has no fact about the hold's current state**, and a hold that
+expired during the artificial delay makes the first string false while a hold that survived makes the
+second one false. The two available repairs were to add a Redis read after the failed capture, or to
+stop claiming. **Stopping claiming is the one this document has already chosen once**: `SCR-SEA-02`'s
+zero state named a cause until it was shown that a TTL, a shutdown drain and a re-acquired key reach
+`0:00` identically, and the copy was generalised rather than given a new source of truth. The same
+argument applies here and produces the same answer, so the single string names the two facts the
+server does know — that nothing was charged, and that the customer may press again — and points at the
+countdown for the one it does not. **Adding a Redis read would also have to specify what the sentence
+says when that read is the thing that fails**, which is a third case bought to remove a second.
 
 **Every instant this endpoint returns that a customer reads as a wall-clock time carries the cinema's
 UTC offset, and the client converts nothing.** `EP-PAY-01`'s `201` serialises `starts_at` and
@@ -5454,6 +5834,32 @@ must carry.
 rate would make tests flaky and a demonstration unpredictable. The trigger is a header prefix rather
 than a request-body field so that no failure-control field ever enters the public request contract.
 
+**`fail -> retry -> succeed` is reachable, and two rules are what make it reachable.** The trigger
+reads the key, so a retry that carries the same key fails identically; and if the key were minted once
+per hold, every retry for the life of that hold would carry it, and the sequence this simulator exists
+to demonstrate could not be performed at all. Both halves are closed here:
+
+1. **`P-PAY-09` mints the key per confirm attempt, not per hold, and discards it on a `402`.** A
+   `402` is the only response whose specification states that the attempt committed nothing and rolled
+   its idempotency record back, so a fresh key on the next press cannot produce a second booking or a
+   second capture. The next press therefore carries a key that does not begin with the prefix, the
+   capture succeeds, and the customer the copy invited to try again does.
+2. **A key the browser mints can never begin with the prefix by accident.**
+   `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` is validated at boot to contain **at least one character
+   outside the canonical UUID alphabet `[0-9a-f-]`**, which is the whole alphabet
+   `crypto.randomUUID()` can produce (`P-PAY-09`). Without that check a prefix of `a` would fail one
+   confirm in sixteen, at random, in every environment it was set in — which is the flakiness this
+   row's first paragraph exists to prevent, arriving through the configuration instead of through the
+   provider.
+
+**Who can then produce a failing key.** A caller that sets the header itself: `scripts/`, a `curl`
+invocation, or any API client. That is where `fail -> retry -> succeed` is driven, and it satisfies
+this row's requirement that the delay, the double-tap guard and the idempotency retry path be
+**exercised by hand** — a person driving the endpoint directly is exercising it by hand. **No control
+is added to the product to reach it.** A demonstration toggle on the checkout screen would be a new
+control on the one screen `P-PAY-08` forbids to grow anything payment-shaped, and it would be a scope
+change nobody asked for.
+
 **The failed attempt is recorded and the booking transaction rolls back.** The `payment` row for a
 failed capture is written in its own committed transaction so that the failure is observable; the
 booking transaction that contained the attempt rolls back in full, including its idempotency record.
@@ -5480,12 +5886,14 @@ bound, `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` set. All three validated at boot.
 | 1 | `PAYMENT_PROVIDER` unset | Process exits non-zero at boot, before binding a port | Nothing. There is no running application. |
 | 2 | `PAYMENT_PROVIDER` set to anything other than `simulated` | Process exits non-zero at boot with a message stating that no other provider exists | Nothing. |
 | 3 | `PAYMENT_SIMULATED_DELAY_MS` >= `SEAT_HOLD_TTL_SECONDS * 1000 / 10` — at a 180-second hold, `>= 18000` | Process exits non-zero at boot, with a message naming the variable, the configured value and the computed bound | Nothing. |
-| 4 | The idempotency key starts with `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` | The payment row is committed as `failed`; the booking transaction rolls back; `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **Published once by `P-PAY-01` exception 4, which owns both strings. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
+| 4 | The idempotency key starts with `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` | The payment row is committed as `failed`; the booking transaction rolls back, taking its idempotency record with it; `402` `PAYMENT_FAILED`. **The client then discards the key and mints a fresh one, so the next press is not refused by this trigger** (`P-PAY-09`) | **One string, published once by `P-PAY-01` exception 4, which owns it. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
 | 5 | A capture is attempted against a payment already in `captured` | Rejected by the state machine. The confirm path never reaches this — the idempotency record catches the retry first (`P-PAY-09`) | Nothing. The replayed response is returned instead. |
+| 6 | `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` is set to a value drawn entirely from `[0-9a-f-]` | Process exits non-zero at boot, with a message naming the variable, the configured value and the reason: a browser-minted `Idempotency-Key` could begin with it by chance, which would fail real confirms at random | Nothing. There is no running application. |
 
 **Server-side validation.** `PAYMENT_PROVIDER`: string, must equal `simulated`.
 `PAYMENT_SIMULATED_DELAY_MS`: integer, `> 0`, `< SEAT_HOLD_TTL_SECONDS * 1000 / 10`.
-`PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`: string, 1–32 characters.
+`PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`: string, 1–32 characters, **containing at least one character
+outside `[0-9a-f-]`**.
 
 **Worked example.** With `SEAT_HOLD_TTL_SECONDS=180` the hold is `180 * 1000 = 180000` ms and the
 startup bound is a tenth of it: `PAYMENT_SIMULATED_DELAY_MS < 18000`. `1500` boots. `17999` boots.
@@ -5499,6 +5907,25 @@ completes inside the hold. A request begun at `14:02:59.500Z` reaches commit at 
 step 2 while it was still live, the seats are already protected by the Redis locks until `14:03:00Z`
 and by the unique constraint thereafter. `FR-ADR-042` states that a customer already holding seats may
 finish checking out.
+
+**Worked example — the prefix alphabet check, and the figure that makes it necessary.** A browser key
+is `crypto.randomUUID()`'s canonical form (`P-PAY-09`): 36 characters drawn from `0-9`, `a-f` and `-`.
+A prefix of length `n` drawn entirely from that same alphabet is therefore reachable by chance, and
+the hexadecimal positions carry 16 values each:
+
+```
+prefix "a"          all of [0-9a-f-]   ->  1 confirm in 16              REFUSED at boot
+prefix "deadbeef"   all of [0-9a-f-]   ->  1 confirm in 16^8
+                                        =  1 in 4,294,967,296          REFUSED at boot
+prefix "FAIL_"      'F' and '_' are outside [0-9a-f-]  ->  0            BOOTS
+```
+
+**`deadbeef` is refused even though its own figure is negligible**, because the check is on the
+alphabet and not on the length: a rule that admitted an eight-character all-hex prefix would have to
+name the shortest acceptable length, and every such number is one an operator can undercut by typing a
+shorter value. **The configured value is `FAIL_`** (**`ASSUMED`** — no source names one). It is 5
+characters, inside the 1–32 bound, and contains two characters outside the alphabet, either of which
+alone would satisfy the check.
 
 ---
 
@@ -5577,6 +6004,39 @@ expires is a key whose retry after the window creates a second booking.
 **Scope is per user.** Two customers can generate the same key — a weak client generator, or a copied
 request — and a global scope would hand one of them the other's booking.
 
+**Who generates the key, when, with what entropy, and when a new one is minted.** This paragraph is
+the authority for all four. Nothing else in the document specifies them, and the only statement that
+existed before was a sentence in lane E2's cross-lane notes, which under `S1.2` carry no authority
+over another lane's endpoint.
+
+| | |
+|---|---|
+| **Who** | **The client, never the server.** A server-minted key would be minted per request and would guard nothing: the whole point is that the *same intent* re-sent carries the *same* key. |
+| **What** | `crypto.randomUUID()` — the browser's CSPRNG — in its canonical 36-character form, e.g. `9f2c1d4e-7b83-4a16-9c05-2e6f8a31b7d0`. **122 random bits.** 36 is inside the header's 1–255 bound with room to spare, and the value needs no encoding to travel in a header. `Math.random()` is forbidden: it is not a CSPRNG, and two tabs seeded alike produce the same key. |
+| **When** | **Once per confirm attempt**, minted at the moment the pay action is pressed and **written to `sessionStorage` as `fr.confirm_idempotency_key` before the request is sent**, beside the hold token (`P-HLD-09`). The stored value carries **the `hold_token` it was minted against.** Writing it first is what makes it survivable: a tab that dies between the write and the response still has the key that identifies the attempt. |
+| **Re-sent unchanged** | When the pay action is pressed and a stored key exists **whose `hold_token` equals the current one** and whose attempt has not ended in a `402`. This is the refresh-mid-flight case, and it is the case lane E2's seat lifecycle machine depends on for `TAB_REFRESHED` in `held_by_me_paying`. |
+| **Freshly minted** | When there is no stored key; when the stored key was minted against a **different** `hold_token`; or when the previous attempt returned **`402` `PAYMENT_FAILED`**. |
+| **Cleared** | On a `201` — the attempt is over. On a `402`. On sign-out, with every other `fr.*` value (`SCR-PAY-01`, `P-ACC-13`). On tab close, by `sessionStorage`'s own lifetime. |
+
+**Why `402` is the only outcome that earns a fresh key, and why every other outcome keeps the old one.**
+A fresh key is safe exactly when the previous attempt is **known** to have committed nothing. `402` is
+the only response in this endpoint's set that the document guarantees that of: the booking transaction
+rolls back in full, **taking its own idempotency record with it** (`P-PAY-07` exception 4, `P-PAY-10`),
+so no booking, no capture and no key row survive it. **Every other ending keeps the stored key,
+including the endings the client never learns** — a dropped connection, a killed tab, a request that
+timed out. In those the outcome is *unknown*, and the only instrument that can tell "the first attempt
+committed" from "the first attempt did nothing" is re-sending **the same key** and reading which of
+the three duplicate behaviours above comes back. **Minting a fresh key for an attempt of unknown
+outcome is the one manoeuvre in this product that can produce two bookings and two captures for one
+intent, and it is forbidden here rather than left to a client author's judgement.**
+
+**Binding the stored key to the hold token is what keeps a retry from turning into a `422`.** A
+customer who meets `409` `HOLD_EXPIRED` or `409` `SEAT_UNAVAILABLE` returns to the seat map and takes a
+new hold, which issues a new token (`P-HLD-01`). The fingerprint is a hash of `hold_token` and
+`showtime_id`, so re-sending the old key against the new hold would differ in fingerprint and be
+refused `422` `IDEMPOTENCY_KEY_REUSED` — a permanent refusal, because the record is never deleted.
+The token comparison makes that unreachable: a new hold token mints a new key.
+
 **Who may do it.** Any authenticated account, as `P-PAY-01`.
 
 **Preconditions.** The `Idempotency-Key` header is present, 1–255 characters.
@@ -5595,10 +6055,12 @@ request — and a global scope would hand one of them the other's booking.
 | 1 | The header is absent | `400` `REQUEST_INVALID`. No transaction is opened | "This request could not be processed. Return to the seat map and choose your seats again." |
 | 2 | The header is present but empty, or longer than 255 characters | `400` `REQUEST_INVALID` | "This request could not be processed. Return to the seat map and choose your seats again." |
 | 3 | The key exists for this user, `status = completed`, fingerprint matches | The stored `response_body` and the original status code, byte for byte | The confirmation, exactly as the first time. No banner, no second charge, no second booking. |
-| 4 | The key exists for this user, `status = in_progress`, fingerprint matches | `409` `IDEMPOTENCY_IN_FLIGHT` with `Retry-After` | "This booking is still being processed." |
+| 4 | The key exists for this user, `status = in_progress`, fingerprint matches | `409` `IDEMPOTENCY_IN_FLIGHT` with `Retry-After`. **The client re-sends the identical request automatically after `Retry-After` seconds, at most three times** — see the paragraph and the arithmetic below | "This booking is still being processed." |
 | 5 | The key exists for this user, fingerprint differs | `422` `IDEMPOTENCY_KEY_REUSED` | "This checkout is out of date. Return to the seat map and choose your seats again." |
 | 6 | The same key sent by a different user | Treated as a fresh key. The unique constraint is on `(user_id, idempotency_key)`, so there is no collision | Nothing unusual. |
-| 7 | A retry after the attempt rolled back — a failed payment, or a lost seat | The key row was rolled back with the transaction, so the retry inserts it again and proceeds normally | Nothing unusual. |
+| 7 | A retry carrying the **same** key after the attempt rolled back — a failed payment, or a lost seat | The key row was rolled back with the transaction, so the retry inserts it again and proceeds normally. **The server accepts this from any caller**; it is what makes a script's retry work | Nothing unusual. |
+| 7b | A retry from `SCR-PAY-01` after `402` `PAYMENT_FAILED` | **A different key**, freshly minted by the client under the rule above. It inserts cleanly, is not caught by `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`, and the capture succeeds. Nothing is charged twice: the first attempt captured nothing and left no key row | The confirmation. |
+| 7c | A retry from `SCR-PAY-01` after `409` `SEAT_UNAVAILABLE` or `409` `HOLD_EXPIRED` | The customer returns to the seat map and takes a **new** hold, which carries a new `hold_token`, so the next press mints a fresh key rather than re-sending one whose fingerprint no longer matches | Nothing unusual. |
 
 **Server-side validation.** `Idempotency-Key`: string, 1–255 characters, required. Compared as an
 exact byte sequence; it is not trimmed, lowercased or otherwise normalised, because silently
@@ -5613,6 +6075,36 @@ Retry-After = ceil(PAYMENT_SIMULATED_DELAY_MS / 1000) + 1
 With `PAYMENT_SIMULATED_DELAY_MS = 1500` this is `ceil(1.5) + 1 = 2 + 1 = 3` seconds. The formula is
 tied to the only bounded wait in the transaction, so raising the artificial delay raises the advice
 automatically. `[JUDGMENT CALL]` — the formula is the build session's under Art III.9.
+
+**What the client does with that header, which is the half a `Retry-After` alone does not specify.**
+A header naming a span says when a retry would be sensible and says nothing about who performs it, and
+`SCR-PAY-01`'s banners carry no control, so a customer meeting this response had no specified next
+move at all. **The screen re-sends the identical request — same key, same body — automatically after
+`Retry-After` seconds, at most three times.** While it does, the pay action keeps its busy state and
+stays disabled, and the banner renders exception 4's string. If the third automatic re-send still
+answers `409` `IDEMPOTENCY_IN_FLIGHT`, the re-sends stop, the banner stays, and the pay action
+re-enables so the customer may press it themselves. **The banner still carries no control** — the
+retrying is the screen's own behaviour and needs nothing to press.
+
+**Why three, and why a bounded count rather than a poll.** A replay spends a rate-limit token whether
+or not it creates anything (`P-XCT-07` exception 4, `EP-PAY-01`'s `rate_limit`), so an unbounded poll
+would empty the customer's own bucket while waiting for a booking that has already been made:
+
+```
+Retry-After                          =  ceil(1500 / 1000) + 1  =  3 s          the formula above
+automatic re-sends                   =  3
+elapsed before the screen gives up   =  3 * 3                  =  9 s
+tokens spent                         =  1 press + 3 re-sends   =  4
+per-user bucket                      =  10 per minute                          S7.4, EP-PAY-01
+tokens left for the customer's own presses  =  10 - 4          =  6
+```
+
+The winner's own transaction takes about **1.56 seconds** end to end (`P-PAY-10`'s worked example), of
+which 1.50 is the artificial delay, so **the first automatic re-send at 3 seconds normally finds the
+winner `completed` and replays the stored `201`** — the customer sees the confirmation and never reads
+the banner for long. Nine seconds is six times the expected transaction, and four tokens leaves the
+larger half of the bucket for a genuine retry. `[JUDGMENT CALL]` — the count of three is the build
+session's; it is one integer and it moves with the bucket if the bucket is reconfigured.
 
 **Worked example — `R-PAY-02`'s three cases, which must all return the original booking.** A customer
 confirms at `14:02:40Z` with `Idempotency-Key: 9f2c…`, and the booking commits at `14:02:41.6Z` as
@@ -5681,13 +6173,26 @@ already exists at the moment it is composed.
 |---|---|---|
 | 13 | Release this hold's Redis locks with the Lua compare-and-delete script, **then delete the hold record and remove its token from `holds:user:{user_id}:showtime:{showtime_id}`**. The hold is consumed and the seats are sold; leaving the index entry would keep `P-HLD-04`'s cap counting seats this customer no longer holds but owns, and refuse them a further booking on the same showtime for the remainder of the 180 seconds | `FR-ADR-025`, `FR-ADR-029`, `P-HLD-04` |
 | 14 | `DEL cache:seatmap:{showtime_id}` | `FR-ADR-030` |
-| 15 | Send the outbox message to the queue and mark **the `outbox_message` row** `sent` | `FR-ADR-031` |
+| 15 | Send the outbox message to the queue, **bounded by `QUEUE_SEND_TIMEOUT_MS`**, and mark **the `outbox_message` row** `sent`. **The confirm response is emitted after this step returns — whether it succeeded, failed or timed out** | `FR-ADR-031`, `P-TKT-04` |
 
 **Step 15 marks the outbox row and not the dispatch row.** The `receipt_dispatch` row stays `pending`
 until the worker claims it and transitions it (`P-TKT-05`); this path never writes it again after step
 9. Two rows with a `sent` state are two different facts — that the job was handed to the queue, and
 that an email reached SES — and collapsing them would let a queue hand-off be read as a delivered
 receipt.
+
+**Step 15 is inside the request, it is bounded, and its outcome never reaches the customer.** It runs
+in this request's own thread and **the confirm response is emitted after it returns**, so the
+customer's wait includes it: worst case, `P-PAY-10`'s ~1.56-second transaction plus
+`QUEUE_SEND_TIMEOUT_MS` (2000 ms, `S7.9`) ≈ **3.56 seconds**, and then an ordinary `201`. A failure or
+a timeout at step 15 changes nothing the customer sees and nothing about the booking, which is already
+committed: the `outbox_message` row stays `pending` and the worker's relay sends it (`P-TKT-04`
+exception 2, crash row 15). **Nothing is emitted before step 15 and nothing is handed to a background
+task** — a background task is process-local state that a SIGTERM or a SIGKILL loses (`P-XCT-18`,
+`P-XCT-17`), which is the failure the outbox exists to make impossible. **Without the bound the
+response is unbounded**: an unreachable queue would hold it open until the load balancer's idle
+timeout, and the customer who has paid would see a failed request against a booking that exists, seats
+that are sold and a receipt already on its way.
 
 **Why the payment is captured before the booking insert, and what that leaves behind.**
 `SRC-001 §5.3.1` requires payment before confirmation, so the order is not free. Capturing after the
@@ -5788,7 +6293,7 @@ is reserved to the client (`CONSTITUTION.md` Art III.8), and this is the check.
 | 1 | **Exactly one** of the requested seats already has a `booking_seat` row for this showtime | `409` `SEAT_UNAVAILABLE`, `details.unavailable_seats` naming it, whole transaction rolled back | **`P-HLD-14` row 4, the *at confirm* singular. Not restated here** (`P-PAY-01`). |
 | 1b | **Two or more** of the requested seats already have `booking_seat` rows for this showtime | as row 1, with `details.unavailable_seats` naming **every** one of them, in the order they appear in the hold | **`P-HLD-14` row 4b, the *at confirm* plural. Not restated here.** The server renders the plural sentence itself; this endpoint never returns a singular naming one seat while rejecting several |
 | 2 | The same violation, and the client re-sends the identical request with the same key | The idempotency row was rolled back too, so this is a fresh attempt. It reaches step 7 and violates again | The same message as row 1. The customer must change the selection; the server does not loop. |
-| 3 | The constraint has been dropped — the red-proof drill (`FR-ADR-034`) | Two winners appear. **This is the drill, and the constraint is restored and the restore verified** | Not a customer-facing case. It runs against a local environment. |
+| 3 | The constraint has been dropped — **`P-XCT-01`'s Stage B**, in which two customers hold one seat and both confirm (`FR-ADR-034`) | Two winners appear and two `booking_seat` rows commit for one `(showtime_id, seat_id)`. **This is the red proof; the constraint is then restored and the restore verified** | Not a customer-facing case. It runs against a local environment. **Stage A — the fifty-request hold gate — produces one winner with the constraint dropped and is not this row's case** |
 
 **Server-side validation.** None beyond `P-PAY-01`; this specification is about a database response,
 not a request field.
@@ -5799,10 +6304,14 @@ and this section restates it rather than redefining it). **It is the hold, not t
 confirm-based variant could not work, because forty-nine of the fifty would hold no lock and would
 fail re-validation with `HOLD_EXPIRED` rather than meeting the unique constraint. The expected result is one
 `201` and **49** responses of `409`, each carrying `code = "SEAT_UNAVAILABLE"` and each naming that
-one seat in `details.unavailable_seats`. Some of the 49 lose at the Redis lock and some lose at the
-unique constraint; the response shape is identical either way, which is deliberate — the customer does
-not need to know which layer refused them, and the operator reads the split from the counters, not
-from the response.
+one seat in `details.unavailable_seats`. **All 49 lose at the Redis lock, and the unique constraint
+fires zero times in a passing run of that gate** — it guards `booking_seat`, which is written only at
+step 7 of `P-PAY-10`, and only the one winner ever gets there. The response shape would be identical
+either way, which is deliberate: the customer does not need to know which layer refused them, and the
+operator reads the split from the counters rather than from the response. **Because that split is
+49-to-0, the gate proves the lock layer and proves nothing about the constraint** — which is why
+`P-XCT-01` adds a second stage that puts two live holders on one seat and drops the constraint under
+*that* run instead. **Dropping it under this one changes nothing observable.**
 
 ---
 
@@ -5817,6 +6326,25 @@ configuration. Those are the parts that require a money decision, and a money de
 made is worse than a missing column.
 
 **There is no customer-initiated cancellation.** No endpoint, no button, no flow.
+
+**The absence is stated to the customer in words, on the one surface where they would look for it.**
+Every customer surface renders no cancellation control and no refund control, and before this
+paragraph **no surface anywhere said that a booking cannot be cancelled or refunded** — so a customer
+who cannot attend met silence rather than a refusal, and silence does not distinguish a ruled absence
+from a feature that is broken or that they have failed to find. There is no About page, no Contact
+page, no footer link and no support desk to ask instead: the client is the sole operator
+(`SRC-002 §1`). **`SCR-TKT-01` — the one booking page in this product, reached from the confirm
+response, from the bookings list `SCR-ACC-04` and from a typed URL — carries the line
+`This booking cannot be changed, cancelled or refunded.` beneath its entry line.** That page declares
+itself the single source for everything it says, so it owns the string; this row states that the
+string must be there, and why.
+
+**Publishing the ruling is not deciding it, and nothing else is added.** The policy is already ruled
+(`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`) and this paragraph writes it down rather than choosing
+it; no money question is answered here and none is opened. **No new surface is created** — an About
+page, a Contact page, a footer link or a support address would each be a scope change nobody asked for
+(`SRC-001 §6`), and the sentence is placed on a page that already exists and that the customer is
+already holding when the question occurs to them.
 
 **`booking.status` and `booking.cancelled_at` exist in the schema and no v1 endpoint exposes either.**
 `status` is written once, at confirmation, to the confirmed value. `cancelled_at` stays null for every
@@ -5938,6 +6466,44 @@ arithmetic is not the guard; the constraint is.
 a factor of ten — 13 million compressed into the wrong unit. The expectation `0.0076` above was always
 correct; only the sentence reading it back was wrong, which is the kind of error that survives because
 the figure it contradicts is sitting three lines above it.)*
+
+**What the alphabet fixes and what it does not. Written down because the reference's only real
+consumer is a person reading eight characters aloud at an entrance with no software in the path**
+(`P-TKT-08`).
+
+**Excluded, exactly as `SRC-003 OPEN-TICKET-01` asked** (*"no `0`/`O`, no `1`/`I`/`l`"*): `0`, `1`,
+`I`, `L`, `O`, `U`. What that leaves is not unambiguous, and the document may not imply that it is:
+
+| Still inside the alphabet | Confusable | Where it bites |
+|---|---|---|
+| `2`/`Z`, `5`/`S`, `8`/`B`, `6`/`G` | by eye, on a phone screen held out at a door | `P-TKT-08` step 1 and step 2 |
+| `B` `C` `D` `E` `G` `P` `T` `V` `Z` `3`; also `M`/`N` and `F`/`S` | by ear, read aloud or over a telephone | the same, and no exclusion list fixes this half — a spoken alphabet is confusable at any size |
+
+**There is no check character and no checksum.** Every 8-character string over the alphabet is a
+well-formed reference, so a single substitution produces **another well-formed reference** rather than
+a detectable error — and because both members of every pair above are *in* the alphabet, the mis-read
+value can be a real other booking's reference. The error is undetectable by construction, not merely
+unreported.
+
+**What the product does about that: nothing, deliberately, and the consequence is not symmetrical.**
+`P-TKT-02` corrects nothing, and it is right not to — a system that guesses can admit the wrong
+person. So a mis-read surfaces **online** as the flat 404 of `P-TKT-02` exception 2, which is
+recoverable because the customer can look again; and **at the door as no failure at all**, because
+`P-TKT-08` has nothing to compare the characters against.
+
+**This is not `OPEN-SEATLABEL-01`'s defect, and the difference matters when the two are read
+together.** Two stored references can never differ only in case or spacing: the value is generated
+uppercase from a fixed alphabet, stored uppercase with no separators, and normalised with an
+ASCII-only uppercase on the way back in (`P-TKT-02`). There is no collision half here. The exposure is
+the same surface and the same deadline; the mechanism is not.
+
+**Whether to trim the alphabet further or add a check character is raised as `PROPOSED-REFCHAR-01`
+and is not decided here.** It is not reserved — `SRC-003 OPEN-TICKET-01` rules the exclusions and then
+says in terms *"Format specified in the PRD"* — so no client signature is needed for it. It is
+deferred for a different reason, stated in the lane notes: **it stops being decidable at Phase 4.** A
+reference already issued to a customer cannot be re-cut, so the change costs nothing until the first
+booking is confirmed and cannot be made at all afterwards, and choosing the format is a larger
+decision than closing the gap that hid it.
 
 ---
 
@@ -6174,6 +6740,8 @@ reaches it.
   row for every booking the application confirms; `P-TKT-05` only ever transitions one.** The seed
   script is the one other writer and it writes the row `suppressed` — see the block below.
 - `QUEUE_URL` is configured. In AWS it points at SQS; locally at ElasticMQ (`FR-ADR-059`).
+- `QUEUE_SEND_TIMEOUT_MS` is configured. It bounds the fast-path send in step 3 below, and it is the
+  only thing standing between an unreachable queue and a confirm response that never returns.
 
 **Happy path.**
 1. Inside the booking transaction, after the booking and its seats are inserted and the payment is
@@ -6193,8 +6761,9 @@ reaches it.
    written**, and it is what lets `P-TKT-07`'s resend read a row while the worker is down — which is
    precisely the state a resend is most likely to arrive in.
 2. Commit.
-3. **Fast path.** The same request now calls the queue's `send`, and on success updates the row to
-   `status = 'sent'`, `sent_at = now()`. This is what happens almost always.
+3. **Fast path, and it is bounded.** The same request now calls the queue's `send` **under
+   `QUEUE_SEND_TIMEOUT_MS`**, and on success updates the row to `status = 'sent'`, `sent_at = now()`.
+   This is what happens almost always. **A timeout is treated exactly as a failure** — step 4.
 4. **Recovery path.** If step 3 fails, or the process dies before it, the row stays `pending`. Before
    each poll of the queue, the worker selects `pending` rows older than a short threshold with
    `SELECT ... FOR UPDATE SKIP LOCKED`, in a bounded batch, sends them and marks them `sent`. This runs
@@ -6202,6 +6771,46 @@ reaches it.
    OPEN-PROC-01`).
 5. `sent` rows are kept forever as the record that the receipt was dispatched (`FR-ADR-012`). Nothing
    prunes this table.
+
+**Where the fast-path send sits in the confirm request, and what bounds it. Both halves are stated
+because neither is inferable from the other and a developer has to guess both.**
+
+**It is inside the request, and the confirm response is emitted after it.** Step 3 runs in the API
+process, in the confirm request's own thread, after the commit — it is `E3 P-PAY-10` step 15, the last
+of that specification's three post-commit steps — and **the response the customer is waiting for is
+emitted after step 3 returns, whether it succeeded, failed or timed out.** The customer's wait
+therefore includes the queue call. Nothing is emitted early and nothing is handed to a background task:
+a background task is process-local state that a SIGTERM or a SIGKILL loses (`P-XCT-18`, `P-XCT-17`),
+which is the failure the outbox exists to make impossible, and re-introducing it here to save a few
+hundred milliseconds would trade a durability guarantee for latency.
+
+**Because it is inside the request, it carries a timeout, and the timeout is the customer's worst
+case.** `QUEUE_SEND_TIMEOUT_MS = 2000` (**`ASSUMED`** — no source states a figure). Worked through
+against `P-PAY-10`'s own worked example, whose transaction takes about **1.56 seconds**: an unreachable
+queue makes that confirm about **3.56 seconds** and then returns `201` normally, because the booking
+is already committed and no outcome of step 3 can change it.
+
+```
+worst-case confirm = transaction (~1560 ms) + QUEUE_SEND_TIMEOUT_MS (2000 ms) ≈ 3.56 s
+```
+
+**The bound is the value, not a multiple of it.** The AWS SDK retries a failed API call by default,
+and three attempts at a two-second timeout is a six-second hang that no reading of the variable's name
+would predict. **SDK-level retry is disabled on this path**: the retry that matters is the relay in
+step 4, which is the one that also survives the process dying, and a second attempt inside the request
+buys nothing the relay does not already provide 30 seconds later.
+
+**`QUEUE_SEND_TIMEOUT_MS` must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS`** (20 s, `S7.9`), or a
+SIGTERM arriving while a send is hung means the drain cannot finish and SIGKILL lands mid-request
+(`P-XCT-17` exception 3). At 2000 ms it is a tenth of it. **This ordering cannot be checked at boot in
+one place** — both values are read by the API — so it is checked in `S7.9` and stated here.
+
+**No timeout at all is the worst available outcome and it is what the document said before this pass.**
+An unreachable queue would hold the confirm response open until the load balancer's idle timeout or the
+customer's browser gave up, so the customer who has paid would see a failed request against a booking
+that is committed, seats that are sold, and a receipt that the relay was going to send anyway. The
+outbox exists so that the queue being down costs nothing; an unbounded call inside the request hands
+that cost straight back to the customer.
 
 **The `suppressed` state, and why the seed writes one rather than no row at all.**
 
@@ -6237,7 +6846,7 @@ The two are different facts and the open row stays open (`FR-ADR-049`).
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
 | 1 | The outbox insert fails | the whole booking transaction rolls back: no booking, no seats sold, no payment recorded | the confirm screen's failure copy (lane E3). Nothing about a receipt, because no booking exists |
-| 2 | The queue send in step 3 fails | **nothing is returned to the customer.** The confirm response has already succeeded. The row stays `pending` and the worker relays it | nothing. The confirmation page renders normally |
+| 2 | The queue send in step 3 fails, **or does not answer within `QUEUE_SEND_TIMEOUT_MS`** | **nothing about it is returned to the customer.** The failure is logged at `ERROR` with the `request_id`; the row stays `pending` and the worker relays it. The confirm response is emitted at the point it always is — after step 3 — carrying its ordinary `201`, at most `QUEUE_SEND_TIMEOUT_MS` later than it would have been | nothing. The confirmation page renders normally |
 | 3 | The API process dies between commit and step 3 | as row 2 | nothing |
 | 4 | The worker is down | receipts are delayed, not lost. They go out when it restarts | nothing on the site |
 | 5 | The queue is unreachable from the worker as well | the relay logs at `ERROR` and retries on the next loop; the row stays `pending` and `attempts` increments | nothing. **Nobody is alerted** — see `P-TKT-11` |
@@ -6316,9 +6925,47 @@ looks.
    is a stale copy from an earlier `dispatch_seq`.** The worker deletes the queue message and stops.
    There is still exactly one row per booking, which is what `FR-ADR-032` requires.
 3. It reads the current booking from PostgreSQL — the payload carries no booking data.
-4. It renders the receipt (`SCR-TKT-02`) and calls SES through the mail port.
+4. It renders the receipt (`SCR-TKT-02`) and calls SES through the mail port **under
+   `SES_SEND_TIMEOUT_MS`**. See the block below: without a bound, a hung call holds the claim in
+   `sending` and no redelivery can take it for `RECEIPT_CLAIM_STALE_SECONDS`.
 5. On success it sets `status='sent'`, `sent_at=now()`, `ses_message_id=<the id SES returned>`, and
-   deletes the queue message.
+   deletes the queue message. **`sent` means SES accepted the message for delivery. It does not mean
+   the customer received it, and no later event ever revises it** — `P-TKT-11` states what that table
+   can and cannot answer.
+
+**The SES call is bounded, and the bound is what keeps a dead worker from costing fifteen minutes.**
+
+`SES_SEND_TIMEOUT_MS = 5000` (**`ASSUMED`** — no source states a figure). **The ordering around it is
+not assumed**, and it is bounded on both sides:
+
+- **It must be far shorter than the queue's visibility timeout** — 120 seconds in the worked example
+  below — so this delivery reaches a terminal state, `sent` or `failed`, before the next redelivery
+  arrives. A send still running when its own redelivery lands is how two deliveries end up in the same
+  job, and only the claim then stands between the customer and two receipts.
+- **It must be shorter than the worker's drain.** On SIGTERM the worker "finishes the message it is
+  handling" (`P-XCT-17` exception 5), so an unbounded SES call makes an unbounded drain, and SIGKILL
+  arrives mid-send. At 5000 ms it is a quarter of `SHUTDOWN_DRAIN_TIMEOUT_SECONDS` (20 s, `S7.9`).
+- **It must be comfortably longer than a normal in-region `SendEmail` round trip**, or ordinary
+  receipts fail under no fault at all. *(reasoned from the configured values, not observed — nothing
+  in this project has called SES.)*
+
+**What the absence of it cost, stated because it is the reason this paragraph exists.** With no
+timeout the call can hang indefinitely. The row stays `sending` with a live `claimed_at`, so every
+redelivery reads the claim as held and deletes its own message (the claim table below), and **no
+delivery can retake the send until `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds — has elapsed.** For
+fifteen minutes the customer has paid, no receipt has gone out, nothing is being attempted, and
+`P-TKT-11` means nobody is told. With the bound the same failure lands on `failed` in five seconds and
+the next redelivery claims it (exception row 3).
+
+**A timeout is not a known failure, and this is the one place `FR-ADR-032`'s guarantee does not
+reach.** On a timeout the worker does not know what SES did: the message may have been accepted and
+the response lost. The claim makes **two senders** impossible; it cannot make **two sends** impossible
+when the first sender never learned its own outcome. So a retry after a timeout can deliver a second
+identical receipt. **That is the lesser of the two outcomes and it is chosen deliberately**: the
+alternative — never retrying a send whose outcome is unknown — is a customer who has paid, cannot
+enter, and has nothing coming. `SCR-TKT-02`'s re-sent state already renders a second copy
+byte-identically for exactly this reason. `last_error` records that the call **timed out** rather than
+that SES **refused**, so the two are distinguishable afterwards by the operator `P-TKT-11` describes.
 
 **What the claim does with every status it can find.** Stated exhaustively, because the row now exists
 before the worker ever sees it and a reader has to be able to tell a first delivery from a reclaim
@@ -6342,7 +6989,7 @@ out-of-band writer produces is exactly the kind a reachability argument otherwis
 | Status | Reached by | A `receipt.send` delivery (`P-TKT-05`) | A resend request (`P-TKT-07`) | The SES call returning |
 |---|---|---|---|---|
 | `pending` | `P-TKT-04`, in the booking transaction | claims it → `sending` | refused, 202 `queued: false` (`attempts = 0`) or 202 `queued: false` (`attempts > 0`) | n/a — no claim is held |
-| `sending` | the claim | live claim → nothing; stale claim → reclaims it | refused, 202 `queued: false` | success → `sent`; error → `failed` |
+| `sending` | the claim | live claim → nothing; stale claim → reclaims it | refused, 202 `queued: false` | success → `sent`; error **or timeout** → `failed` |
 | `sent` | a successful SES call | nothing; the message is deleted | accepted → `dispatch_seq + 1`, back to `pending` | n/a |
 | `failed` | an SES error | claims it → `sending` | accepted → `dispatch_seq + 1`, back to `pending` | n/a |
 | `suppressed` | **the seed script only** (`P-XCT-30`, `P-XCT-32`) | nothing; the message is deleted and logged at `WARNING` | **refused, 409** (`P-TKT-07` exception 8) | n/a |
@@ -6366,6 +7013,7 @@ out-of-band writer produces is exactly the kind a reachability argument otherwis
 |---|---|---|---|
 | 1 | The claim returns zero rows (a duplicate delivery, or an older `dispatch_seq`) | the message is deleted, no email is sent, one `INFO` line is logged | nothing. This is the mechanism working |
 | 2 | SES returns an error | `status='failed'`, `last_error` set, **the queue message is not deleted**, so it is redelivered | nothing on the site |
+| 2a | **The SES call does not answer within `SES_SEND_TIMEOUT_MS`** | treated as row 2 — `status='failed'`, **`last_error` records that the call timed out rather than that SES refused**, the message is not deleted and is redelivered. **The outcome of the abandoned call is unknown**, so the retry may deliver a second identical receipt; see the block above | nothing on the site. A second copy of the same receipt, if the first one was in fact accepted |
 | 3 | A redelivery arrives for a `failed` claim | the claim is retryable and the send is attempted again | nothing |
 | 4 | The worker is killed mid-send, leaving `sending` | after `RECEIPT_CLAIM_STALE_SECONDS` the claim is reclaimable by a later delivery | nothing |
 | 5 | Redelivery exceeds the queue's `maxReceiveCount` | the message moves to the dead letter queue. The `receipt_dispatch` row stays `failed` with the SES error | **nothing.** See `P-TKT-11` and `P-TKT-10` |
@@ -6421,8 +7069,8 @@ visibility timeout, or a redelivery arriving while the first attempt is still ru
 claim stale, take it, and send a second email. `900 > 120` holds with a wide margin — 900 is seven and
 a half visibility timeouts — so the property is satisfied more strongly at 900 than it was at 300.
 **That ordering is the whole point of the number**, and it is a rule about two values rather than a
-value in itself: if the client raises the visibility timeout past 900, this variable has to move too,
-and the deployment specification owes the client that sentence (`FR-ADR-059`).
+value in itself: if the client raises the visibility timeout past 900, this variable has to move too
+(`FR-ADR-059`).
 
 **What the larger threshold costs, stated rather than glossed.** Eight redeliveries are spent before
 the reclaim instead of three, and each one consumes a receive against `maxReceiveCount`. If the
@@ -6431,6 +7079,26 @@ the claim ever goes stale, and the receipt is not sent at all until a person loo
 here** — `maxReceiveCount` is a Zone C value (`SRC-002 §6.3.6`) — but the arithmetic above is what the
 deployment specification has to put in front of the client, because a default chosen without it
 produces a silently unsent receipt. *(reasoned from the configured values, not observed.)*
+
+**The two rules this lane owes `docs/30 Deployment/`, written out here in the form they have to reach
+the client — because as of this pass they are not there.** `docs/30 Deployment/` holds one file,
+`AWS_PREP_QUEUE.md`, and its SQS entry (row 9, `REQUESTED`) names the queue and its dead letter queue
+and **neither of these two values**. Both are Zone C settings the application cannot read
+(`FR-ADR-032`), so no boot check and no test can catch either one, and both fail silently in opposite
+directions:
+
+| # | The rule | What a wrong value does, with nothing reporting it |
+|---|---|---|
+| 1 | **The queue's visibility timeout must be less than `RECEIPT_CLAIM_STALE_SECONDS`** (900) | A visibility timeout above 900 means a redelivery arrives while the first attempt is still running, finds the claim stale, takes it, and **sends a second receipt**. The property this whole specification is built on stops holding, and nothing errors |
+| 2 | **`maxReceiveCount` must be greater than `ceil(RECEIPT_CLAIM_STALE_SECONDS / visibility_timeout)`** — `ceil(900 / 120) = 8` at the worked pair, so **greater than 8** | At 8 or fewer the message is in the dead letter queue **before** the claim ever goes stale, so the reclaim in the table above never happens and **the receipt is never sent**. Dead letter queue depth is not alarmed (`P-TKT-11`), so nothing reports it |
+
+The second rule is stated as arithmetic rather than as the number 8 on purpose: **8 is derived from
+the pair, not chosen**, so a client who changes the visibility timeout changes the required
+`maxReceiveCount` with it. At 120 seconds the eighth redelivery is the first whose claim age (960 s)
+exceeds 900, and it is the ninth receive of the message counting the original delivery — which is why
+`maxReceiveCount` must exceed 8 rather than reach it. **Both rules belong in the SQS row of the prep
+queue and neither is there yet; this lane owes it and the debt is recorded here rather than assumed
+paid.** *(reasoned from the configured values, not observed.)*
 
 ---
 
@@ -6775,14 +7443,34 @@ no customer-facing message about one.
 | the dead letter queue (`FR-ADR-059`) | the messages whose send failed past `maxReceiveCount` |
 | `booking` | **unchanged.** A failed send alters no booking field. The booking remains exactly as confirmed |
 
-**What the customer can always reach without the email**, and which specification provides it:
+**What the customer can reach without the email**, which specification provides it, and **what each
+route requires of them.** The word *always* is not used, and the third column is why:
 
-| Route | Specification |
-|---|---|
-| the reference on the confirmation page, shown immediately and independently of the email | `P-TKT-03` |
-| the same page, durable and reachable again at `/bookings/{reference}` | `P-TKT-03`, `P-TKT-09` |
-| the reference in their own bookings list | lane E5's screen, reading the same booking row |
-| a resend they can trigger themselves | `P-TKT-07` |
+| Route | Specification | What it requires |
+|---|---|---|
+| the reference on the confirmation page, shown immediately and independently of the email | `P-TKT-03` | a signed-in session, a network, a device |
+| the same page, durable and reachable again at `/bookings/{reference}` | `P-TKT-03`, `P-TKT-09` | the same three. `EP-TKT-01` is authenticated and ownership-only; a signed-out visit is `401` |
+| the reference in their own bookings list | lane E5's screen, reading the same booking row | the same three. `E5 P-ACC-10` is authenticated |
+| a resend they can trigger themselves | `P-TKT-07` | the same three, **plus knowing that the receipt failed** — and nothing tells them (`P-TKT-11`, and the failed state is off the customer API by `P-TKT-09`) |
+
+**All four routes share one precondition, and naming it is the point of the column.** Every one needs
+an **authenticated session**. A guest reaches none of them, which is consistent rather than a gap — a
+guest cannot book (`SRC-003 OPEN-BOOK-02`) — but **a customer who is signed out at the entrance and
+has forgotten their password reaches none of them either**, and that one is not consistent with
+anything.
+
+**The route that restores a session is the route that cannot help here.** A password reset writes a
+`password_reset.send` row into **the same `outbox_message` table**, relayed by **the same relay**,
+consumed by **the same worker**, and sent through **the same SES identity** (`P-TKT-04`, `P-TKT-12`)
+that has just failed to deliver the receipt. When SES is the failing component, account recovery fails
+with it — and `P-ACC-07`'s deliberately uniform `202` means the customer cannot tell that it did.
+**The four routes are not four independent routes; three of them and the fix for the fourth all
+terminate at the same session.**
+
+**Nothing is specified against that, and nothing may be.** A second channel, a fallback address, a
+one-time link, or any unauthenticated route to a reference is a product answer to a post-capture send
+failure, which is exactly `OPEN-EMAILFAIL-01` (`FR-ADR-049`). The shared dependency is recorded in the
+table it belongs to rather than discovered at a door.
 
 **What is deliberately absent.**
 - No message, banner, email, or page state for a definitively failed send.
@@ -6829,14 +7517,57 @@ discovered.
 |---|---|---|---|
 | 1 | A receipt fails past `maxReceiveCount` and lands in the dead letter queue | the message sits there. `receipt_dispatch.status` is `failed` with the SES error | **nothing.** No email to the operator, no banner, no entry in any screen that exists in v1 |
 | 2 | The outbox relay is stuck and `pending` rows accumulate | the rows accumulate | nothing |
-| 3 | SES bounces every receipt for a whole evening | every send is recorded as `failed` | nothing |
+| 3 | SES **accepts** every receipt for a whole evening and every one **bounces afterwards** | every send is recorded as **`sent`**, because acceptance is what `P-TKT-05` records and a bounce arrives later and separately. The bounce notifications publish to SNS and nothing subscribes (`FR-ADR-060`) | **nothing — and this is worse than row 1.** Row 1 at least leaves a `failed` row. Here the product's own record says the receipts went out |
+| 3a | SES **refuses** every receipt at the call — a sandbox refusal, a suspended identity, an unverified sender | every send is recorded as `failed` with the SES error, and each message ends in the dead letter queue as row 1 | nothing |
 
 **Server-side validation.** Not applicable.
 
 **What is available to a person who does look.** `/metrics` exposes queue depth
 (`SRC-002 §7.7`, `FR-ADR-057`) and **nothing scrapes it** — it is not an alerting mechanism and must
-not be counted as one. The `receipt_dispatch` table answers "did this customer get their receipt" and
-holds the SES message id that makes the answer checkable. The runbook must name both.
+not be counted as one. The other thing available is the `receipt_dispatch` table, and the next block
+says what it can and cannot answer. The runbook must name both, **in these terms and not in shorter
+ones.**
+
+**`receipt_dispatch` answers a narrower question than its name suggests, and the difference is the
+whole of this specification's usefulness.** It records **whether SES accepted the message**, when, and
+under which `ses_message_id` — `P-TKT-05` step 5 writes `sent` on acceptance and **nothing ever
+revises it afterwards**. It does **not** record delivery. SES publishes bounces and complaints to SNS
+and **nothing subscribes** (`FR-ADR-060`, `P-TKT-10`), so a receipt that bounced, or that the
+customer's mail provider filed as spam, sits in this table as `sent` and is **indistinguishable from
+one that reached the inbox**. The product's knowledge of the receipt ends at the SES API call.
+
+So an operator answering *"did this customer get their receipt"* can establish only that the message
+was handed to SES. **A `sent` row is evidence of dispatch, never of receipt**, and the last hop — the
+one the customer is standing in — is not observed anywhere in this product. **This is stated at
+length because the short version is the dangerous one**: `sent` read as *delivered* is the reading
+that ends a support conversation with a customer who has paid, cannot enter, and has been told the
+receipt was sent. **This specification previously carried that short version**, in the words "the
+`receipt_dispatch` table answers 'did this customer get their receipt'", which was a claim of
+knowledge the product does not have, made in the one row whose subject is what nobody can see.
+
+**Adding bounce handling is not the fix and is not available here.** Subscribing to the SNS topic and
+marking an address invalid changes a customer's ability to receive their ticket, which is
+`OPEN-EMAILFAIL-01` — `OPEN` and reserved (`FR-ADR-049`, `P-TKT-10`). **The document stops claiming
+the knowledge; it does not go and get it.**
+
+**And there is no product action available on a receipt that has failed.** Discovery is one half of an
+operator's problem and the other half is missing, so it is written here rather than found at the
+moment it is needed. **No endpoint, screen or job in v1 re-sends a receipt on an operator's behalf.**
+`EP-TKT-02` is authorised on ownership alone, with **no override for any role** (`P-TKT-07`,
+`P-TKT-09`, `EP-TKT-02`'s `authorisation_rule`), so an admin looking at a dead-lettered receipt for a
+paying customer **cannot press that customer's resend control for them**. What exists is:
+
+| Route | What it needs | Why it may not be enough |
+|---|---|---|
+| the customer presses the resend control themselves (`P-TKT-07`) | that they know the receipt failed | **nothing tells them.** The dispatch state is off the customer API (`P-TKT-09`) and `P-TKT-10` writes no message |
+| a person redrives the dead letter queue in the AWS console | an operator with console access | **Zone C** (`SRC-002 §6.3.6`), specified in **no file** in `docs/30 Deployment/`, and not a product capability at all |
+
+**No operator resend is specified here and none may be added by whoever builds this.** An
+administrative action taken on a customer's booking after a post-capture send failure is the substance
+of `OPEN-EMAILFAIL-01` — *what the product does when a paid-for receipt definitively fails* — which is
+`OPEN` and reserved to the client (`FR-ADR-049`). Building it would also reverse the ownership-only
+rule the merge pass adjudicated across `EP-TKT-01`, `EP-TKT-02` and `P-ACC-12`, and would put a
+customer's email address into an admin response (`P-TKT-07`). **The gap is stated, not closed.**
 
 **The recommendation, offered and not adopted.** A CloudWatch alarm on non-empty dead letter queue
 depth is the single most valuable thing the client could add, and `FR-ADR-068` carries it as a
@@ -6879,7 +7610,10 @@ what it needs from the row.
    where `:stale_interval` is `RECEIPT_CLAIM_STALE_SECONDS`. **Affecting zero rows means one of two
    things — the email has already been sent, or another delivery is running right now** — and in both
    the worker deletes the message and stops. No second email.
-3. Render the email and send it through SES.
+3. Render the email and send it through SES **under `SES_SEND_TIMEOUT_MS`**, for the reason
+   `P-TKT-05` gives: it is the same worker and the same port, and an unbounded call here holds
+   `email_claimed_at` live so that no redelivery can retake the job until
+   `RECEIPT_CLAIM_STALE_SECONDS` has elapsed — on the one message a locked-out account depends on.
 4. On success, record the send and delete the queue message:
    `UPDATE password_reset_token SET email_sent_at = :now WHERE id = :reset_token_id`.
 
@@ -6930,7 +7664,7 @@ per request, and it already has the right lifetime — the row is the thing the 
 | 2 | The token is already used or past its lifetime | as row 1. **A reset link is never re-sent for a spent token** | *(nothing)* |
 | 3 | `email_sent_at` is already set | a duplicate delivery. Zero rows, the message is deleted and nothing is sent. **This holds forever** — `email_sent_at` is never cleared, so a redelivery arriving a day after a failed queue delete still sends nothing | *(nothing)* |
 | 3a | `email_claimed_at` is set and newer than `RECEIPT_CLAIM_STALE_SECONDS`, `email_sent_at` null | another delivery is running this job now. Zero rows, the message is deleted, one `INFO` line | *(nothing)* |
-| 4 | SES refuses the send | the claim is **released explicitly** — `UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL` — the message is **not** deleted, and SQS redelivers, which the next delivery claims immediately rather than waiting out the age threshold. **This is the fast path of the one reclaim mechanism, not a second one**; `email_sent_at` is untouched because nothing was sent | *(nothing on screen — the customer is not on the site)* |
+| 4 | SES refuses the send, **or the call does not answer within `SES_SEND_TIMEOUT_MS`** | the claim is **released explicitly** — `UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL` — the message is **not** deleted, and SQS redelivers, which the next delivery claims immediately rather than waiting out the age threshold. **This is the fast path of the one reclaim mechanism, not a second one**; `email_sent_at` is untouched because on a refusal nothing was sent. **On a timeout the outcome is unknown**, exactly as in `P-TKT-05`, so the retry may deliver a second copy — which is harmless here in a way it is not for a receipt, because both copies carry the **same single-use token** and are therefore the same link rather than a second one (`P-ACC-07`) | *(nothing on screen — the customer is not on the site)* |
 | 5 | The send fails `maxReceiveCount` times | the message reaches the dead letter queue, and **nothing watches it** (`S7.14`). The customer asked for a reset link and never receives one, and no one is told | *(nothing — this is the account-recovery twin of `OPEN-EMAILFAIL-01`, and it is stated rather than hidden)* |
 | 6 | The worker dies between the claim and the send | `email_claimed_at` is set, `email_sent_at` is **null**, and no email went out. Nothing survives to release the claim, so the age branch in the claim's own `WHERE` clause does it: after `RECEIPT_CLAIM_STALE_SECONDS` the next redelivery reclaims the row and sends. **This is the case the previous statement could not express**, and it is the one that lost accounts | *(nothing — the link simply arrives late)* |
 
@@ -7368,6 +8102,36 @@ unverified address is a plausible route to a customer who has paid and cannot en
 failure `OPEN-EMAILFAIL-01` describes, reached by a different road, and `OPEN-EMAILFAIL-01` is an open
 row reserved to the client (`FR-ADR-049`).
 
+**The larger consequence, recorded here because this row previously stopped at the receipt.** A
+misdelivered receipt is not the worst outcome of an address the registrant does not control.
+**Whoever controls the address controls the account**, deterministically, at a time of their choosing,
+and by mechanisms this document already specifies:
+
+1. `P-ACC-07` sends a single-use reset link **to the account's address**. The endpoint is public,
+   anyone may ask for one, and the response is identical whether or not the address has an account.
+2. `P-ACC-08` completes that reset, writes a new `password_hash`, increments `password_version` and
+   issues a fresh session to whoever followed the link.
+3. `P-ACC-05`'s `pv` claim then **immediately stops every existing session for that account from
+   being accepted** — including the registrant's, on their next request.
+4. `P-ACC-12` scopes `/api/me/` to the caller, and the caller is now the address's owner: every
+   booking the account owns and every booking reference on it (`FR-ADR-015`, the reference being the
+   only thing that gets a person into a hall).
+
+**The registrant has no route back.** The reset goes to the address; the address is not theirs; the
+address is taken permanently on `lower(email)` and nothing in this system is deleted (`FR-ADR-012`);
+the bookings belong to the first user row and not to any second account they register (`P-ACC-09`);
+and there is no support desk, because the client is the sole operator (`SRC-001 §8.2`).
+
+**Every step in that chain is correct on its own terms and none of them is the defect.** The reset
+must reach the account's address, or a forgotten password against a permanently-taken address is an
+unrecoverable account (`P-ACC-07`). The session must die on a password change, or a customer who
+resets precisely because someone else has their password leaves that person signed in for the whole
+token lifetime (`P-ACC-05`). **What was missing was the sentence saying where they lead when the
+address was never the registrant's.** It is written here rather than solved: `FR-ADR-050` is
+`APPROVED` and immutable and rules the verification gate out for v1, and reason 3 below names this
+exact situation and then stopped at the receipt. **This is an enlargement of an accepted weakness
+already on the record, not a new decision, and it changes no behaviour in this document.**
+
 **Why the gate is nevertheless not built** (`FR-ADR-050`, which is `APPROVED` and immutable):
 
 1. It inserts a second interruption into the exact flow `SC-1`'s two minutes and `FR-ADR-046` are
@@ -7381,11 +8145,32 @@ row reserved to the client (`FR-ADR-049`).
 
 - The address is validated for shape and normalised only by trimming (`P-ACC-01`).
 - The address is displayed back to the customer on the confirmation screen — "A receipt is on its way
-  to `<address>`" (`FR-ADR-048`) — so a typo is visible at the moment it costs something.
+  to `<address>`" (`FR-ADR-048`) — so a typo is visible at the moment it costs something. **It makes
+  the typo visible; it does not make it fixable** — the block below states why, because a mitigation
+  read without that sentence promises a recourse the product does not have.
 - The booking reference is on the confirmation screen and in the bookings list independently of the
   email (`P-ACC-10`, `FR-ADR-048`).
 - The booking's receipt dispatch record holds its state and its attempts (`FR-ADR-031`, `FR-ADR-032`),
   so the failure is recorded even though nothing watches it.
+
+**No endpoint changes an account's email address, so the first mitigation is visibility without a
+remedy.** `S3.8`'s route inventory is generated from the `endpoint` blocks and contains no route that
+patches an account: the address is written once, by `P-ACC-01`, and is never written again by
+anything. A customer who reads the confirmation screen and sees the wrong address can therefore do
+**nothing about it**, and the mitigation was stated as though they could.
+
+What is actually available to them, in full:
+
+| What they can do | What it does not do |
+|---|---|
+| Register a second account at the correct address (`P-ACC-01`) | **It does not move the booking.** `P-ACC-09` binds the booking to the first user row and no endpoint reassigns one |
+| Read the reference from the confirmation screen and from `SCR-ACC-04`, neither of which depends on the email (`FR-ADR-048`) | It does not stop the receipt reaching the wrong address, and it needs the first account's session — which the address's owner can end at any moment, by the chain in the block above |
+| Nothing else. The mistyped address is taken permanently on `lower(email)` (`FR-ADR-012`) | — |
+
+**An address-change endpoint is not specified here and this row does not invent one.** No frozen
+source, ruling or `APPROVED` ADR asks for one; `SRC-001 §6.6` means adding one later is a migration
+rather than a redesign; and adding a v1 endpoint to close a documentation defect would be a scope
+change this specification may not make. **The gap stays a gap and is written down as one.**
 
 **What may not be written here.** **No wording is specified for a customer whose receipt has
 definitively failed, and no policy is stated about money already taken.** `OPEN-EMAILFAIL-01` is
@@ -7406,8 +8191,20 @@ specification would close a question nobody answered.
 table, no session store and no server-side session state, because containers are stateless
 (`SRC-002 §7.3`).
 
-**Who may do it.** Sign-out is `authenticated`. Every other endpoint reads the cookie through the
-router's authorisation dependency (`P-ACC-12`).
+**Who may do it.** **Sign-out is `public`, not `authenticated`.** It is mounted on the public router
+and anyone may call it, with or without a session — as `EP-ACC-03` below declares and as `S3.8`'s
+generated route inventory lists it. Every other endpoint reads the cookie through the router's
+authorisation dependency (`P-ACC-12`).
+
+**This row previously said `authenticated`, and that sentence was the outlier rather than the rule.**
+Its own exception row 6 says sign-out with no session returns `204` and is not an error; `EP-ACC-03`
+declares `auth: public`; `S3.8` is generated from that block and lists the endpoint under *Public —
+no session required*. Three artefacts agreed and one sentence did not, and `S1.2.1` case 8 makes a
+declared owner that states one thing two ways a defect in that row. **The reason sign-out is public
+is exception row 6's reason**: the cookie is `HttpOnly`, so a client holding an expired or malformed
+one **cannot clear it itself**, and a `401` here would leave that cookie in the browser with nothing
+able to remove it. `E8 SCR-XCT-05` depends on this directly — its sign-out control must not be
+blockable by a failed request, and it is the only sign-out control in the product.
 
 **Where the token lives.**
 
@@ -7775,11 +8572,42 @@ by definition the one who does not have it.
 ---
 
 #### `P-ACC-09` · Every booking belongs to one registered customer · `RULED`
-`[SRC: SRC-001 §9.2 · SRC-003 OPEN-BOOK-02 · SRC-003 OPEN-ROLE-01 · FR-ADR-014 · FR-ADR-009]`
+`[SRC: SRC-001 §9.2 · SRC-003 OPEN-BOOK-02 · SRC-003 OPEN-ROLE-01 · FR-ADR-014 · FR-ADR-012 · FR-ADR-013 · FR-ADR-009]`
 `[BRD: R-ACC-03]`
 
 **Behaviour.** A booking carries a non-null foreign key to a user row. There is no anonymous order, no
 guest checkout, and no placeholder user.
+
+**The referential action is `ON DELETE RESTRICT`, and this row states it because it is the row that
+owns the column.** The declaration is
+`booking.user_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT`. Deleting a user row that
+any booking references **fails**: the delete is refused, the transaction that attempted it rolls
+back, and nothing is destroyed.
+
+**This is the document-wide default applied to this column, not a new decision.** `FR-ADR-012`,
+`E6 P-ADM-18` and `E8 P-XCT-04` all already state it — nothing on a path that can reach a booking is
+ever deleted, no foreign key on any such path uses `ON DELETE CASCADE`, and the default for every
+relationship is `ON DELETE RESTRICT`. It was stated everywhere except on the column itself, which
+left the Phase 2 migration with three candidates and no rule. The other two are named here so that a
+reader who considers either stops at this row rather than at a test:
+
+| Candidate | Why not |
+|---|---|
+| `ON DELETE CASCADE` | **It silently destroys paid bookings and is unrecoverable.** A booking is permanent — there is no customer cancellation and no refund (`FR-ADR-013`; `SRC-001 §5.4.3` is withdrawn by erratum `E-2`) — so a cascade would remove the booking, its `booking_seat` rows and their snapshotted prices (`FR-ADR-039`), and with them every takings figure computed from them (`E7`). **A cascade is a delete that happens without anyone writing the word delete**, and it is the failure this row exists to make impossible |
+| `ON DELETE SET NULL` | **The column is `NOT NULL`.** It is not a policy choice that was rejected; it is a statement the database refuses to accept, and naming it costs one line and saves a developer the round trip |
+
+**The booking's `status` and `cancelled_at` columns are not an exception to any of this.** They exist
+in the schema so that adding cancellation later is not a migration over live bookings, and no v1
+endpoint sets or returns either (`P-ACC-10`, `FR-ADR-013`). **Neither is a route by which a booking
+leaves the table**, and `SRC-001 §6.6` keeping them there is not a reason to loosen the key.
+
+**`P-ACC-05` exception 5 remains reachable, and that is why it stays.** `RESTRICT` refuses the delete
+only for a user row that a booking references. A user row with **no** bookings can still be removed
+by the same direct database action that is the only route to creating an admin account in the first
+place (`E6 P-ADM-17`), which is outside the router and outside this document's endpoints. A live
+session whose user row has gone is therefore a real state, not dead code, and `P-ACC-05` exception
+5's `401 AUTH_REQUIRED` is the specified answer to it. **The two rows agree once the action is
+stated: a booking's owner cannot be deleted, an account with no bookings can.**
 
 **Who may do it.** A `customer` or an `admin` (admin is a superset of customer by capability,
 `FR-ADR-009`). A `guest` cannot. A `manager` is read-only for privileged actions but is a person with
@@ -7810,6 +8638,7 @@ path for the customer's only proof of purchase.
 |---|---|---|---|
 | 1 | A guest presses the primary action on the seat map | `401` `AUTH_REQUIRED` from the hold endpoint | The interface does not let this reach the server in the normal case: the action reads "Sign in to hold these seats" (`COMPONENTS.md §5`). If it does reach the server — an expired session, a direct call — the customer sees "Sign in to hold these seats." |
 | 2 | A caller submits a booking for a different user's id | not possible: the owner is taken from the session, never from the request body | — |
+| 3 | A `DELETE` is attempted against a user row that a booking references | the foreign key refuses it under `ON DELETE RESTRICT` and the transaction rolls back. **No application path issues it** — no endpoint deletes an account — so this can only arrive from a direct database action | — (no user-facing surface; the operator sees the constraint violation) |
 
 **Server-side validation.** The booking's `user_id` is read from the authorisation dependency's
 resolved caller. **It is never read from the request body**, and no endpoint accepts a `user_id`
@@ -8174,10 +9003,37 @@ looking at a seat map from a customer looking at one.
 |---|---|
 | Mechanism | `sessionStorage` — **not** `localStorage`, not a cookie, not a URL parameter, not the server |
 | Key | `fr.pending_selection` |
-| Value | `{"showtime_id": 412, "seat_ids": [1187, 1188], "stored_at": "2026-08-14T10:00:00Z"}` |
-| Written | when the primary action is pressed and the visitor is not authenticated, **before** the authentication step opens |
+| Value | `{"showtime_id": 412, "seat_ids": [1187, 1188], "stored_at": "2026-08-14T10:00:00Z"}`. `stored_at` is the instant of the write — the moment the visitor left the seat map |
+| Written | **once**, when a visitor who is not authenticated leaves this seat map for the authentication screen with a non-empty selection, **before** the authentication step opens. **By either route out** — the seat map's primary action **or** the header's `Sign in` link (`E8 SCR-XCT-05`). **Which control they pressed does not change what is stored**: see the block below |
 | Lifetime | until the tab closes, which is `sessionStorage`'s own behaviour and is the right lifetime; **and** discarded on restore if `stored_at` is more than **30 minutes** before the current instant |
 | Cleared | on a successful hold; when the visitor navigates to a different showtime; **and on sign-out, which clears every `fr.*` value and not this key alone** — the rule below |
+
+**`fr.pending_selection` is one of two keys and this row owns only this one.** The live local
+selection on the seat map is `fr.selection`, written on every tap and owned by `E2 P-SEA-03`, which
+carries the table setting the two side by side and the reason the two write policies cannot share one
+key. **This row's key is the one-shot snapshot handed to the authentication round trip**, written
+once and deleted on restore. Neither row restates the other's half.
+
+**Every route out of the seat map to the authentication screen writes it, not only the primary
+action.** `E8 SCR-XCT-05`'s header carries a `Sign in` link on every route in the product, the seat
+map included, and a visitor who uses it never touches the primary action. **Under a write-on-press
+rule that visitor arrived at `SCR-ACC-01` with nothing stored**, fell to that screen's *otherwise*
+branch, and was returned to the **movie listing** — their showtime gone, their seats not restored,
+and no message — from the same screen that returns everyone else to their seats. The rule is
+therefore stated by **what the visitor is doing**, leaving a seat map with a selection, rather than
+by **which control they touched**:
+
+```
+leaving /showtimes/{id} for the authentication screen, not authenticated, selection non-empty
+  -> write fr.pending_selection, then open SCR-ACC-01
+        by the primary action        "Sign in to hold these seats"
+        by the header's Sign in link  E8 SCR-XCT-05
+```
+
+Both routes then arrive at `SCR-ACC-01` in the same state, show the same context note, and return to
+the same seat map with the same seats re-selected. **Which of two controls the visitor pressed two
+screens earlier may not decide whether they keep their selection** — and this is the one seam in the
+product where a guest becomes a customer, so it is where losing it costs the sale.
 
 **Sign-out clears every `fr.*` value in `sessionStorage`, without exception.** Not this key, not a
 named list of keys — **the whole `fr.` namespace**, whatever any lane has put in it.
@@ -8221,14 +9077,18 @@ report every seat gone is worse than starting clean.
 2. The primary action reads **"Sign in to hold these seats"** — the requirement is stated before it is
    enforced, not discovered by clicking (`COMPONENTS.md §5`, `FR-ADR-046`).
 3. Pressing it writes `fr.pending_selection` and opens the authentication screen (`SCR-ACC-01`). It
-   does not navigate away and lose context.
+   does not navigate away and lose context. **A visitor who instead follows the header's `Sign in`
+   link (`E8 SCR-XCT-05`) writes the same value and opens the same screen**, per the storage table
+   above, and every step below reads the same for both.
 4. The visitor registers (`P-ACC-01`) or signs in (`P-ACC-02`). Either returns a session.
 5. The interface returns to the seat map for `showtime_id` and **refetches the seat map** before
    restoring anything.
 6. Seat ids from the stored selection that are still `available` are re-selected.
 7. Seat ids that are now `sold` or `held_by_other` are **not** selected, are shown in their real state,
    and are named in the error banner (`COMPONENTS.md §6`).
-8. `fr.pending_selection` is deleted.
+8. `fr.pending_selection` is deleted. **`E2 P-SEA-03`'s `fr.selection` is not** — that key holds the
+   live selection this step has just re-applied, it is written on every change, and it is that row's
+   to clear. Deleting both here would erase the selection step 6 restored.
 9. **The hold is not taken.** The customer presses the primary action — now reading "Hold these seats"
    — once.
 
@@ -8246,10 +9106,21 @@ matters.
 | 1 | **Two or more** stored seats are now `sold` or `held_by_other`, and at least one survives | client-side, after the refetch; no server error | "C12 and C13 were taken while you were signing in. Your other seats are still selected." |
 | 1a | **Exactly one** stored seat has gone, and at least one survives | as row 1 | "C12 was taken while you were signing in. Your other seats are still selected." |
 | 2 | Every stored seat has gone | client-side | "The seats you chose were taken while you were signing in. Choose again from the map." |
-| 3 | Sales for the showtime closed while the visitor was registering | the hold endpoint returns `409` `SALES_CLOSED` when pressed | "Sales for this showtime have closed." |
+| 3 | Sales for the showtime closed while the visitor was registering | the hold endpoint returns `409` `SALES_CLOSED` when pressed | `E2 P-HLD-14` row 9's body, reproduced and not authored here: "Sales for this showtime closed at 7:45 pm. Choose another showtime." — the time renders `sales_close_at` in `S7.19`'s `h:mm am/pm` form in Asia/Kolkata and is never typed |
 | 4 | The stored entry is older than 30 minutes | client-side | nothing is restored and nothing is said. The seat map opens with no selection. |
 | 5 | `sessionStorage` is unavailable or full | client-side | nothing is stored and nothing is said before the fact. On return the map opens with no selection. The sign-in still works. |
 | 6 | The stored `showtime_id` no longer exists | client-side | the interface returns to the movie listing. "That showtime is no longer available." |
+
+**Exception 3 publishes no string of its own, and this row previously did.** It published the
+sales-closed **banner** — `Sales for this showtime have closed.` — against a **hold attempt**, which
+is a different surface with a different job. `E1 P-BRW-07` owns that banner and states in terms that
+a hold attempted on a closed showtime takes `E2 P-HLD-14` row 9's body **and not the banner**; `E2`
+states the same split from its own side, that a banner describes a standing condition the customer
+can see for themselves while an error explains an action that was just refused. Both are declared
+owners and this row is neither, so this row cites rather than restates. **The customer most likely to
+meet this case is the one who has just spent thirty seconds registering** — and the banner names no
+time and offers no next step, which leaves them with a refusal, no idea when sales closed, and
+nothing to do about it.
 
 Rows 1 and 1a's wording is the rule from `FR-ADR-052` applied literally: it says what happened, it
 names the seats so the interface can highlight them, and **it does not blame the customer for a race
@@ -8566,7 +9437,7 @@ in full.
 | 6 | `language_id` or `certification_id` does not exist | 422 `VALIDATION_FAILED` | "That language is not on the list. Choose one of the listed languages." / "That certification is not on the list. Choose one of the listed certifications." |
 | 7 | `genre_ids` empty, or holds an id that does not exist, or holds a duplicate | 422 `VALIDATION_FAILED` | "Choose at least one genre from the list." |
 | 8 | Postgres unreachable | 503 `DEPENDENCY_UNAVAILABLE` | "The system cannot reach its database right now. Nothing was saved. Try again in a moment." |
-| 9 | Anything unhandled | 500 `INTERNAL_ERROR` | "Something went wrong and nothing was saved. If you need help, quote `a1b2c3d4`." |
+| 9 | Anything unhandled | 500 `INTERNAL_ERROR` | "The server could not complete this request. If you need help, quote `a1b2c3d4`." — **`E8`'s published sentence for the code. This section mints no variant of it** (`P-ADM-19`) |
 
 **Server-side validation.** The interface repeats every one of these; **the interface is never the
 enforcement point.**
@@ -8649,11 +9520,48 @@ control exists for, and it is worst on a price (`P-ADM-12`).
 `[SRC: SRC-002 §4.9 · SRC-002 §7.3 · SRC-002 §E E-2 · SRC-003 OPEN-TMDB-01 · FR-ADR-021 · FR-ADR-061 · FR-ADR-012]`
 `[BRD: R-ADM-01]`
 
-**Behaviour.** The admin uploads one image file for a film. The API validates it and **streams** it to
-a **private** S3 bucket. Nothing is written to the container's local disk at any point, and the whole
-file is never buffered in memory, because the size limit is enforced before the body is read
-(`SRC-002 §7.3`). The stored object key is generated by the server; the client's filename is never
-used.
+**Behaviour.** The admin uploads one image file for a film. The API validates it and uploads it to a
+**private** S3 bucket. **Nothing is written to the container's local disk at any point**
+(`SRC-002 §7.3`: no local file uploads). The stored object key is generated by the server; the
+client's filename is never used.
+
+**The body is held in memory, bounded, and the earlier claim that it never was is withdrawn.** This
+row previously said *"the whole file is never buffered in memory, because the size limit is enforced
+before the body is read"* — and its own steps 6 and 7 read the leading bytes, decode the image and
+measure its pixel dimensions, none of which is possible without the bytes. **A decode is not a
+streaming operation**, and a specification that requires one while denying the buffer leaves an
+implementer to choose between the two silently. **The buffer is what is true; the `Content-Length`
+check is what bounds it.**
+
+**What the header check actually buys, stated exactly.** It is not the absence of a buffer. It is
+that the buffer's size is **known and refused before a byte is read**, so no request can make the
+process hold more than the limit (`FR-ADR-061`, 2 MB, configuration). Without it the body would be
+read to discover how large it was, which is the failure the check exists to prevent
+(`P-ADM-12`'s ordering block).
+
+**The memory cost, worked through against the budget rather than asserted to be small.** The API
+process is budgeted at roughly **200 MB** on a `t3.micro` host with about 1 GB total
+(`SRC-002 §5.4.1`).
+
+```
+peak poster memory  =  concurrent uploads in flight  x  2 MB       (the Content-Length cap)
+
+ 1 concurrent upload  ->    2 MB     1.0 % of the 200 MB API budget
+ 5                    ->   10 MB     5.0 %
+10                    ->   20 MB    10.0 %
+50                    ->  100 MB    50.0 %   <- the API budget is now half poster bytes
+```
+
+**There is one admin account and no rate limit on this endpoint** (`FR-ADR-058` lists no admin
+bucket; raised as `PROPOSED-ADMINRATE-01` in the Lane notes), **so the concurrency figure is bounded
+by nothing in the specification.** In ordinary use it is 1. The row above is stated so that the
+figure a limiter would have to hold is already computed when somebody sets one.
+*(reasoned from the budget in `SRC-002 §5.4.1`, not observed — no application code exists and nothing
+has run.)*
+
+**The bytes reach S3 from that buffer**, in one `PutObject`, after every check has passed. Step 8's
+word *streams* describes the transfer to S3 and not the read from the client, and the two are
+different halves of the same request.
 
 The poster is **served by 302 redirect to a presigned GET URL**, minted at request time and valid for
 one hour. **The bucket has no public-read policy and nothing is ever hotlinked** (`FR-ADR-061`, which
@@ -8715,7 +9623,8 @@ window between the check and the commit; step 9 alone would stream a doomed file
 | 9 | The image cannot be decoded | 415 `UNSUPPORTED_MEDIA_TYPE` | "That file could not be read as an image. Choose a JPEG, PNG or WebP image." |
 | 10 | Pixel dimensions outside 200×300 to 4000×6000 | 422 `VALIDATION_FAILED` | "Poster images must be between 200 by 300 and 4000 by 6000 pixels." |
 | 11 | No file part, or more than one file part | 422 `VALIDATION_FAILED` | "Choose exactly one image file." |
-| 12 | S3 rejects the write or is unreachable | 503 `DEPENDENCY_UNAVAILABLE` | "The system cannot reach its file storage right now. The poster was not saved. Try again in a moment." |
+| 12 | S3 is unreachable, times out, or answers a **retryable** failure — a 5xx or a throttle | 503 `DEPENDENCY_UNAVAILABLE` | "The system cannot reach its file storage right now. The poster was not saved. Try again in a moment." |
+| 12b | S3 **refuses** the write with a failure a retry cannot clear — the credential is not permitted to write, the bucket does not exist, or a storage quota or bucket policy refuses the object | 500 `INTERNAL_ERROR` | **`E8`'s one published sentence for the code** — "The server could not complete this request. If you need help, quote `a1b2c3d4`." This row mints no wording of its own |
 | 13 | The bytes reached S3 but the database write failed | 503 `DEPENDENCY_UNAVAILABLE` | "The system cannot reach its database right now. The poster was not saved against this film. Try again in a moment." |
 
 **Exceptions 3 and 4 are `P-ADM-12`'s rule applied here, not a second rule.** Exception 4's sentence is
@@ -8724,6 +9633,33 @@ its own. Exception 4 normally fires at step 4, before anything is streamed, and 
 also fire at step 9 — the in-transaction comparison — in which case the object has already been
 written and is left unreferenced in the bucket, which is exception 13's condition and is treated the
 same way.
+
+**Exception 12 was one row covering two different futures, and the sentence was wrong for one of
+them.** *"Try again in a moment"* is correct for a bucket that is briefly unreachable and **false for
+a bucket that refuses the write** — a credential without `s3:PutObject`, a bucket name that does not
+resolve, a policy or a quota that says no. Under one row the admin retries an action that can never
+succeed, and because `P-ADM-05` refuses publication without a poster, **no new film can be published
+until somebody diagnoses the real cause by hand.** The split is on the answer S3 gives — retryable or
+not — which is a distinction the SDK already makes and the handler already has.
+
+**12b answers `500` and reuses an existing sentence rather than minting one.** The admin cannot fix a
+storage credential or a bucket policy from a form, so nothing this row could say to them would be an
+instruction; what they need is a **request id to quote**, which is exactly what the `INTERNAL_ERROR`
+envelope carries and what the `503` sentence does not. **A new variant of an existing sentence is a
+defect, not a refinement** (`P-ADM-12`), so no poster-specific wording is invented for 12b. No new
+error code is minted either: `INTERNAL_ERROR` is already in `EP-ADM-05`'s `errors` array.
+
+**The 5 GB figure and what is honestly known about it.** `SRC-002 §5.2.5` gives the bucket a 5 GB
+allowance; `FR-ADR-012` deletes nothing, so **every replaced poster stays forever** and the bucket
+grows monotonically — reachable in roughly 2,500 uploads at the 2 MB cap. **Whether exhausting that
+allowance produces a refused `PutObject` at all is not known to this specification**: it is a
+free-tier billing allowance rather than a bucket-level hard quota, and **this session has never
+observed anything running in AWS**, so the behaviour is reasoned and not observed. 12b is written
+against *any* non-retryable refusal for that reason — it does not depend on the allowance being the
+thing that refuses. **What is certain is the growth and that nothing watches it**: no metric in this
+product names S3 storage, and the operator's remedy is manual. Raised as
+`PROPOSED-ADMINRATE-01` in the Lane notes, which already names this endpoint's unlimited write to a
+5 GB allowance with no deletion path.
 
 **Exception 13 is stated rather than hidden.** S3 is not in the database transaction, so a crash
 between step 8 and step 9 leaves an orphan object in the bucket. That is the correct failure
@@ -9018,6 +9954,30 @@ by `SRC-003 OPEN-OPS-03` and a manager showtime endpoint is a defect (`P-ADM-18`
 6. If `format_id` is supplied, it names an **active** row of the `format` vocabulary
    (`P-ADM-23`). A withdrawn format cannot be attached to a new showtime; showtimes already
    carrying it keep it (`P-ADM-24`).
+7. **If the film has a display window, `starts_at` falls inside it** —
+   `display_from <= starts_at < display_until`, the same bounds and the same exclusivity the
+   visibility gate uses (`P-BRW-01`). **A film whose window is still null is exempt**, which is
+   precondition 1's draft case and is left exactly as it was.
+
+**Why a showtime outside the window is refused rather than merely odd.** Every guest path to a date is
+bounded by the film's display window: the listing's date strip and the single-movie date strip both
+end at the last day of the window, and `next_date_with_showtimes` never searches past `display_until`
+(`P-BRW-04`, `P-BRW-06`). **A showtime outside the window is therefore offered by no day button, no
+next-date button and no date filter anywhere in the product** — it has a seat set, its sales are not
+closed, and only a hand-typed URL reaches it. The alternative fix is to widen the strips, and that is
+worse: it would put day buttons on screen for days on which the film has left its window, which is
+precisely the button `P-BRW-04` refuses to draw. **The admin has said two different things about when
+the film runs, and this is where they are reconciled — at the point of entry, where the person
+choosing can see it**, on the same ground `P-ADM-04` states the exclusive end once at entry rather
+than shifting it silently.
+
+**This is not `OPEN-BRWVIS-01`.** That row asks whether a showtime may still be sold **after** its
+film leaves the window — a boundary the clock crosses, possibly with a customer mid-checkout. This is
+a showtime scheduled outside the window from the start: nothing moves, no policy has to be chosen, and
+the showtime is unreachable from the instant it is created.
+
+**A showtime in the past stays accepted, and this precondition does not touch that** — the seed needs
+about a month of history (`FR-ADR-067`), and a past showtime inside the film's window passes here.
 
 **Happy path.**
 1. The admin opens `SCR-ADM-03` and chooses a film and a hall.
@@ -9431,7 +10391,42 @@ request body is rejected rather than rounded (`FR-ADR-036`).
 ticket price this cinema would ever charge — is unanswered by every source, and no plausible figure is
 invented for it. Raised as an Article X candidate in the Lane notes.
 
-**The worked example is in `P-ADM-11`**, where the base price meets the uplifts.
+**The ceiling is on `EP-ADM-10` and `EP-ADM-11` as well as here, and that is not a duplication.**
+`api/contract.json` is generated from those two blocks, so a bound stated only on this row is a bound
+absent from the artefact the client and the server are both built from — and `S1.2` ranks the endpoint
+block above the P-row on a field bound, which means a block saying only *"1 or more"* does not merely
+omit the ceiling, it **outranks it**. Both blocks now carry it. **A guard against a 64-bit overflow in
+the money formula is the last bound that may live in prose alone.**
+
+**Worked through, so the figure the blocks state is derivable and not asserted.** The formula is
+`FR-ADR-038`'s, run in `bigint`:
+
+```
+seat_price_paise = (base_price_paise * (10000 + uplift_basis_points) + 5000) // 10000
+
+The largest intermediate is the numerator, before the division. It must fit int64:
+
+  base_price_paise * (10000 + u) + 5000  <=  2^63 - 1  =  9223372036854775807
+
+Solved for the base price, at u = 3333 - the highest uplift the seed stores (P-XCT-30):
+
+  base_price_paise  <=  (9223372036854775807 - 5000) // 13333
+                    =   9223372036854770807 // 13333
+                    =   691770197019033 paise        =  Rs 6,917,701,970,190.33
+
+Check, at exactly that value:
+  691770197019033 * 13333 + 5000  =  9223372036854771989   <=  9223372036854775807   PASSES
+  691770197019034 * 13333 + 5000  =  9223372036854785322   >   9223372036854775807   REFUSED
+```
+
+**The bound moves when the highest stored uplift moves, and that is the point of writing it against
+`highest stored uplift_basis_points` rather than against a constant.** `P-ADM-11` carries the mirror
+bound — the same inequality solved for the uplift, against the highest stored base price — so an
+admin cannot walk past the ceiling by raising the two fields one at a time. **Neither figure is a
+business limit**, and nothing downstream may treat either as one: at Rs 6.9 trillion a ticket, the
+number that will actually catch a mistyped price is one no source has ruled.
+
+**The worked example for the price itself is in `P-ADM-11`**, where the base price meets the uplifts.
 
 ---
 
@@ -10015,6 +11010,36 @@ between the check and the write.
 | `seat_category_id` | integer | must exist, non-null | **ruled** (`FR-ADR-016`) | exception 6 |
 | `is_active` | boolean | default true | **ruled** (`FR-ADR-022`) | — |
 
+**The letter `I` is permitted here and the seed refuses it, and the two rules are not the same rule.**
+`P-XCT-30` lays every seeded hall out with row letters that **skip `I`** — `A B C D E F G H J K L M`,
+so Screen 1's furthest row is `J` and not `I` — because **`I` and `1` are the pair a person misreads
+on a printed row marker and on a phone at 375 pixels.** That reason is about the seat label's real
+surfaces, and those surfaces are the same whoever typed the label: **the label is printed on the
+emailed receipt and read aloud at the door** (`P-ADM-14`). **This row's bound refuses nothing.** It is
+`1..4` letters, and `EP-ADM-19` and `EP-ADM-20` accept `I` exactly as they accept `J`. **So a
+hand-laid hall may carry a row `I`, and seat `I1` is the one the seed's own rule exists to prevent
+somebody reading as `11`.**
+
+**No ban is invented here, and the refusal to invent one is the point rather than an omission.** **No
+frozen source, no client ruling and no `APPROVED` record states a permitted alphabet for a row label.**
+`P-XCT-30`'s skip is a **demonstration-data convention**, and a demonstration convention hardened into
+a product constraint is precisely the failure `SRC-002 §8.1.1` already produced on this project — that
+clause is **CORRECTED by erratum `E-1`** and is cited here only as the historical example, never as
+live authority: **the hold is 3 minutes** (`SRC-003 OPEN-HOLD-01`), and §8.1.1's seven is exactly the
+assumption that hardened into a specification before anyone decided it. It would also not be free: a hall whose physical row markers **do** read `I` could not be
+described accurately, and a label that does not match the sign on the wall is the same door problem
+from the other side. **Raised as `PROPOSED-SEATALPHA-01`** in the Lane notes.
+
+**The deadline is real and it is `P-ADM-14`'s.** `row_label` freezes the moment any showtime row
+exists on the hall, so an `I` typed before the first showtime **cannot be corrected afterwards** —
+the remedy is the retire-and-re-add of `P-ADM-14`, which leaves a permanently retired seat in the
+room. **A rule the client gives later cannot repair a row already written.**
+
+**This is a different question from `OPEN-SEATLABEL-01` and this row decides neither.** That row asks
+whether `C12` and `c12` are one seat or two — a question about **case**, reserved and irreversible.
+This paragraph is about **which letters may be used at all**, and it settles nothing about case,
+normalisation or the unique constraint.
+
 **⚠ Hall sizes are `ASSUMED`, never a constraint.** Six screens of 90, 120, 150, 180, 200 and 220
 seats — the client said "pick random" (`SRC-003 OPEN-SCALE-02`, `FR-ADR-016`). **Nothing validates a
 hall against those numbers.** They are what the seed script creates and what the seat map is designed
@@ -10101,6 +11126,37 @@ must say this before the client discovers it, not after (`FR-ADR-022`).
 
 **The order of work that avoids it:** configure the hall completely, check every label, **then** create
 the first showtime.
+
+**On a seeded database that order is already impossible, and this is where that is said.** `P-XCT-30`'s
+seed writes **720 showtimes across all six halls** — 120 per hall — in its own run. **Running the seed
+is therefore what closes this window, for every hall, at once**, and it closes it *before an admin has
+looked at a single seat label*. The freeze does not wait for a booking, a future showtime or an admin
+action: it is `showtime_count > 0` on the screen, and the seed satisfies that on all six.
+
+**The consequence, stated in the order somebody meets it.** A client who runs the seed to have
+something to look at — which is what the seed is for — and then opens `SCR-ADM-05` to lay out a real
+hall finds `row_label`, `seat_number` and `seat_category_id` **read-only on every hall in the
+product**, the delete control absent everywhere, and the freeze banner in its frozen wording on a
+database they have owned for five minutes. **Nothing is broken and nothing is a defect**; it is this
+rule working exactly as specified. **It reads as a defect because no row said it would happen**, and a
+limit that arrives unannounced is the one the client concludes is a bug.
+
+**The two remedies are the ordinary ones and neither is new.** Lay out real halls **before** seeding,
+or wipe and reseed — the command `P-XCT-30` already specifies — after which the halls are the seed's
+again. **There is no third**: `P-ADM-20` mounts no `DELETE` for a `showtime`, so a hall cannot be
+un-frozen by removing what froze it.
+
+> **Only the first remedy exists in a deployed environment.** Wiping and reseeding destroys every
+> booking in the database, and a booking is permanent — there is no cancellation and no refund path
+> to make one good. So it is a real remedy locally and **not** one once the environment has taken a
+> customer's money. `P-XCT-30` states the same asymmetry from the seed's side. Laying halls out
+> before the first seed run is therefore the only remedy that survives deployment, which is what
+> makes the ordering a one-way door rather than an inconvenience.
+
+**It is stated here because the freeze is this row's rule.** `P-XCT-30` describes what the seed
+writes; it is `P-ADM-14` that turns 720 showtimes into six frozen halls. **A reader who has met only
+one of the two rows cannot derive the other**, which is why the consequence belongs on both and this
+is the half that belongs here.
 
 **The alternative that was rejected**, recorded so it can be reached for rather than reinvented:
 versioning the layout — a new layout row per change with showtimes pinned to a version. It is the
@@ -10421,7 +11477,24 @@ one hall per manager, and nothing forbids the reverse.
 **A manager with no assignment sees an empty dashboard, not an error.** That is the correct state for a
 newly created account (`FR-ADR-011`).
 
-**A manager writes nothing, ever** (`SRC-003 OPEN-OPS-03`). See `P-ADM-18`.
+**A manager performs no privileged write, ever** (`SRC-003 OPEN-OPS-03`). Every endpoint under
+`/api/admin` refuses the role, and **every route mounted on the manager router is a safe method** —
+`P-ADM-18` owns both, and both are checkable by test.
+
+**The sentence used to read *"a manager writes nothing, ever"* and the product's own contract
+contradicts it.** `api/contract.json` — generated from the endpoint blocks of every lane — admits
+`manager` on **five non-`GET` endpoints outside this epic**: `EP-HLD-01`, `EP-HLD-03`, `EP-HLD-04`,
+`EP-PAY-01` and `EP-TKT-02`. Those are the **customer** capabilities — holding a seat, releasing one,
+confirming a booking, asking for a receipt to be resent — reached because a manager holds an account
+and `E8 P-XCT-05` gives every account-holder the customer router. **A flat "writes nothing" is false
+against the artefact the client and the server are both built from**, and a specification a generated
+file disproves is worse than one that is merely narrow.
+
+**Whether that is right is `OPEN-MGRBOOK-01` and this row does not decide it** — *may a manager buy a
+ticket, specifically in a hall whose takings they report on?* — filed in `CONSTITUTION.md` Article X
+as **`reserved: access control`**. **Nothing here narrows or widens it.** What changes is only that
+this row now claims what it can defend: **no privileged write**, which is `OPEN-OPS-03`'s actual
+ruling and is true of every endpoint in this epic.
 
 **Who may do it.** **admin only**, by the router dependency (`P-ADM-18`).
 
@@ -10439,6 +11512,33 @@ newly created account (`FR-ADR-011`).
 3. The server returns 201 with the manager's id, email and assigned screen ids.
 4. **The manager obtains a password through the existing password-reset flow** (`FR-ADR-050`). The
    admin never sets or sees a password.
+5. **The product sends nothing.** No `outbox_message` row is written, no SES message is enqueued, no
+   invitation is dispatched, and the manager is not told that an account exists at their address.
+   **The admin tells them, outside the product.**
+
+**Step 5 is a gap and it is written as one rather than left to be discovered.** `E5 P-ACC-07`'s
+password reset is **self-initiated**: somebody who already believes they have an account types their
+address into a form and asks for a link. **A manager created by step 2 has no reason to do that** —
+nothing has reached them — so the account sits with `has_signed_in` false indefinitely. **A created
+manager account is unreachable until a human says so out of band**, and `E5 P-ACC-08` confirms that
+reset is the only route by which such an account ever signs in for the first time. Steps 1 to 4 are
+each individually correct and the sequence still ends with an account nobody can use.
+
+**No invitation message is specified, and that is a build-session decision under Art III.9 rather
+than an oversight.** **No frozen source, client ruling or `APPROVED` record asks for one.** Building
+it would coin a new outbox topic in `E4`'s namespace, a second SES template, and a second class of
+outbound mail in a product whose **only** specified message is the receipt — and `SRC-001 §6`'s
+scope-as-written rule refuses building what nobody asked for. **The interim position is stated
+instead**: the product notifies nobody, `SCR-ADM-06` says so in terms to the admin who is creating
+the account, and the admin's own message is the mechanism. **Reversible in one direction only, and
+cheaply**: adding an invitation later adds a message and breaks nothing, which is why the fail-closed
+reading was taken rather than a guessed one.
+
+**The signal that it worked is already on the screen and needs no new field.** `has_signed_in`
+(`EP-ADM-22`, derived from `last_signed_in_at`) is false until the manager completes the reset, and
+`SCR-ADM-06` renders **"Has not signed in yet"** against every such row. **That is the admin's own
+check that their out-of-band message landed**, and it is why the flag is stated as a normal state
+rather than an error.
 
 **How the admin can tell whether a manager has ever used the account.** The `user` row carries
 `last_signed_in_at`, a nullable `timestamptz` in UTC, specified in `E5 P-ACC-01` and written on every
@@ -10778,15 +11878,58 @@ append (`FR-ADR-019`).
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | The audit insert fails for any reason | the whole transaction rolls back; 500 `INTERNAL_ERROR` | "Something went wrong and nothing was saved. If you need help, quote `a1b2c3d4`." |
-| 2 | A write is attempted with an `action` not in the vocabulary | the transaction rolls back; 500 `INTERNAL_ERROR` | the same |
+| 1 | The audit insert fails for any reason | the whole transaction rolls back; 500 `INTERNAL_ERROR` | "The server could not complete this request. If you need help, quote `a1b2c3d4`." |
+| 2 | A write is attempted with an `action` not in the vocabulary | **the boundary check refuses it before the transaction opens.** Nothing is begun, so there is nothing to roll back; 500 `INTERNAL_ERROR` | the same |
 | 3 | An `UPDATE` or `DELETE` on `audit_log` from the application role | the database refuses; 500 `INTERNAL_ERROR` | the same |
 
 **Exception 1 is the load-bearing one and it is stated in the direction that matters: the change fails
 because the audit failed, never the reverse.**
 
-**Server-side validation.** `action` must be a member of the vocabulary above; `actor_user_id` must be
-non-null; `request_id` must be present.
+**Exception 2 was published as a rollback and it is a boundary check, and the two are different code.**
+This row read *"the transaction rolls back"* while `E8 P-XCT-03` exception 4 and its validation
+paragraph both place the check **before the transaction opens**. **`E8`'s is the one adopted, because
+it is the stricter of the two**: a non-member `action` never reaches a `BEGIN`, so a partially applied
+change is impossible **by construction** rather than by a rollback that has to work. Adopting the
+stricter option needs no signature (Art III.10). **The observable answer is identical** — 500, nothing
+written — which is exactly why it could sit wrong for so long: the two readings differ only in whether
+a transaction was ever opened, and no response distinguishes them. **A rollback is a mechanism that
+can fail; a check that runs first is a mechanism that cannot be reached.**
+
+**A non-member `action` is a programming error and not a runtime condition.** The vocabulary is fixed
+in this document, not in data, so the check compares a value the handler chose against a closed list.
+It can only fail if a handler was written with a string this table does not carry — which is the case
+the check exists to catch loudly, at the boundary, on the first request that runs it.
+
+**Three different sentences were published for these three rows and there is one code, so there is one
+sentence.** This row previously published *"Something went wrong and nothing was saved. If you need
+help, quote `a1b2c3d4`."* and `E8 P-XCT-03` exception 1 published *"That change was not saved. Try
+again."*, against the registry's own `INTERNAL_ERROR` copy — *"The server could not complete this
+request. If you need help, quote `a1b2c3d4`."* — which `E8 P-XCT-03` exception 3 already used.
+**Three answers for one code, and an implementer had to pick.** The registry's wins: `E8`'s error
+banner publishes the string for the code, it **does not defer for `INTERNAL_ERROR`** the way it
+explicitly defers for `FORBIDDEN` and `AUTH_REQUIRED`, and **a new variant of an existing sentence is
+a defect rather than a refinement** (`P-ADM-12`). **This section now publishes no `INTERNAL_ERROR`
+wording of its own, anywhere** — the four places it carried the variant all render the registry's
+string.
+
+**"Try again" was also the wrong instruction, independently of which sentence wins.** Every one of
+these three triggers is a fault in the server or its grants; retrying the identical request reproduces
+it. The registry's sentence gives the admin the **request id** instead, which is the only thing that
+leads anywhere: it joins the audit row's `request_id` to the log lines (`FR-ADR-056`).
+
+**Server-side validation.** `action` is checked against the vocabulary above **at the boundary, before
+the transaction opens** (exception 2, and `E8 P-XCT-03`, which states the same ordering).
+`actor_user_id` must be non-null **and must resolve to a real `user` row — never a role name and never
+a service account**, which is why nothing in this product writes an audit row on anyone's behalf but
+the acting admin's. `request_id` must be present.
+
+**The vocabulary's closure was checked rather than asserted.** Every `<entity>.<verb>` string in all
+nine section files was enumerated and compared against the table above: **every one is a member**, and
+there is no action string anywhere in the PRD that this table does not carry. **One near-miss is named
+so it is not re-raised**: `receipt.send` (`E4 P-TKT-05`) looks like an action and is **not** one — it
+is an `outbox_message.topic`, a different column in a different namespace, and it never reaches
+`audit_log.action`. **The other near-miss is deliberate**: `showtime.price_changed` appears in this
+section exactly once, in the warning above, saying that it is not a member.
 
 **The surface that reads `audit_log` is Phase 8 and is not specified in this section.** The rows are
 written from Phase 2, because an audit trail that starts when its reader is built has a hole in it
@@ -12173,7 +13316,9 @@ rather than from assignment rows (`FR-ADR-011`).
 
 **What renders, and why it is not a row of zeros.** `SCR-RPT-01` renders the period tabs live, the
 figures as `—`, and one sentence: *"No halls are assigned to this account. Ask an administrator to
-assign one."* Rendering `₹0.00` here would be a claim about the business's performance when it is a
+assign one."* **The scope line and the hall filter are absent**, because `EP-RPT-03` returns
+`screens: []` — there is no hall to name and none to filter to, and `SCR-RPT-01`'s States table owns
+that clause. Rendering `₹0.00` here would be a claim about the business's performance when it is a
 fact about the account — the cinema did take money, this account simply cannot see any of it. That
 distinction is why the response carries `scope_empty` as its own flag rather than leaving the
 interface to infer it from zeros.
@@ -12241,7 +13386,27 @@ dashboard writes no row. Auditing reads here would produce a table dominated by 
 |---|---|---|---|
 | 1 | A manager sends any request to an administration write endpoint | 403 `FORBIDDEN` | "This action is for administrators." |
 | 2 | A customer or guest sends any request to a reports endpoint | 403 `FORBIDDEN` (401 `AUTH_REQUIRED` if unauthenticated) | "This page is for managers and administrators." |
-| 3 | Any non-`GET` method against a `/api/reports/…` path | **405**, no error code from the registry — the route does not exist for that method | The interface never produces this request; a direct caller receives the framework's method-not-allowed response |
+| 3 | Any non-`GET` method against a `/api/reports/…` path | **405 `METHOD_NOT_ALLOWED`**, rendered by the global handler in the standard envelope (`P-XCT-11` exception 3a) — the path is mounted for `GET` and for no other method | "That action is not available. Nothing was changed." — `P-XCT-11`'s one generic, entity-blind sentence. The interface never produces this request; a direct caller does |
+
+**Row 3 is `P-XCT-11`'s rule applied, not a local one, and the previous revision of it was wrong.**
+It said **405 with no error code from the registry** and the framework's own method-not-allowed body.
+`FR-ADR-052` requires one envelope from every response and requires the client to **branch on `code`**;
+a body carrying no `code` is one the client cannot branch on at all. `P-XCT-11` exception 3a and the
+generated `api/error_codes.md` both fix `METHOD_NOT_ALLOWED` at **405 inside the envelope**, and this
+lane adopts that rather than publishing a second answer to one request.
+
+**It reaches a reports path without this router mounting anything, which is why both statements in
+this row hold at once.** The handler is mounted **on the application and on no router** (`P-XCT-11`),
+so the reports router still mounts no `POST`, `PUT`, `PATCH` or `DELETE` route — there is nothing
+there to make work later — and the response still leaves through the product's one envelope.
+
+**`METHOD_NOT_ALLOWED` appears in no `errors` array on any endpoint in this lane, and that is correct
+rather than an omission.** `P-XCT-11` records that the generator's `VALID_CODES` is derived from two
+hardcoded registry constants and rejects any endpoint block naming a code outside them, so the code is
+granted by the merge owner's registry entry and never by a lane; a lane adding it to `EP-RPT-01`'s
+`errors` array gets a build that raises rather than a warning. It is also raised by **no route**, so
+listing it against an endpoint would be a false claim about that endpoint even if the generator
+allowed it.
 
 **Server-side validation.** Not applicable. There is no writable field on this surface.
 
@@ -12322,6 +13487,34 @@ record of them. `SRC-001 §7.6` says only that the business must be able to answ
 reader to the administrator is the narrower of the two available choices, and adopting a stricter
 option needs no signature (`CONSTITUTION.md` Art III.10). It is written down here so that widening it
 to managers later is a decision someone makes rather than a default that drifts.
+
+**What a manager is left with, written down rather than left as a silence.** Every figure on
+`SCR-RPT-01` is recomputed from current rows on every request and **nothing is stored to compare
+against** (`P-RPT-12`: no rollup, no materialised view, no cached report). There is no filed copy of
+yesterday's dashboard, so **no surface in this product can state that a figure changed**, and none
+claims to. A manager who reported a number yesterday and reads a different one today therefore cannot
+tell an administrator's correction from a fault in the dashboard — which is precisely the state
+`P-RPT-07` says makes a reader stop trusting the figures, reached here by a different route.
+
+**Two things close the part that is closable, and neither widens access to anything.**
+
+1. **`SCR-RPT-01` states the mechanism once, as ordinary content** — *"These figures are recomputed
+   from current records each time this page loads."* A reader who knows the figures are live has an
+   explanation for a moved figure that does not require them to suspect the page.
+2. **It names the route, which is a person and not a link** — *"If a figure has changed, ask an
+   administrator to check the change log."* **No link is rendered and none may be.** The change-log
+   link is absent from a manager's DOM entirely, and a link to a page that answers 403 teaches the
+   reader that the product is broken.
+
+**What is not closed here, and is not this lane's to close.** *Why* a figure moved is
+`OPEN-RPTIMMUT-01`, which is **`OPEN` and reserved — reporting integrity**: an administrator may edit
+a booked showtime's film or start instant, `P-RPT-05` joins the film live and `P-RPT-01` filters on
+`starts_at` live, so either edit rewrites an already-reported period. **The build session may not
+close that at any confidence.** **Widening the change log to managers is not the remedy either** — who
+may read the record of a privileged change is an access-to-financial-data question, and the paragraph
+above records admin-only as a deliberate stricter adoption that someone must decide to widen rather
+than drift into. The two sentences above tell a manager what the figures are; they do not tell them
+what changed, and they do not pretend to.
 
 **Preconditions.**
 - `audit_log` is append-only and enforced as such: the application role holds `INSERT` and `SELECT` on
@@ -12682,25 +13875,64 @@ environment.
   an untimed warm-up phase that signs in through the real sign-in endpoint, and why the login rate
   limiter therefore cannot touch the result — is `P-XCT-07`'s, and the arithmetic is written there
   once rather than in every row that depends on it.**
+- **Stage B of the drill additionally needs direct command access to the Redis instance under test
+  and a non-zero `PAYMENT_SIMULATED_DELAY_MS`.** Both hold in the local compose stack and neither
+  holds in AWS, which is one more reason the drill is local only.
 
 **Happy path.**
 1. A customer holds seats. Redis grants the lock atomically, one winner per seat.
 2. The customer confirms. The confirm transaction re-validates the hold, then inserts the
    seat-occupancy rows.
 3. The unique constraint accepts them. The booking commits.
-4. Fifty simultaneous requests for one seat produce exactly one HTTP 201 and forty-nine 409s, **and
-   exactly one row in the seat-occupancy table for that `(showtime_id, seat_id)`, read directly from
-   PostgreSQL.**
+4. Fifty simultaneous **hold** requests for one seat produce exactly one HTTP 201 and forty-nine 409
+   `SEAT_UNAVAILABLE`, and — once the winner confirms — **exactly one row in the seat-occupancy table
+   for that `(showtime_id, seat_id)`, read directly from PostgreSQL.** **All forty-nine are refused by
+   the Redis lock at `SET … NX`; the unique constraint fires zero times in a passing run of that gate.**
+   `P-HLD-13` owns the gate and this row does not redefine it.
+
+**Which layer refuses whom — and why the drill cannot fire at the hold.**
+
+**The two layers are not two chances at the same event. They catch different events, and only one of
+them is reachable from the fifty-request gate.**
+
+| Layer | Refuses | Reached by |
+|---|---|---|
+| The Redis lock, `SET … NX` | a second customer asking for a seat **while a first customer holds it** | every one of the forty-nine losers in the fifty-request gate |
+| The unique constraint at insert | a second customer **confirming** a seat that already has a committed `booking_seat` row — which can only happen when **Redis was wrong**: an eviction, a restart, a clock difference or a bug in the release path | **nothing in the fifty-request gate.** Only one caller ever reaches `P-PAY-10` step 7, and they reach it uncontended |
+
+**So dropping the unique constraint changes nothing observable at the hold endpoint.** Redis still
+grants one lock, one customer still confirms, and `SELECT count(*)` still returns `1`. **A drill that
+drops the constraint, re-runs the fifty-request gate and expects more than one winner is asking the
+wrong endpoint a question it cannot answer** — and, worse, the specification then classifies a correct
+implementation as a stop-the-line finding. That defect was real and is corrected here: **the red-proof
+drill runs in two stages, and only the second one touches the constraint.** The stages are below, and
+`S7.1` carries the procedure.
+
+**The two-system guarantee is unchanged and is not weakened by this.** A Redis lock still provides the
+hold, the unique constraint plus row locking still provides the truth, and **the database half may
+still not be waived.** What changed is which endpoint the proof fires at, and the change is **stricter**
+— the gate as it stood exercised the constraint zero times, and it now exercises it explicitly and
+watches it fail. Adopting a stricter option needs no signature (`CONSTITUTION.md` Art III.10).
 
 **Exception paths.**
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | The unique constraint fires at insert — another booking took the seat first | 409 `SEAT_UNAVAILABLE` | "C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected." |
+| 1 | The unique constraint fires at insert — another booking took the seat first. **This is the confirm path** (`P-PAY-10` step 7), never the hold | 409 `SEAT_UNAVAILABLE`, the whole confirm transaction rolled back | **`P-HLD-14` row 4 (one seat lost) or row 4b (two or more) — the *at confirm* sentences. This row publishes none of its own** (`P-PAY-11`) |
 | 2 | The hold is gone at confirm | 409 `HOLD_EXPIRED` | "The hold on your seats has ended and they have been released. You have not been charged." |
 | 3 | Redis is unreachable on the hold or confirm path | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. Browsing still works. Try again in a few minutes." |
 | 4 | The stress script's fifty request start instants span more than the configured threshold | the script exits non-zero with "not concurrent" | *(no user-facing surface — this is a build gate)* |
-| 5 | The red-proof drill runs with the constraint dropped and still produces one winner | the drill is recorded as **failed** and the whole proof is void | *(no user-facing surface — this is a stop-the-line finding)* |
+| 5 | **Stage B** of the drill runs with the constraint dropped and still produces exactly **one** `booking_seat` row for the pair | the drill is recorded as **failed** and the whole proof is void — the run did not reach the constraint | *(no user-facing surface — this is a stop-the-line finding)* |
+| 5a | **Stage A** — the fifty-request gate — is run with the constraint dropped and produces one winner | **that is the expected result and it is not a finding.** Stage A fires at the hold, where Redis decides the winner and the constraint is never reached. **A drill that reads Stage A as the red proof has proved nothing**, and reading it as a failure blocks a story for a defect that is not there | *(no user-facing surface)* |
+
+**Why exception 1 publishes no sentence of its own, when it used to.** It previously carried
+`"C12 and C13 were taken by another customer. No seats were held. Your other choices are still
+selected."` — which is `P-HLD-14` row 3, the ***at hold*** sentence, on a trigger that fires at
+**confirm**. A customer who held seats, paid, and had the whole transaction rolled back was being told
+that no seats were held and that their other choices were still selected: both halves untrue, and
+`P-SEA-03` states in terms that a message on that path may never say *held* where the customer's seats
+were only *selected*. `P-HLD-14` declares itself the complete message set for these codes and gives
+the confirm case rows 4 and 4b; `P-PAY-11` defers to them by name and so does this row.
 
 **Server-side validation.** The constraint is a database object, not a check in code. A pre-insert
 `SELECT` to see whether a seat is free is **not** validation and must not be written: a
@@ -12708,18 +13940,51 @@ environment.
 row, both proceed and both insert. The violation is caught at insert and translated; it is never
 retried, and it is logged as an expected outcome with a counter, not as an exception.
 
-**Worked example.** Fifty concurrent requests for showtime `41`, seat `312`.
+**Worked example — Stage A, the fifty-request gate** (`SRC-002 §9.1`, `P-HLD-13`). Fifty concurrent
+**hold** requests for showtime `41`, seat `312`.
 
 ```
 HTTP 201 responses ............ 1        (exactly one, never "at most one")
-HTTP 409 SEAT_UNAVAILABLE ..... 49
-rows in booking_seat where (showtime_id, seat_id) = (41, 312) ....... 1
+HTTP 409 SEAT_UNAVAILABLE ..... 49       all forty-nine refused by Redis at SET … NX
+rows in booking_seat where (showtime_id, seat_id) = (41, 312) ....... 1   (after the winner confirms)
 request start-instant spread .. 38 ms    (threshold 100 ms — the script trusts its own result)
+unique-constraint violations .. 0        <- the figure that makes Stage B necessary
 ```
 
-Then the drill: drop the unique constraint, re-run, observe **more than one** row for `(41, 312)`;
-restore the constraint; re-run and observe one row again; read the constraint back from the
-catalogue. Recorded with who ran it and when. **An undated claim that it was run is not evidence.**
+**Worked example — Stage B, the red-proof drill.** Stage B has to produce **two live holders of one
+seat**, because that is the only state from which two confirms both reach `P-PAY-10` step 7. It
+produces it by injecting the exact Redis failure the database half exists to survive — **the loss of a
+lock key** — inside the confirm window that `PAYMENT_SIMULATED_DELAY_MS` opens.
+
+```
+PAYMENT_SIMULATED_DELAY_MS = 1500        the window step 6 spends, and the drill's working room
+
+t = 0.00 s   A: POST hold (41, 312)          -> 201, token tA, key lock:seat:41:312 = tA
+t = 0.10 s   A: POST confirm, async          -> step 2 re-validates tA and passes; step 6 begins
+t = 0.30 s   drill: DEL lock:seat:41:312     <- an eviction, injected by hand, in Redis
+t = 0.40 s   B: POST hold (41, 312)          -> 201, token tB.  SET … NX succeeds, the key is gone;
+                                                P-HLD-01 step 7 reads booking_seat and finds nothing,
+                                                because A has not committed.  TWO LIVE HOLDERS.
+t = 0.50 s   B: POST confirm, async          -> step 2 re-validates tB and passes; step 6 begins
+t ≈ 1.6-2.0  both reach P-PAY-10 step 7 and insert
+```
+
+| The constraint | What Stage B produces | What it proves |
+|---|---|---|
+| **present** | exactly one `201`, exactly one `409 SEAT_UNAVAILABLE`, and **one** `booking_seat` row for `(41, 312)` | **the constraint firing, observed.** The 409 here is the database half, not Redis |
+| **dropped** | **two `201`s and two `booking_seat` rows for `(41, 312)`** — the seat sold twice, to two customers who both paid | **the red proof.** This is the outcome the drill exists to watch |
+| **restored** | one row again, and the constraint read back from `pg_constraint` | the restore verified rather than assumed |
+
+**Deleting a lock key is not disabling a control, and the distinction is the same one `P-XCT-07`
+draws about bucket sizes.** Nothing is switched off: the lock layer runs normally throughout, both
+holds go through the real `SET … NX`, and both confirms re-validate their token exactly as
+`P-PAY-10` step 2 requires. What is injected is a **fault** — a key disappearing — which is a thing
+Redis does on its own under memory pressure and does wholesale on a restart, and it is precisely the
+event `S7.1` names as the reason the database half may not be waived. **Dropping a constraint on
+purpose and evicting a key on purpose are the same kind of act**, and both are local-environment only.
+
+Recorded with who ran it and when, for both stages. **An undated claim that it was run is not
+evidence.**
 
 ---
 
@@ -12812,7 +14077,7 @@ audit trail that starts when its reader is built has a hole exactly as long as t
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | The audit insert fails | the whole transaction rolls back; the change does not land | "That change was not saved. Try again." |
+| 1 | The audit insert fails | the whole transaction rolls back; the change does not land | "The server could not complete this request. If you need help, quote `a1b2c3d4`." — the registry's one published sentence for the code, as exception 3. **No variant is minted for the audit path** |
 | 2 | The change fails | the transaction rolls back; no audit row exists for a change that did not happen | *(the change's own error is shown)* |
 | 3 | Code attempts `UPDATE` or `DELETE` on `audit_log` | the database refuses — the grant does not exist | 500 `INTERNAL_ERROR`, and the customer sees "The server could not complete this request. If you need help, quote `a1b2c3d4`." |
 | 4 | An `action` value outside the controlled vocabulary is used | 500 `INTERNAL_ERROR` at the boundary check, before the transaction opens | as above |
@@ -12940,12 +14205,35 @@ contains no role check.
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | No session on a non-public router | 401 `AUTH_REQUIRED` | "Sign in to continue." |
+| 1 | No session on a non-public router | 401 `AUTH_REQUIRED` | "Sign in to continue." — **this row's generic default. On the reports surface `P-RPT-02` row 1's sentence ships instead** |
 | 2 | The session's JWT is expired or does not verify | 401 `AUTH_REQUIRED` | "You were signed out. Sign in again to continue." |
-| 3 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." |
-| 4 | A manager requests data for a screen they are not assigned to | 403 `FORBIDDEN` | "This account does not have access to that hall." |
-| 5 | A manager reaches any write endpoint | cannot occur — no write endpoint exists on the manager router | *(no user-facing surface)* |
-| 6 | A manager has no screens assigned yet | 200 with an empty dashboard — the correct state for a new account, not an error | "No halls are assigned to this account yet." |
+| 3 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." — **generic default; on the reports surface `P-RPT-02` row 2's sentence ships instead** |
+| 4 | A manager requests data for a screen they are not assigned to | 403 `FORBIDDEN` | "This account does not have access to that hall." — **generic default; on the reports surface `P-RPT-02` row 3's sentence ships instead** |
+| 5 | A manager reaches a write endpoint **on the manager router** | cannot occur — **the manager router mounts no write route at all**, which is the control (`P-RPT-09`) | *(no user-facing surface)* |
+| 5a | A manager addresses a write endpoint **on the admin router** — a hand-made request, or a client bug | **403 `FORBIDDEN`, refused by the admin router's role dependency before the body is parsed.** This case is entirely reachable and **it is the one `SRC-003 OPEN-OPS-03` exists to prevent, so it carries a test** | **`P-RPT-09` row 1 publishes it and this row publishes none** |
+| 5b | A non-`GET` method is addressed at a path on the reports router | **405 `METHOD_NOT_ALLOWED`**, rendered by the global handler as the product envelope (`P-XCT-11`) — **not 404**, because the path exists for `GET` | `SCR-XCT-01`'s `METHOD_NOT_ALLOWED` string, published once and reused |
+| 6 | A manager has no screens assigned yet | 200 with an empty dashboard — the correct state for a new account, not an error | "No halls are assigned to this account yet." — **generic default; on the reports surface `P-RPT-08` row 1's sentence ships instead** |
+
+**Exception 5 used to read "a manager reaches *any* write endpoint — cannot occur", and that sentence
+had a hole exactly where it mattered.** It is true of the **manager router**, which mounts no write
+route; it is false of the **admin router**, which a manager can address directly and which refuses
+them with 403. **A developer building the authorisation floor from this row alone would have written
+no test for the single case `SRC-003 OPEN-OPS-03` exists to prevent**, because the floor row said the
+case was impossible. Rows 5 and 5a now say which is which, and 5a says it carries a test.
+
+**Why four of these sentences are defaults rather than the words that ship.** `P-RPT-01`, `P-RPT-02`
+and `P-RPT-08` publish wording for the same four conditions on the reports surface, and two of the
+four pairs are **different sentences rather than paraphrases** — *"Sign in to see the dashboard."*
+against *"Sign in to continue."*, and *"That hall is not assigned to this account."* against *"This
+account does not have access to that hall."* Both rows are rank 2, so `S1.2`'s ranking does not settle
+it and `S1.2.1` case 1 makes an unresolved rank-2 tie a defect rather than the implementer's choice.
+**It is settled the way `SCR-XCT-01` settles `FORBIDDEN` and `AUTH_REQUIRED`: the row that knows what
+the caller could not reach owns the words.** A manager refused another hall's dashboard needs
+different words from a customer refused another customer's booking, and a sentence that avoids saying
+which serves neither. **This row's four sentences are the floor's generic restatement**, used on any
+router whose own P-row publishes nothing, and they carry no authority over the reports surface. **A
+lane that finds itself shipping one of them on a surface that has an owning P-row has found a gap in
+that row**, not a finished string.
 
 **Server-side validation.** The role is read from the database on every request, never from a claim
 in the token, so a role change takes effect on the next request rather than at the next sign-in. The
@@ -12961,8 +14249,23 @@ nothing.
 GET  /api/reports/dashboard                → 200, non-empty   (screens 2 and 5, resolved from the session)
 GET  /api/reports/dashboard?screen_id=2    → 200, non-empty   (a narrowing inside the resolved scope)
 GET  /api/reports/dashboard?screen_id=4    → 403 FORBIDDEN    (not assigned — refused, never honoured)
-POST anything on the reports router        → 404, no such route
+POST /api/reports/dashboard                → 405 METHOD_NOT_ALLOWED   (the path exists for GET)
+PATCH /api/admin/showtimes/101 as manager  → 403 FORBIDDEN    (the admin router's role dependency)
 ```
+
+**Line four says 405 and not 404, and the difference is the whole of the negative test.** This row
+previously read *"POST anything on the reports router → 404, no such route"*, which contradicts
+`P-RPT-09` row 3, the `METHOD_NOT_ALLOWED` registry entry and `P-XCT-11` exception 3a — all three of
+which give **405** for a path that exists under another method. **The negative test for the read-only
+reports router is transcribed from one of these rows**, so a suite built from the old line asserts 404
+and passes against a wrong implementation, while a suite built from the registry asserts 405 and fails
+against a correct one. **404 was also the wrong answer on the merits**: `/api/reports/dashboard`
+exists and serves `GET`, and a 404 denies that to the only audience that ever sees it.
+
+**Line five is the case exception 5 used to call impossible.** It is a real request a manager can
+make, it is refused at the admin router by the same dependency this row specifies, and it is the case
+`SRC-003 OPEN-OPS-03` exists to prevent — so it is in the worked example rather than left to be
+inferred from a row that said it could not happen.
 
 **The scope comes from the session, not from the request.** Line one carries no `screen_id` at all and
 still returns exactly screens 2 and 5, because the dependency reads the caller's assignments from
@@ -13038,6 +14341,36 @@ account exists.
 72 Latin characters      = 72 bytes  → accepted
 25 Devanagari characters = 75 bytes  → rejected with message #2, not truncated
 ```
+
+**`SameSite=Lax` is this product's only cross-site request defence, and this paragraph exists because
+nothing said so.** The session cookie is attached by the browser to **every** request to this origin,
+including one a different site caused. **There is no CSRF token, no double-submit cookie and no
+`Origin` or `Referer` check anywhere in this specification** — the attribute was chosen and justified
+here only on the ground that `Strict` would drop the cookie on the cross-site return from an emailed
+link, which is a usability reason for a security control. **A defence nobody has named is a defence
+somebody removes by accident.**
+
+**What it buys.** A browser withholds a `SameSite=Lax` cookie on every cross-site request except a
+**top-level navigation using a safe method**. So a cross-site `POST`, `PUT`, `PATCH` or `DELETE`, and
+every cross-site `fetch` or `XMLHttpRequest` whatever its method, arrives with **no session**. Every
+state-changing endpoint in this product is one of those, so every state change is covered.
+
+**The two changes that remove it, named so that neither can be made without meeting this sentence:**
+
+1. **A state-changing `GET`.** `Lax` sends the cookie on a top-level `GET` navigation, so an endpoint
+   that writes on a `GET` is reachable cross-site with the customer's session attached. **This is the
+   reason no endpoint in this product may change state on a `GET`** — a stated security reason, not
+   REST tidiness, and the distinction matters because tidiness is negotiable and this is not.
+2. **Relaxing the attribute to `SameSite=None`.** One line, and it is exactly what someone reaches for
+   the first time a second origin is introduced. **There is nothing behind it**: with `None` set and no
+   token, every authenticated write in the product is cross-site reachable.
+
+**What it does not buy, stated rather than glossed.** `Lax` is a **browser** behaviour and not a server
+check, so it binds only clients that implement it. **Nothing is added here** — no token, no
+double-submit, no `Origin` check. The gap is recorded on the same terms as Argon2id in `P-XCT-23`:
+this is a demonstration environment that carries no real customer data by ruling (`R-CON-08`,
+`P-XCT-29`), and **a server-side CSRF check is the thing to add before it ever carries a real
+person's booking.** Naming it is what turns a later removal into a decision instead of a discovery.
 
 **Two accepted weaknesses, recorded rather than solved.** There is **no email-verification gate in
 v1**, so a customer can register with a mistyped address and book; the mitigation is that the address
@@ -13420,7 +14753,7 @@ only**.
 | 1 | Any unhandled exception | 500 `INTERNAL_ERROR`, generic message, stack trace in the log only | "The server could not complete this request. If you need help, quote `a1b2c3d4`." |
 | 2 | A request body fails validation | 422 `VALIDATION_FAILED` with the failing fields in `details` | *(the field's own message, beside the field)* |
 | 3 | A path or resource does not exist for **any** method | 404 `NOT_FOUND` | "That page does not exist." |
-| 3a | A path exists for some method but **not the one used** — in practice a `DELETE` addressed at one of the never-deleted entities, for which no `DELETE` route is mounted | 405 `METHOD_NOT_ALLOWED`, rendered by **a global handler and not by any route** | "That action is not available. Nothing was changed." |
+| 3a | A path exists for some method but **not the one used**. Two cases: a `DELETE` addressed at one of the never-deleted entities, for which no `DELETE` route is mounted; and **any non-`GET` method addressed at a path on the read-only reports router** (`P-RPT-09`), every route of which is a `GET` | 405 `METHOD_NOT_ALLOWED`, rendered by **a global handler and not by any route** | "That action is not available. Nothing was changed." |
 | 4 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." |
 | 5 | A unique-constraint violation on seat occupancy | 409 `SEAT_UNAVAILABLE` — **not** `INTERNAL_ERROR`; it is the guard working | "C12 was taken by another customer." |
 | 6 | A 4xx of any kind | the envelope carries `request_id`, and the interface does **not** display it | *(no id — it is noise on an error the customer can act on)* |
@@ -13688,10 +15021,19 @@ worst first:**
 | 5xx rate at the load balancer | the application failing while its task is still running |
 | Target group unhealthy hosts | readiness failing on PostgreSQL or Redis |
 | RDS free storage | forever retention filling 20 GB |
+| **S3 poster-bucket size and object count** | **the one store in the product with no deletion path at all filling up.** A replaced poster object is never deleted (`P-ADM-20`, `FR-ADR-012`), so the bucket **grows monotonically** — every re-upload adds a key and removes none — and nothing anywhere reads its size. **The first symptom is a failed poster upload**, which an admin meets mid-task with no warning that anything was filling |
 | RDS connection count | pool exhaustion against roughly 110 connections |
 | Host memory | a container killed for exceeding its limit |
 | SES bounce and complaint rate | receipts going nowhere |
 | `outbox_pending` rising | the relay stuck, receipts not enqueued |
+
+**The bucket was missing from this list, and the omission had a shape worth naming.** Every other row
+here names a store that something else bounds — RDS has a provisioned size, CloudWatch has a
+retention setting, ECR has a lifecycle policy the specification already asks for. **S3 is the only one
+with no deletion path and no bound**, which makes it the row most in need of a watcher and it was the
+row that was absent. It is added rather than solved: **no lifecycle policy is proposed and no
+retention is chosen**, because deleting a poster object would contradict `P-ADM-20` and because
+choosing a cost-against-evidence trade is the client's, exactly as the CloudWatch retention period is.
 
 **The first is the worst, and it is named:** the product's central promise is that a customer receives
 a receipt that gets them into a hall; when that fails repeatedly the message lands in the dead letter
@@ -13940,7 +15282,8 @@ property being specified and a reader of this row needs one concrete crash to se
 hook, not in the entrypoint's default path, and not behind a flag. **There is no code path in the API
 or the worker that can apply a migration.** The entrypoint supports an explicit `migrate` command as
 its argument; running the image with `api` or `worker` starts a long-running process and never touches
-migrations.
+migrations. **`seed` is the fourth command and it is `P-XCT-32`'s** — it is named here only so the
+entrypoint's argument set is stated in one place; it runs no migration either.
 
 **Who may do it.** The client, by hand, before updating the service to the new image. In AWS this is a
 one-off ECS task using the same image and task definition family with the command overridden to
@@ -14274,6 +15617,36 @@ regularly needs this.
 3. The page body does not scroll horizontally.
 4. The checkout action stays reachable without scrolling the map.
 
+**Something has to move the map, and nothing did.** A container that scrolls is only half a
+specification: the other half is **who scrolls it and to where**, and no P-row, screen spec or
+component spec ever moved it — not on first paint, not when keyboard focus left the visible strip, not
+for a restored selection, and not for a seat named in an error. On the design target roughly **half of
+a twenty-column row is off screen at any scroll position** (the arithmetic is below), so the omission
+is not cosmetic: arrow-key focus routinely landed on a seat nobody could see. **These four rules are
+the missing half**, and they bind every surface that renders the map.
+
+| # | When | What scrolls, and by how much |
+|---|---|---|
+| 1 | **First paint** | the container is scrolled to its **leading edge**, so seat `1` of every row is visible and the opening view is a decision rather than whatever the browser last remembered. **A customer with a restored selection is rule 3's case and overrides this one.** |
+| 2 | **Keyboard focus leaves the visible strip** | the container scrolls the **minimum** amount that brings the newly focused seat **fully** inside it. Never centred, never animated past `--fr-motion-base`, and **never the page body** — only this container moves. |
+| 3 | **A selection is restored** — the return from sign-in (`SCR-XCT-04`), or a reload carrying a `sessionStorage` selection | the container scrolls to bring the **first** restored seat fully into view, on the same minimum-movement rule. |
+| 4 | **An error names seats** — `details.unavailable_seats` on `SEAT_UNAVAILABLE` (`SCR-XCT-01`) | the container scrolls to bring the **first named** seat fully into view, so the seat the banner is talking about is the seat the reader can see. |
+
+**The pinned row gutter is what makes "fully inside it" load-bearing.** `SCR-SEA-01` pins the
+28-pixel row-label gutter to the leading edge while the seats scroll under it, so a cell scrolled to
+the container's exact leading edge is **underneath** the gutter rather than beside it. A focus ring
+drawn there is obscured by page content, which is **WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum),
+new at AA in 2.2** and inside the target `P-XCT-24` adopts. **It is fixed rather than recorded as a
+deviation**, because `P-XCT-24` has exactly one deviation and this is not it: the container carries
+`scroll-padding-inline-start: var(--fr-seat-gutter)`, so every one of the four rules above stops short
+of the gutter and no focused cell can come to rest under it.
+
+**Two things these rules deliberately do not do.** They **never scroll while the reader is scrolling**
+— a programmatic scroll that fights a finger is worse than none — so rules 2 to 4 fire on focus and on
+error arrival, not on poll. And they **never move the page body**: `--fr-page-max` and the shell
+(`SCR-XCT-05`) both depend on the body having one scroll direction, and a horizontal body scroll is
+exception 3 below.
+
 **Exception paths.**
 
 | # | Trigger | Server | What the user sees, verbatim |
@@ -14282,22 +15655,44 @@ regularly needs this.
 | 2 | The seat size is reduced to make a hall fit | rejected — it breaks the target-size minimum | *(no user-facing surface)* |
 | 3 | The page body scrolls horizontally | a defect | *(no user-facing surface)* |
 | 4 | A hall larger than 220 seats is configured | nothing breaks — the map scrolls further. **The 220 figure is a design target, not a limit**, because it is `ASSUMED` | *(nothing)* |
+| 5 | Arrow-key focus moves to a seat outside the visible strip and nothing scrolls | a defect. The focus ring is drawn where nobody can see it, and the reader has no way to know which seat is focused | *(nothing appears to happen when the arrow key is pressed)* |
+| 6 | A focused seat comes to rest under the pinned row gutter | a defect — **SC 2.4.11 at the adopted AA level**, fixed by the scroll padding above and not by recording a second deviation | *(the focus ring is partly or wholly hidden behind the row letter)* |
+| 7 | The map is scrolled by centring the target rather than by minimum movement | rejected. Centring moves the whole map on every arrow press, so the reader loses their place on a grid they are navigating one cell at a time | *(the map lurches on every key press)* |
 
 **Server-side validation.** None.
 
-**Worked example.** Why the map must scroll rather than shrink.
+**Worked example — the row is wider than the viewport, and the visible strip is narrower than the
+viewport.** Both halves matter, and the second was previously left out.
 
 ```
-seat size ............... 24 px      --fr-seat-size   (WCAG 2.2 target-size minimum)
-seat gap ................  4 px      --fr-seat-gap
-per seat ................ 28 px
-a 20-seat row ........... 20 × 28 − 4 = 556 px
-plus row-label gutter ... 28 px      --fr-seat-gutter
-total ................... 584 px  >  375 px viewport
+seat size ............................... 24 px   --fr-seat-size  (WCAG 2.2 target-size minimum)
+seat gap ................................  4 px   --fr-seat-gap
+per seat ................................ 28 px
+a 20-column row ......................... 20 × 28 − 4 = 556 px      <- this is what scrolls
+
+viewport ................................ 375 px
+less page gutter, both sides ............ 2 × 16 = 32 px   --fr-space-4  (COMPONENTS.md §0.1)
+less map-field padding, both sides ...... 2 × 16 = 32 px   --fr-space-4  (SCR-SEA-01, "Map field")
+less the pinned row gutter .............. 28 px            --fr-seat-gutter (pinned, never scrolls)
+= visible seat strip .................... 375 − 32 − 32 − 28 = 283 px
+
+columns visible at once ................. floor((283 + 4) / 28) = 10 of 20
+hidden at any scroll position ........... 556 − 283 = 273 px, ten of the twenty columns
 ```
+
+**The figure this block previously carried was `584 px > 375 px viewport`, and it was wrong in two
+directions at once.** It counted the pinned 28-pixel gutter as part of the scrolling row, which it is
+not, and it compared the result against the whole 375-pixel viewport as though the map occupied it —
+omitting the page gutter and the field padding, **64 pixels in total**. The stated gap was therefore
+209 pixels where the real one is 273, and a reviewer checking whether the map fits was checking
+against a strip 92 pixels wider than the one a customer actually sees. **It is corrected here rather
+than quietly restated**, because `S1.5` transcribes these figures into tests.
 
 **Every one of these figures is a token, not a decision made here**, and the hall size that produced
-the row width is `ASSUMED`.
+the twenty-column row is **`ASSUMED`** under `OPEN-SCALE-02` — the 10-of-20 split moves with it and
+**does not harden into a constraint.** What does not move with it is the rule: whatever the hall size,
+the visible strip is narrower than the viewport by the gutters and the pinned column, and the four
+scroll rules above are what make the seats outside it reachable.
 
 ---
 
@@ -14541,6 +15936,68 @@ this row produces sixty-three accounts nobody can use, Phase 2 has no admin and 
 customers for the concurrency proof. **The seed also enqueues no receipt job**, for the bounce reason
 `P-XCT-32` states, **and writes each dispatch row `suppressed` instead (`P-TKT-04`)** — so a seeded
 booking has a dispatch row that records the truth about it rather than no row at all.
+
+##### The seed writes no `audit_log` row, and that is a decision rather than an omission
+
+**`scripts/seed.py` inserts directly into PostgreSQL with no request, no session and no acting user,
+and it writes no row into `audit_log` for anything it creates.** The row said nothing about this, and
+silence here is not neutral: a developer writing the script has to choose, and every choice available
+to them breaks a stated rule.
+
+**Why there is no honest actor to name.** `P-ADM-19` makes `actor_user_id` a **non-null** foreign key
+to the acting user and forbids **both** a role name and a service account. The seed **creates the
+first admin itself**, so at the moment of its earliest writes — the cinema, the screens, the seats, the
+twelve lookup rows — no user row exists that any actor column could point at. The three ways out are
+each worse than the absence:
+
+| The way out | Why it is refused |
+|---|---|
+| Write the audit row with a null or a placeholder actor | breaks `P-ADM-19`'s non-null rule in the one table whose whole value is that its rows are true |
+| Invent a `seed` or `system` service account | **`P-ADM-19` forbids a service account in terms.** It is also a real user row that can be signed in as, if it ever gets a password |
+| Attribute every seeded row to `admin-01` | a **false statement about who did it.** `admin-01` did nothing; the row would say they created 720 showtimes in one second |
+
+**The scope this rests on, stated so it is not read wider than it is.** `S7.3` and `P-XCT-03` audit
+**every privileged write**, and a privileged write is **an admin action arriving through the API**.
+The seed is database provisioning by a script the client runs once, deliberately, with the application
+not necessarily running at all. **This is the only process in the product that writes to these tables
+without a request, and it is the only exemption there is.** No application code path inherits it: a
+handler that writes without an audit row is a defect, exactly as `P-XCT-03` says.
+
+**What identifies a seeded row instead**, since the audit log does not: the `DEMO` prefix on every
+name and the reserved `.invalid` email domain (`FR-ADR-067`, `P-XCT-32`). An operator asking *where
+did this come from* gets an answer from the row itself, which is the question they were going to ask
+the audit log.
+
+**The gap, recorded rather than closed:** the Phase 8 change log shows **nothing** before the first
+real admin action. A reader of it cannot tell whether the catalogue was seeded or created by hand, and
+they will assume it was created by hand because that is all the log contains. That is the accepted
+cost of the three refusals above.
+
+##### Running the seed freezes every hall's layout, permanently, and this is the sentence that says so
+
+**The seed inserts 720 `showtime` rows across all six screens. `P-ADM-14` freezes a hall's layout the
+moment *any* showtime row exists on it.** So the seed's showtime pass closes, for all six halls at
+once: **renumbering a seat, removing a seat, and moving a seat to a different category are refused
+with 409 `LAYOUT_FROZEN` from then on.** Adding a seat, taking one out of service and changing its
+grid coordinates stay permitted; the identity of an existing seat does not.
+
+**It does not thaw.** Nothing is ever deleted, so the showtime rows that froze it stay, and the freeze
+is therefore permanent unless the separate, explicitly named wipe-and-reseed command is run —
+**which this row already forbids in the deployed environment** (exception 5). In that environment
+there is no route back at all.
+
+**This is `OPEN-SEATLABEL-01`'s deadline arriving, and nothing warned anyone of it.** That row is the
+one open item with a deadline rather than only a direction: it stops being fixable once the first
+showtime exists. **The seed is what makes the first showtime exist.** So:
+
+- **The seed prints one line before its first showtime write**, naming what is about to become
+  permanent and naming the halls it affects. It is a notice and not a prompt — the seed does not stop
+  and wait, because a script that blocks on input cannot be run as a one-off container task.
+- **The specification tells the client to settle seat labelling before running the seed against a
+  deployed environment**, and says why in the same breath: the labels are what a receipt carries and
+  what the person at the door reads (`P-ADM-14`).
+- **Local runs are recoverable and deployed runs are not.** Wipe and reseed locally; there is no
+  equivalent in AWS.
 
 ##### The films are published, and the poster that makes that possible
 
@@ -14994,6 +16451,8 @@ discussion — **and are named here, not edited.** The two in this section are c
 | 7 | The seed inserts a film before its vocabulary exists | `P-ADM-01`'s rule refuses it and the seed **exits non-zero without a partial catalogue**. The ordering is fixed — vocabulary, then screens and seats, then films — and it is a property of the script rather than a comment in it | *(no user-facing surface)* |
 | 8 | A seat label uses the letter `I` | forbidden. The letter is skipped, so a nine-row screen ends at `J`. A label containing `I` means a second labelling implementation exists | *(no user-facing surface)* |
 | 9 | A screen's seat count does not equal its rows × columns, or its three bands do not sum to its row count | the seed exits non-zero naming the screen, before its first write. **A layout that is typed rather than computed is how the two disagree** | *(no user-facing surface)* |
+| 10 | The seed writes an `audit_log` row for anything it creates | forbidden. There is no honest `actor_user_id` — the seed creates the first admin itself — and `P-ADM-19` forbids both substitutes, a role name and a service account. **The absence is specified rather than left open**, and it is the only exemption from `P-XCT-03` anywhere in the product | *(no user-facing surface)* |
+| 11 | The seed is run before seat labelling is settled | **all six halls freeze** under `P-ADM-14` at the first showtime insert, and no seat can be renumbered, removed or recategorised afterwards. Locally, wipe and reseed; **in the deployed environment there is no way back**, because the wipe is never run there (row 5). **This is `OPEN-SEATLABEL-01`'s deadline arriving** | *(no user-facing surface — an admin meets 409 `LAYOUT_FROZEN` later, with no clue that the seed is what closed it)* |
 
 **Server-side validation.** Every seeded row is identifiable as seeded: a `DEMO` prefix on names and a
 reserved email domain, so an operator looking at the database can tell demonstration data from real
@@ -15103,10 +16562,57 @@ the client — a reserved one, because it is about real people's accounts.
 **Who may do it.** The client runs the seed. The build session writes it (Zone A, `SRC-002 §6.1.6`)
 and runs it locally only.
 
+**How the seed is run against the deployed environment, and how the password reaches it.**
+
+**This had to be written down, because without it Phase 2 and Phase 4 both stop at their first step.**
+This row and `P-XCT-30` both assign the deployed seed run to the client and neither said how to
+perform it; `S7.9` makes `SEED_DEFAULT_PASSWORD` **seed-only**, read by no container the service runs,
+so it deliberately cannot ride in on the service task definition's `secrets` block — which left the
+one value the whole phase depends on with no route into the environment at all.
+
+**It is the same shape as the migration run, deliberately, so the client learns one pattern rather
+than two** (`P-XCT-19`):
+
+| | The migration run | The seed run |
+|---|---|---|
+| What it is | a one-off ECS task, same image | a one-off ECS task, same image |
+| Entrypoint command | `migrate` | **`seed`** |
+| Task definition | the service's family, command overridden | **its own family** — see below |
+| Extra secret | none | **`SEED_DEFAULT_PASSWORD`** |
+| Frequency | before every deploy that carries a migration | **once, deliberately** |
+
+- **The entrypoint takes `seed` as a fourth command**, alongside `api`, `worker` and `migrate`. It runs
+  `scripts/seed.py` and exits with its status. **No long-running process runs the seed and there is no
+  flag that makes one**, for the same reason `P-XCT-19` gives about migrations.
+- **`SEED_DEFAULT_PASSWORD` is an SSM `SecureString` at `/frontrow/<environment>/SEED_DEFAULT_PASSWORD`,
+  referenced by `valueFrom` from a task definition family that is the seed's alone** — never the API's
+  and never the worker's. That is what keeps `S7.9`'s seed-only rule true: **the service's task
+  definition never carries the parameter**, so no container is made to refuse to boot over a value it
+  never reads, and the secret still reaches the process the way `P-XCT-16` requires every secret to,
+  with the application reading an ordinary environment variable and knowing nothing about SSM.
+- **A separate task definition family, not the service's with an override.** Overriding a command is
+  ECS's ordinary mechanism and it is what the migration run uses; overriding a command **and** adding a
+  `secrets` entry is not — the secret would have to be in the shared family to be overridable, which is
+  exactly what the previous bullet forbids. **Two families, one image**, so the code and the seed are
+  still the same build.
+- **The client builds all of it and the build session builds none of it.** The task definition, the SSM
+  parameter, the execution-role grant for that parameter and the run itself are Zone C (`P-XCT-26`).
+  What is owed here is the specification: the command, the variable, the parameter path, the extra
+  `ssm:GetParameters` resource on the execution role, and the acceptance criterion — **sign in as
+  `admin-01@` with the value that was stored**.
+- **Needed by Phase 2**, and again as a hard dependency of Phase 4. It is an AWS dependency this
+  section owes to `docs/30 Deployment/AWS_PREP_QUEUE.md` with that needed-by phase; **this lane writes
+  nothing to that file** (`S7.16`) and names the dependency in its return instead.
+
 **Preconditions.**
 - `SEED_DEFAULT_PASSWORD` is set in the environment the seed runs in, and is not in the repository.
-- It is at least `PASSWORD_MIN_LENGTH` bytes and at most 72 **bytes** — the bcrypt limit
-  (`P-XCT-06`), which is a byte limit and not a character limit.
+- It is at least `PASSWORD_MIN_LENGTH` **characters** — the same floor the registration path enforces
+  (`P-XCT-06`), which is a character count and not a byte count — and at most 72 **bytes**, which is
+  the bcrypt limit and is a byte bound. **The two bounds are measured in different units and that is
+  not a slip.** Stating the floor in bytes, as this row previously did, would let the seed accept a
+  twelve-byte password of four multi-byte characters that `P-XCT-06` refuses at registration — seeded
+  accounts carrying a credential the application's own rules would not have allowed, in the row that
+  spends two paragraphs on bytes not being characters.
 - It is not the placeholder string `.env.example` ships with.
 - The hashing function is the application's own.
 
@@ -15125,7 +16631,7 @@ and runs it locally only.
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
 | 1 | `SEED_DEFAULT_PASSWORD` is absent | **the seed exits non-zero before writing anything**, naming the variable. Not a warning and not a generated value | *(a terminal message naming the variable — there is no user-facing surface)* |
-| 2 | It is shorter than `PASSWORD_MIN_LENGTH`, or over 72 bytes | the seed exits non-zero naming the bound. **Over 72 bytes is the dangerous one**: bcrypt silently ignores the excess, so the client would set a long password and a shorter one would work | *(no user-facing surface)* |
+| 2 | It is shorter than `PASSWORD_MIN_LENGTH` **characters**, or over 72 **bytes** | the seed exits non-zero naming the bound, **and the two bounds are checked in their own units** — the floor by character count, exactly as `P-XCT-06` checks it at registration, and the ceiling by byte count. **Over 72 bytes is the dangerous one**: bcrypt silently ignores the excess, so the client would set a long password and a shorter one would work | *(no user-facing surface)* |
 | 3 | It equals the `.env.example` placeholder | the seed exits non-zero. **The placeholder must never become the deployed password**, and the only way to be sure is to refuse it by value | *(no user-facing surface)* |
 | 4 | The seed prints the password "for convenience" | forbidden. It reaches a terminal scrollback, a CI log and a screenshot, and **a credential in a log is a committed credential with extra steps** | *(no user-facing surface)* |
 | 5 | A hash is committed to the repository instead of a password | forbidden. A bcrypt hash of a known-weak password is a credential; the repository being private (`FR-ADR-071`) changes the audience and not the rule | *(no user-facing surface)* |
@@ -15200,6 +16706,14 @@ vocabulary empty this screen renders the date strip and no filter control of any
 correct rather than broken (`P-BRW-04`). **Nothing is drawn in their place** — no disabled control, no
 explanatory line, no reserved gap that collapses later.
 
+**One other state renders those same three absences, and it is the reason a line exists at all.** When
+`EP-BRW-07` fails, the listing still renders and the three controls are still absent — a screen
+identical to day one, meaning the opposite thing (`P-BRW-04` exception 5). **That state, and only that
+state, carries the line `Filters are unavailable right now.`** above the card grid, in `--fr-ink` at
+`--fr-text-sm`, and announced through the same polite live region as the result count. The date strip
+and `Clear filters` render exactly as they otherwise would. **The empty-vocabulary state keeps its
+silence** — it is correct, and an interface apologising for being correct is what `FR-ADR-046` refuses.
+
 **States.**
 
 | State | What renders |
@@ -15207,7 +16721,8 @@ explanatory line, no reserved gap that collapses later.
 | **Loading** | Poster boxes and three text blocks per card draw as `--fr-surface-inset` at their final dimensions. The card count is the last known count, or three on a first visit. No spinner. |
 | **Empty — no filters set** | One line of `--fr-ink` at `--fr-text-md`: "Nothing is showing right now." No illustration. **The date strip is absent too** — with no visible film there is no day on which anything shows, so there is nothing for it to range over (`P-BRW-04`). |
 | **Empty — filters set** | One line: "Nothing is showing for the chosen filters.", with a "Clear filters" button below it. |
-| **Error** | The listing is replaced by the message and a "Try again" control. Filters stay on screen and stay usable. |
+| **Error** | The listing is replaced by the message and a "Try again" control. Filters stay on screen and stay usable. **This state is the listing query failing, and nothing else.** |
+| **Filters unavailable** | `EP-BRW-07` failed while the listing succeeded. **The listing renders in full** — this is not the Error state. The three reference-backed controls are absent, the date strip and `Clear filters` render as normal, and one line above the grid reads "Filters are unavailable right now." (`P-BRW-04` exception 5). It is the only thing distinguishing this screen from the correct day-one rendering. |
 | **Success** | Cards in `published_at DESC, id DESC` order (`P-BRW-03`). |
 | **Partial** | A card whose data failed does not render; the listing renders the cards it has. A card whose poster failed renders with the perforation motif. |
 
@@ -15219,6 +16734,7 @@ explanatory line, no reserved gap that collapses later.
 | Empty, with filters | `Nothing is showing for the chosen filters.` |
 | Clear-filters button | `Clear filters` |
 | Error | `The listing could not be loaded.` |
+| Reference data unreachable, listing fine | `Filters are unavailable right now.` — **owned by this screen** (`S1.2.1` case 3; no P-row publishes it). It states the fact and claims no cause. **New in this pass**, because without it a reference outage and an empty vocabulary render byte-identical screens (`P-BRW-04` exception 5) |
 | Retry control | `Try again` |
 | Runtime, in the metadata row | `128 min` — `min` is a unit abbreviation and does not inflect, so this form is the same at every value |
 | Runtime, in the card accessible name | `128 minutes`, and `1 minute` at exactly one — the count is interpolated, so both forms are published even though a one-minute film is not a thing this cinema will show (`S7.21`). A string published with only the plural is how `1 minutes` ships |
@@ -15393,7 +16909,7 @@ legend gains a fifth swatch for it, because anything drawn differently has to be
 |---|---|
 | **Loading** | The field, screen bar and row gutters draw immediately at full size; seat cells are `--fr-surface-inset` blocks at 60% opacity. The frame never resizes when data lands. No spinner. |
 | **Empty** | **Cannot happen.** A showtime always has a hall and a hall always has seats. An empty seat list is `INTERNAL_ERROR` (`P-BRW-08`), not an empty state. |
-| **Error, first load** | The map is replaced by the message on `--fr-surface-inset` plus a "Try again" control. **No partial grid.** |
+| **Error, first load** | The map is replaced by the message on `--fr-surface-inset` plus a "Try again" control. **No partial grid.** Any 4xx or 5xx reaches this state, **429 included** — with no map and no poll loop, the rate-limited sentence would promise an update nothing delivers (`P-BRW-11` exception 4). |
 | **Error, a poll failed** | **The last good map stays.** The one-line strip appears at the top of the field; polling keeps retrying. |
 | **Success** | The full grid, the legend, and the running poll. |
 | **Partial** | The map and the price summary load independently. The map is usable before the summary arrives; the primary action stays disabled until it does (the action itself is E2's). |
@@ -15413,7 +16929,7 @@ legend gains a fifth swatch for it, because anything drawn differently has to be
 | Poll-failure strip | `The seat map is not updating. The seats shown may be out of date.` |
 | First-load error | `The seat map could not be loaded.` |
 | Retry control | `Try again` |
-| Rate limited | `Too many requests. The seat map will update again shortly.` |
+| Rate limited **on a poll** — the map is on screen and the loop is running | `Too many requests. The seat map will update again shortly.` — **this sentence is true only while a poll loop exists to make it true.** A 429 on the **first load** renders the first-load error and its `Try again` instead (`P-BRW-11` exceptions 3 and 4); `SCR-XCT-03` publishes no variant for either |
 | Redis unavailable | `The seat map is unavailable right now. You can still browse showtimes. Try again in a few minutes.` — **owned by `P-BRW-12`, rendered here, not decided here.** This screen publishes no variant of it |
 | Server fault | `The seat map could not be loaded.` followed by `If you need help, quote a1b2c3d4.` |
 | Showtime not found | `That showtime could not be found.` |
@@ -15565,12 +17081,13 @@ have.
 | **Error, first load** | The map is replaced by `The seat map could not be loaded.` in `--fr-ink` on `--fr-surface-inset`, with a control reading `Try again`. No partial grid. |
 | **Error, a poll fails** | The last good map stays on screen. A one-line strip appears at the top of the field in `--fr-ink-muted` on `--fr-surface-inset` reading `The seat map is not updating. The seats shown may be out of date.` Polling keeps retrying. |
 | **Success** (a hold is granted) | Every held cell repaints to `held_by_me`, the heading changes to `3 seats held by you`, the countdown (`SCR-SEA-02`) appears, the secondary action appears, and the primary action becomes `Continue to payment`. Pressing it navigates to `/showtimes/{showtime_id}/checkout` and sends no request of its own. |
-| **Hold live, further seats chosen** | A hold is live **and** the customer has tapped one or more additional `available` seats. The held cells stay `held_by_me`; the newly chosen cells render `held_by_me` too (`P-SEA-02` — there is no fifth rendering) and are listed under their own subheading in the summary. The countdown keeps running from the **unchanged** `expires_at` and does not restart. **The primary action changes from `Continue to payment` to `Hold 2 more seats`**; pressing it re-sends `EP-HLD-01` naming only the new seats, which join the existing hold under its existing token (`P-HLD-01` step 4). On success the newly chosen seats become held, the subheading disappears, and the primary action returns to `Continue to payment`. On `409 SEAT_UNAVAILABLE` the existing hold is untouched — the request is all-or-nothing over **the seats it names**, not over the whole hold (`P-HLD-07`). |
+| **Hold live, further seats chosen** | A hold is live **and** the customer has tapped one or more additional `available` seats. The held cells stay `held_by_me`; the newly chosen cells render `held_by_me` too (`P-SEA-02` — there is no fifth rendering) and are listed under their own subheading in the summary. The countdown keeps running from the **unchanged** `expires_at` and does not restart. **The primary action changes from `Continue to payment` to `Hold 2 more seats`**; pressing it re-sends `EP-HLD-01` naming only the new seats, which join the existing hold under its existing token (`P-HLD-01` step 4). On success the newly chosen seats become held, the subheading disappears, and the primary action returns to `Continue to payment`. On `409 SEAT_UNAVAILABLE` the existing hold is untouched — the request is all-or-nothing over **the seats it names**, not over the whole hold (`P-HLD-07`) — and the banner renders `P-HLD-14` row **2b** or **3b**, whose closing clause is `Your hold is unchanged.` and never `No seats were held.`, because on this screen in this state the countdown, the held cells and the heading all say otherwise. |
+| **A chosen seat leaves the selection with no request sent** | The local selection has been re-checked against a freshly fetched map — after a reload, a poll, or a return to the tab, **with no sign-in involved** — and a seat that was chosen is no longer `available`. The cell repaints to whatever the map now reports and fires the changed-seat outline; the seat leaves the selection, its line leaves the summary and the total drops. **`SCR-SEA-03` renders `P-SEA-03`'s string and announces it**, and this is the one notice on that banner that carries no error `code`, because nothing was requested. Nothing is disabled and no action is offered: the customer chooses another seat or presses the primary action with what is left. The return-from-sign-in case is `P-ACC-13`'s and renders that row's string in the same banner. |
 | **Partial** | The map and the price summary load independently. The map is usable before the prices arrive; the total is not rendered at all and the primary action stays disabled until every selected seat has a price. |
 | **Sold out** | The full map renders, every cell `sold`, plus a banner reading `Every seat for this showtime is sold.` Not an empty state — the customer wants to see that it is genuinely full. |
 | **Sales closed** | The full map renders with every cell unselectable, plus a banner. For a customer with no hold it reads `Sales for this showtime have closed.` For a customer holding seats it reads `Sales for this showtime have closed. You can still pay for the seats you are holding.` |
 | **Hold expired** | Each `held_by_me` cell reverts to whatever the next poll reports — usually `available`, sometimes `held_by_other` or `sold`. Each reverting cell fires the changed-seat outline, so the customer watches the seats leave. The cells are **not** pre-emptively repainted at `0:00`; `SCR-SEA-02` is what says the hold ended. |
-| **A seat changes between two polls** | The cell keeps a 2px `--fr-focus-ring` outline for `--fr-motion-change`; the fill transitions over `--fr-motion-base` with `--fr-ease-out`. Under `prefers-reduced-motion` the outline is static rather than pulsing and is held for the same duration. If the seat that changed was one of the customer's own, `SCR-SEA-03` fires and names it. |
+| **A seat changes between two polls** | The cell keeps a 2px `--fr-focus-ring` outline for `--fr-motion-change`; the fill transitions over `--fr-motion-base` with `--fr-ease-out`. Under `prefers-reduced-motion` the outline is static rather than pulsing and is held for the same duration. **`SCR-SEA-03` fires and names the seat only when the change took a seat away from this customer** — a seat in their local selection, which is the state above, or a seat they were holding. A seat changing anywhere else on a 220-seat map repaints silently and is never announced. |
 
 **Copy.**
 
@@ -15690,20 +17207,47 @@ not focusable and is not a control.
 ---
 
 #### `SCR-SEA-03` · The seat-lost and hold-failure banner
-**Route.** rendered inside `/showtimes/{showtime_id}`, in the scroll container's sticky header
-area · **Who reaches it.** anyone who hits a failure on this lane · **Component basis.**
+**Route.** rendered inside `/showtimes/{showtime_id}`, **pinned to the top of the viewport for as long
+as it is live** — *not* inside the map's scroll container · **Who reaches it.** anyone who hits a
+failure on this lane, and anyone who loses a chosen seat with no request sent · **Component basis.**
 `COMPONENTS.md §6`
 
-**What the user arrives with / leaves with.** It arrives with one error envelope. It leaves the
-customer knowing exactly which seats went and what to press next.
+**What the user arrives with / leaves with.** It arrives with one error envelope, **or with one
+client-originated seat-lost event that has no envelope at all**. It leaves the customer knowing
+exactly which seats went and what to press next.
+
+**Where this banner sits, and why it is not where `COMPONENTS.md §6` puts it.** `COMPONENTS.md §6`
+places it *"inside the scroll container's sticky header area, so it is visible without scrolling"*.
+**On this screen that placement cannot deliver what it promises**, for a reason `COMPONENTS.md §1.3`
+states two sections earlier: the map container scrolls **horizontally and deliberately not
+vertically** — *"rows grow the container and the page scrolls normally"* — so a header sticky inside
+it is sticky against the one axis nobody is scrolling. On the design target `P-XCT-25` is written
+about, a 220-seat hall on a 375-pixel phone, the customer reading the far rows has scrolled the
+**page** past the banner's anchor, and the message naming the seat they just lost is off-screen.
+
+**It cannot ride on the application header either.** `SCR-XCT-05` marks that header **`Not sticky`**
+and gives the reason by name: a sticky header steals vertical space from exactly this map. That
+ruling is not disturbed here and this banner is not an exception to it, **because a banner is not a
+header**: it exists only while a message is live, is removed with it, and therefore costs the map no
+vertical space in the state `P-XCT-25` is about. **The asymmetry — permanent chrome may not pin,
+a transient message may — is the whole of the difference**, and it is written down so the next reader
+does not read this row as overturning `SCR-XCT-05`.
+
+**So: the banner renders in the page flow directly above the map field, and pins to the top of the
+viewport while it is live**, below where the application header sits in the flow. It **reserves its
+own height rather than overlaying the map**, so it can never obscure a focused seat cell
+(WCAG 2.2 SC 2.4.11). When it is dismissed or replaced, the space is released and the map returns to
+full height. **The `SCR-XCT-01` registry's generic "the sticky header area of the surface it belongs
+to" does not govern this surface** — `S1.2.1` case 6, the screen that owns the surface wins and the
+registry defers to it by name.
 
 **Fields and controls.**
 
 | Element | Token(s) | Behaviour | Validation |
 |---|---|---|---|
-| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | slides in over `--fr-motion-base` with `--fr-ease-out`; sits directly above the map, visible without scrolling | none |
+| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | slides in over `--fr-motion-base` with `--fr-ease-out`; **pinned to the top of the viewport while live, in the page's own scroll context and not the map container's**, so it stays visible at any page scroll position. It reserves height rather than overlaying | none |
 | Leading rule | 3px `--fr-danger-ink` down the leading edge | none | none |
-| Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | the verbatim string for the `code` | none |
+| Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | the verbatim string for the `code` — **or, for the one codeless event below, `P-SEA-03`'s or `P-ACC-13`'s verbatim string** | none |
 | Seat names inside the message | `--fr-font-mono`, `--fr-weight-bold` | taken from `details.unavailable_seats` | none |
 | Action inside the banner | `--fr-accent-ink`, underlined | present only where there is something to press | none |
 | Request id line | `--fr-text-xs`, `--fr-ink-muted`, `--fr-font-mono` | **5xx only** | none |
@@ -15713,14 +17257,17 @@ customer knowing exactly which seats went and what to press next.
 | State | What renders |
 |---|---|
 | **Empty** | Nothing. The banner is absent, not collapsed to zero height. |
-| **Loading** | Not applicable — a banner is the answer to a request that has already returned. |
+| **Loading** | Not applicable — a banner is the answer to a request that has already returned, or to an event that needed none. |
 | **Error** | One banner, carrying the message for the `code`. |
+| **Seat lost with no request sent** | One banner, carrying `P-SEA-03`'s verbatim string `C12 is no longer available. It has been removed from your choices.` **This state carries no error `code`**, because nothing was requested and nothing answered — a poll, a reload or a return to the tab re-checked the local selection against a fresh map and a chosen seat had gone. Announced through the live region exactly as an error is. **No in-banner action, and dismissible**, because the seat has already left the selection and the total has already dropped: there is nothing to press. The return-from-sign-in variant renders `P-ACC-13`'s string in this same banner on the same terms. |
 | **Success** | Not applicable — the banner never reports success. |
 | **Partial** | Not applicable. |
-| **Several errors at once** | **One banner.** The newest message replaces the previous one; errors never stack into a wall. |
-| **Dismiss** | Only errors with nothing left to do are dismissible. `SEAT_UNAVAILABLE` is not; it clears when the customer changes the selection. |
+| **Several errors at once** | **One banner.** The newest message replaces the previous one; errors never stack into a wall. A codeless seat-lost notice and an error compete on the same terms: newest wins. |
+| **Dismiss** | Only messages with nothing left to do are dismissible. `SEAT_UNAVAILABLE` is not; it clears when the customer changes the selection. |
 
 **Copy.** The message text for every code is `P-HLD-14`'s table and this screen restates none of it.
+**The one message this banner carries that is not in that table is the codeless seat-lost notice**,
+whose two strings are `P-SEA-03`'s and `P-ACC-13`'s and are likewise not restated here.
 **The banner's own two controls are this screen's to publish, and it publishes them here** — a screen
 that names a control owes that control's words, and this screen named both and published neither
 until now:
@@ -15773,10 +17320,16 @@ the selection changes. `DEPENDENCY_UNAVAILABLE` is not, because it carries an ac
 | `DEPENDENCY_UNAVAILABLE` | States that seat holds are unavailable and that browsing still works. It never silently degrades. **Carries the `Try again` action; not dismissible** |
 | `NOT_FOUND` | States that the showtime could not be found. **No action; dismissible** |
 | `INTERNAL_ERROR` | The message plus the request id line. **No action; dismissible** |
+| **(no code — a chosen seat left the selection)** | Names the seat and states it has been removed from the customer's choices. The cell has already repainted to whatever the map now reports. **No action; dismissible.** This is the only row here not keyed by an error code, and it is listed in this table so a developer reading it top to bottom finds the event rather than concluding the banner has no trigger for it |
 
 **Accessibility.** The banner is announced through a live region — **an error that is only red has not
-been reported.** It receives focus when it carries an action. The seat names inside the message are
-plain text in `--fr-font-mono`, not links. The request id is selectable text so it can be copied.
+been reported**, and **neither has a seat that silently left a selection.** The live region carries
+the codeless notice on exactly the same terms as an error, which is the whole reason that state is
+specified: the announcement route on this screen branched on an error `code`, and the one event a
+screen-reader user most needs to hear about does not carry one. It receives focus when it carries an
+action. The seat names inside the message are plain text in `--fr-font-mono`, not links. The request
+id is selectable text so it can be copied. Because the banner is pinned to the viewport and reserves
+its own height, a seat cell that has keyboard focus is never covered by it.
 
 ---
 
@@ -15829,9 +17382,23 @@ The screen decides from **one stored value and no request**:
 |---|---|
 | **What is stored** | `fr.last_booking_reference` in `sessionStorage`: the `booking_reference` from a `201` response, and the `showtime_id` it belongs to. Nothing else — no seat list, no total, no idempotency key |
 | **When it is written** | On a successful confirm, from `EP-PAY-01`'s `201` body, **before** the navigation to the confirmation screen, so a customer who navigates back finds it already there |
-| **When it is cleared** | **On sign-out**, together with every other `fr.*` value; when a hold is acquired for a **different** showtime; and when the tab closes — `sessionStorage` has exactly the right lifetime and needs no expiry of its own (`P-HLD-09`) |
+| **When it is cleared** | **On sign-out**, together with every other `fr.*` value; **whenever a hold is acquired — for any showtime, including the one the stored reference belongs to** — written at the moment the hold response arrives and before any navigation to this route; and when the tab closes — `sessionStorage` has exactly the right lifetime and needs no expiry of its own (`P-HLD-09`) |
 | **Present, and its `showtime_id` matches this route** | **Already confirmed.** Redirect to the confirmation screen for that reference |
 | **Absent, or its `showtime_id` names another showtime** | **Expired.** The hold ended without producing a booking; return to the seat map per the row above |
+
+**The clear fires on *any* hold, and the same-showtime case is the one it exists for.** An earlier
+draft cleared the value only when a hold was acquired for a **different** showtime, which made a
+second booking of the **same** showtime unreachable in the same tab: the customer books, the reference
+is stored against that `showtime_id`, they return to the seat map, hold seats on that same showtime
+again, press `Continue to payment`, and the arrival rule below finds a stored reference whose
+`showtime_id` matches the route. **They are redirected to their first booking's confirmation page and
+can never reach checkout for the hold they are currently holding**, which then expires unpaid, 180
+seconds later, having never rendered a pay action. Booking two showings of the same film, or two
+separate sets of seats for one showtime, is ordinary customer behaviour and the product refused it. A
+live hold means the customer is buying, and a stored reference from a booking they have already
+completed is not evidence about the booking they are in the middle of — so the clear is unconditional
+on the showtime, and the asymmetry that produced this is removed rather than patched with a second
+comparison.
 
 **The screen does not re-send the confirm to find out.** A replay of `EP-PAY-01` spends a rate-limit
 token whether or not it creates anything — `P-XCT-07` exception 4 is explicit that a retry carrying an
@@ -15843,7 +17410,7 @@ real retry.
 
 **Sign-out clears it, and that is the clause that matters most on a shared device.** Signing out
 clears **every** `fr.*` value in `sessionStorage` — the pending selection (`P-ACC-13`), the hold token
-and its `Idempotency-Key` (`P-HLD-09`), and `fr.last_booking_reference`. The hold itself is released
+and `fr.confirm_idempotency_key` (`P-HLD-09`, `P-PAY-09`), and `fr.last_booking_reference`. The hold itself is released
 at the same moment; lane E2 carries that as the `SIGN_OUT` input of the seat lifecycle machine.
 
 **The consequence of omitting it is sharper than a stranded hold, and it is why this is stated rather
@@ -15872,12 +17439,52 @@ job. The reference exists only if a booking exists.
 | **Ready** | Notice slab, heading, showtime line, seat lines with prices, perforation, total, countdown, pay action enabled. |
 | **In flight** (payment running) | The pay action shows a busy state and is disabled. **The countdown keeps running. Nothing else on the panel moves.** The panel does not blank and the seat lines do not reflow. |
 | **Success** | The screen writes `fr.last_booking_reference` to `sessionStorage` from the `201` body, then navigates to the confirmation screen for the new booking (lane E4, `FR-ADR-048`). The write happens before the navigation, so a customer who comes straight back finds it. This screen writes no confirmation copy of its own. |
-| **Error** | The banner renders above the panel with the copy in the table below, and the panel stays exactly as it was so the customer can see what they were buying. The pay action re-enables unless the state below says otherwise. |
+| **Error** | The banner renders above the panel with the copy in the table below, and the panel stays exactly as it was so the customer can see what they were buying. The pay action re-enables unless the state below says otherwise. **`409` `IDEMPOTENCY_IN_FLIGHT` is the one exception**: the banner renders but the pay action keeps its busy state and stays disabled while the screen re-sends the identical request automatically, after `Retry-After` seconds, at most three times (`P-PAY-09`). It re-enables only when those re-sends are exhausted. |
 | **Partial** | Some seat prices known, some not: the seat lines that are known render, the total is absent, and the pay action is disabled. A partial total is a wrong number. |
 | **Last 60 seconds** | The countdown digits and bar switch to `--fr-countdown-urgent` and the warning line appears. The change is announced once through a live region. Nothing else changes. |
-| **Expired** (`0:00`) | The countdown stops at `0:00`. The pay action is disabled. The component states that the hold has expired and **does not claim the seats are free** — the server owns that. The customer is returned to the seat map with their previous selection re-applied and the map refreshed (`FR-ADR-047`). |
+| **Expired** (`0:00`), **no confirm in flight** | The countdown stops at `0:00` and `SCR-SEA-02`'s zero state renders. The pay action is disabled and its label becomes `Hold expired`. The component states that the hold has ended and **does not claim the seats are free** — the server owns that. **The screen then stays exactly as it is for `CHECKOUT_EXPIRY_RETURN_DELAY_MS` and only after that returns the customer to the seat map** with their previous selection re-applied and the map refreshed (`FR-ADR-047`). |
+| **Expired** (`0:00`), **a confirm in flight** | **Nothing navigates, and the return timer does not start.** `SCR-SEA-02`'s in-flight zero state renders instead: the busy state is kept, the request is not cancelled — a request already sent cannot be un-sent — and the customer is told an answer is still coming. The response is then handled exactly as it would have been before `0:00`: a `201` writes `fr.last_booking_reference` and navigates to the confirmation screen; any other outcome renders its banner and **the row above begins from that moment**, timer and all. |
+| **Sales cut-off passes while this screen is open** | **Nothing renders and nothing changes**, deliberately. This screen publishes no sales-closed state and no banner for one — see the paragraph below the table. |
 | **Already confirmed** (the customer navigates back to this route after succeeding) | `fr.last_booking_reference` is present in `sessionStorage` for this showtime. The screen redirects to the confirmation screen for that reference and **issues no request**. It does not re-present a pay action for a booking that already exists. |
 | **Receipt state** | Nothing renders here about the receipt. The email is asynchronous and this screen makes no claim about it (`FR-ADR-048`, lane E4). |
+
+**Why the expired state waits before it navigates, and what the delay is.** The two halves of the old
+single **Expired** row could not both be observed. It disabled the pay action, relabelled it
+`Hold expired` and rendered a zero-state sentence, **and** returned the customer to the seat map, with
+no ordering and no delay between them — so on an immediate navigation the label and the sentence were
+specified for a state nobody could ever read, and a screen reader's single polite announcement of the
+zero state was cut off by the route change. The delay is what makes both true:
+
+```
+CHECKOUT_EXPIRY_RETURN_DELAY_MS = 5000          ASSUMED - no source names a value
+
+zero-state sentence, SCR-SEA-02   "Your hold has ended and your seats have been
+                                   released. You have not been charged."      13 words
+a default screen-reader rate      ~180 words per minute  ->  3 words per second
+announcement                      13 / 3                 =  4.3 s
+smallest whole second above it    ceil(4.3)              =  5 s
+```
+
+**The 180-words-per-minute figure is reasoned from a common default rate, not measured** — no
+accessibility testing has been performed on this product and none is claimed. Measure it in Phase 3
+and replace the figure; the constant exists so that replacing it is one value and not an edit to this
+paragraph. It is client-side, it is named rather than a literal, and **it is never the thing that
+protects the seats**: the hold is already gone at `0:00` and the server decides every outcome from
+Redis, so a customer who presses nothing during those five seconds and a customer whose browser
+navigates instantly reach the same server answer.
+
+**There is no sales-closed state on this screen, and the silence is deliberate rather than an
+omission.** `SCR-SEA-01` publishes a banner when the cut-off passes and `P-BRW-07` exception 1
+specifies that the seat map's 3-second poll is what surfaces it. **Neither applies here, for two
+reasons that are worth separating.** First, the cut-off changes nothing this screen renders or permits:
+it is enforced once, at hold acquisition (`P-HLD-06`), `P-PAY-10` step 4 reads the showtime and does
+not gate on it, and `SALES_CLOSED` is not in `EP-PAY-01`'s `errors` and cannot be raised by it — a
+customer already holding seats may finish checking out (`SRC-003 OPEN-BOOK-03`), so a banner here
+would announce a restriction that does not apply to the person reading it. Second, this screen **runs
+no poll at all** — the seat map's stopped when this route unmounted it — so surfacing the event would
+mean adding a request whose only purpose is to learn a fact that changes nothing. **The next reader is
+therefore told which of the two answers this is**, because a screen that is silent for a good reason
+and a screen that forgot look identical.
 
 **Copy.** Every string a customer reads on this screen.
 
@@ -15898,8 +17505,8 @@ job. The reference exists only if a booking exists.
 | `HOLD_EXPIRED` | **Rendered from `P-HLD-14` (lane E2), its *at confirm* row. Not restated here** — see the note below the table |
 | `HOLD_NOT_OWNED` | **Rendered from `P-HLD-14` (lane E2), its *at confirm* row. Not restated here** |
 | `SEAT_UNAVAILABLE` | **Rendered from `P-HLD-14`, its *at confirm* rows 4 and 4b — the singular at one lost seat, the plural at two or more. Not restated here.** **The screen substitutes nothing**: the server renders the complete sentence with every seat already named in it (`SCR-XCT-01`), and this screen displays `message` as received. `details.unavailable_seats` is read only to mark those seats on the map behind the panel, never to compose the words |
-| `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **Published once by `P-PAY-01` exception 4, which owns both strings. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
-| `IDEMPOTENCY_IN_FLIGHT` | "This booking is still being processed." |
+| `PAYMENT_FAILED` | **One string, published once by `P-PAY-01` exception 4, which owns it. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. The banner carries no control; the customer presses the pay action again, and that press carries a **freshly minted** `Idempotency-Key` (`P-PAY-09`), which is what makes the retry the string invites capable of succeeding |
+| `IDEMPOTENCY_IN_FLIGHT` | "This booking is still being processed." **The screen re-sends the identical request automatically after `Retry-After` seconds, at most three times, keeping the busy state while it does** (`P-PAY-09`). The banner carries no control, and the customer is not asked to do anything |
 | `IDEMPOTENCY_KEY_REUSED` | "This checkout is out of date. Return to the seat map and choose your seats again." |
 | `REQUEST_INVALID` | "This request could not be processed. Return to the seat map and choose your seats again." |
 | `RATE_LIMITED` | "Too many attempts. Try again in 6 seconds." — the number comes from `Retry-After` and is rendered by **S7.20**; the screen formats nothing itself. `P-PAY-01` exception 7 owns the sentence and carries the arithmetic |
@@ -16036,6 +17643,7 @@ and a change to any of it is made here.
 | Reference label | `BOOKING REFERENCE` |
 | Receipt sentence — **first render only** | `A receipt is on its way to name@example.com.` |
 | Entry line | `Show this reference at the entrance. A person will check it.` |
+| Policy line, directly beneath the entry line | `This booking cannot be changed, cancelled or refunded.` — **required by `P-PAY-12`**, which owns the rule; this page owns the string. It renders in **every** success state, first render and later visits alike, because the question it answers is asked long after the booking is made. It is a statement, not a control, and there is nothing to press: no cancellation or refund path exists anywhere in the product (`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`). Without it a customer who cannot attend meets silence, and silence does not tell a ruled absence from a feature they have failed to find |
 | Fact labels | `FILM` · `HALL` · `SHOWTIME` · `SEATS` · `PAID` |
 | Copy control | `Copy reference` |
 | Copy confirmation, live region | `Reference copied.` |
@@ -16159,11 +17767,17 @@ the seat map rather than to the other tab.
 · **Who reaches it.** guest · a customer whose session expired · anyone following a "sign in" control
 · **Component basis.** `COMPONENTS.md §11` (forms), `COMPONENTS.md §6` (the error banner)
 
-**What the user arrives with / leaves with.** They arrive from one of two places: the movie listing,
-with nothing, or the seat map, having pressed "Sign in to hold these seats" — in which case
-`fr.pending_selection` has already been written (`P-ACC-13`). Both are **deliberate** sign-ins. They
-leave with a session cookie and are returned to exactly where they came from: the seat map for the
-stored showtime, with the selection restored, or the movie listing.
+**What the user arrives with / leaves with.** They arrive in one of two states, and **the state is
+decided by whether they left a seat map with seats selected, never by which control they pressed**:
+from a surface with no selection behind it — the movie listing, or the header's `Sign in` link from
+any screen that is not a seat map (`E8 SCR-XCT-05`) — with nothing stored; or from a seat map with a
+non-empty selection, in which case `fr.pending_selection` has already been written **by whichever
+route out they took**, the primary action or that same header link (`P-ACC-13`). So "Sign in to hold
+these seats" and the header's `Sign in` link arrive here identically and **this screen cannot tell
+them apart** — which is the point, because under the earlier write-on-press rule the header route
+arrived with nothing stored and was silently dropped on the movie listing. Both are **deliberate**
+sign-ins. They leave with a session cookie and are returned to exactly where they came from: the seat
+map for the stored showtime, with the selection restored, or the movie listing.
 
 **A third arrival exists and this screen does not own its destination**: a customer sent here by a
 `401` mid-task. `SCR-XCT-04` preserves the path they were on and returns them there. The scope note
@@ -16660,7 +18274,7 @@ form with no concurrency protection and no runtime signal that it lacks one.
 | Page heading "Films" | `--fr-text-xl`, `--fr-ink-strong`, `--fr-font-display` | static | — |
 | "New film" action | `--fr-surface-accent` / `--fr-ink-on-accent`, `--fr-radius-md`, min height `--fr-tap-min` | navigates to `/admin/movies/new` | — |
 | Status filter — all / draft / published | `--fr-text-sm`; selected uses `--fr-surface-accent` / `--fr-ink-on-accent` | filters the list, server-side | — |
-| Row: poster thumbnail | `--fr-poster-ratio` box on `--fr-surface-inset`; missing poster draws `--fr-poster-empty-mark` | reserves its box before the image arrives, so the list does not reflow | — |
+| Row: poster thumbnail | `--fr-poster-ratio` box on `--fr-surface-inset`; both poster-less states draw `--fr-poster-empty-mark` | reserves its box before the image arrives, so the list does not reflow. **Which words go in the box is decided by `poster_present`, never by the image having failed to arrive** — `EP-ADM-01` already returns the boolean, so the screen never infers one state from the other | — |
 | Row: title | `--fr-text-md`, `--fr-weight-medium`, `--fr-ink` | opens `SCR-ADM-02` | — |
 | Row: two gate marks — **Published** and **In window** | `--fr-text-xs`, `--fr-ink-muted`; the failing one carries `--fr-danger-ink` | **both are shown separately, always.** Never one combined "live" flag | — |
 | Row: runtime, certification, language | `--fr-font-mono` for the runtime, `--fr-text-sm`, `--fr-ink-muted` | static | — |
@@ -16684,6 +18298,21 @@ instant, and without the tie-break one would appear on two pages while another a
 publication and the display window separate conditions, and an admin who sees one badge saying "live"
 cannot tell which of the two is stopping a film appearing.
 
+**"No poster" and "the poster did not load" are two states and were rendered as one, and the cost of
+that lands in a bucket nothing deletes from.** A presigned `EP-ADM-06` URL is valid for **one hour**
+(`P-ADM-03`), so a tab left open past that — or a brief S3 failure — produced the identical empty box
+and the identical words as a draft that has no poster at all. **The admin's remedy for "No poster" is
+to upload one**, and doing that against a film that already has a poster writes **a second permanent
+object**: `EP-ADM-05` mints a new server-generated key and `FR-ADR-012` never deletes the old one, so
+the mistake is not recoverable and it consumes the 5 GB allowance twice over
+(`P-ADM-03` exception 12b). **The screen was inviting the one action that cannot be undone.**
+
+**The screen does not have to guess, which is why this is a defect and not a limitation.**
+`EP-ADM-01` already returns `poster_present` on every item. The two states are therefore
+distinguishable at zero cost, and the branch is on that boolean and **never on whether the image
+arrived** — an image that has not arrived *yet* is the Loading state and must not flip to either
+message.
+
 **States.**
 
 | State | What renders |
@@ -16692,7 +18321,8 @@ cannot tell which of the two is stopping a film appearing.
 | **Loading** | Six row-shaped `--fr-surface-inset` blocks with the poster box at `--fr-poster-ratio`. The "New film" action stays live. |
 | **Error** | The error banner of `COMPONENTS.md §6` replaces the list. The "New film" action stays live so the admin is not trapped. |
 | **Success** | The list. |
-| **Partial** | A film whose poster object cannot be fetched renders its `--fr-poster-empty-mark` box with the words "No poster" in `--fr-ink-muted`. The row is otherwise complete. **A missing poster is a real and expected state on a draft** (`FR-ADR-021`), not an error. |
+| **Partial — the film has no poster** | `poster_present` is `false`. The row renders its `--fr-poster-empty-mark` box with the words "No poster" in `--fr-ink-muted` and is otherwise complete. **A missing poster is a real and expected state on a draft** (`FR-ADR-021`), not an error. |
+| **Partial — the poster exists and could not be fetched** | `poster_present` is `true` and the image request failed: the presigned URL's one hour has elapsed on a tab left open, or `EP-ADM-06` answered `503`. The box renders `--fr-poster-empty-mark` with **"Poster could not be loaded. Reload the page."** in `--fr-danger-ink`. **Not the "No poster" wording and not `--fr-ink-muted`**, because the two states have opposite remedies — one says upload, the other says reload, and reloading is what re-mints the presigned URL. **No control is added to the row**: the row is one link (see Accessibility) and the remedy is the page reload the sentence names. The rest of the row is complete and the list is not an error state. |
 
 **Copy.**
 
@@ -16706,7 +18336,8 @@ cannot tell which of the two is stopping a film appearing.
 | Gate mark, inside window | "In window" |
 | Gate mark, outside window | "Outside its display window" |
 | Gate mark, no window set | "No display window set" |
-| Poster missing | "No poster" |
+| Poster missing — the film has none | "No poster" |
+| Poster exists and could not be fetched | "Poster could not be loaded. Reload the page." |
 | Row: runtime | "148 min" |
 | Row: certification and language, joined | "DEMO RATING 2 · DEMO LANGUAGE A" |
 | Status filter group label | "Show" |
@@ -16721,9 +18352,11 @@ cannot tell which of the two is stopping a film appearing.
 | Position readout, nothing to show | "No films" |
 
 **Accessibility.** Focus order: heading, "New film", filter controls, then each row in visual order,
-then the pager. Each row is one link whose accessible name is the title followed by both gate states,
-for example "DEMO MOVIE 01, Draft, no display window set". The filter is a group of radio controls with
-a group label. **The position readout is a live region**, so a page change announces which rows are now
+then the pager. Each row is one link whose accessible name is the title followed by both gate states
+and, where the poster box carries words, those words too — for example "DEMO MOVIE 01, Draft, no
+display window set, no poster", or "DEMO MOVIE 04, Published, in window, poster could not be loaded".
+**The failed-poster state is therefore never carried by `--fr-danger-ink` alone** (`FR-ADR-051`).
+The filter is a group of radio controls with a group label. **The position readout is a live region**, so a page change announces which rows are now
 on screen rather than moving focus silently to a list that looks the same; each pager action's
 accessible name is its visible label. Every control is at least `--fr-tap-min` high.
 
@@ -17292,6 +18925,7 @@ with a manager account that can read those halls' figures and change nothing.
 | Save | `--fr-surface-accent` / `--fr-ink-on-accent` | submits the complete set | — |
 | Read-only note | `--fr-text-xs`, `--fr-ink-muted` | states what a manager can and cannot do | — |
 | Password note | `--fr-text-xs`, `--fr-ink-muted` | states that the admin sets no password | — |
+| **Notification note** | `--fr-text-xs`, `--fr-ink-muted`, rendered beside Save on the create form **before** it is pressed | states that creating the account **sends nothing** and that the admin must tell the manager themselves (`P-ADM-17`). Without it the admin creates an account, sees a `201`, and has no way to know the manager was never told | — |
 
 **There is no password field on this screen** (`P-ADM-17`). **There is no role selector** — this screen
 creates managers and nothing else.
@@ -17322,6 +18956,7 @@ creates managers and nothing else.
 | Awaiting sign-in | "Has not signed in yet" |
 | Read-only note | "A manager can only view figures for the halls assigned to them. They cannot add or change films, showtimes, prices or halls." |
 | Password note | "You do not set a password. The manager sets their own by using the password reset link on the sign-in page." |
+| **Notification note**, standing text beside the Save control on the create form | "Creating this account does not send anything. Tell the manager it exists and ask them to use the password reset link on the sign-in page with this address. Until they do, this row will read 'Has not signed in yet'." |
 | Duplicate email | "An account already exists with that email address. Accounts are never removed, so an address stays in use once it has been registered." |
 | Wrong account type | "That account is not a manager account. Screens can only be assigned to managers." |
 | Zero halls allowed | "A manager with no halls assigned sees an empty dashboard. That is allowed." |
@@ -17459,7 +19094,7 @@ films", which is the same failure the duration rule spends a paragraph on. The z
 | Name too long or empty | "Enter a name of 1 to 60 characters." |
 | Never-deleted note | "Entries are not removed from these lists. A film may already be using one, and removing it would change what that film says." |
 | Load failure | "This list cannot be loaded right now. Try again shortly." |
-| Unhandled failure | "Something went wrong and nothing was saved. If you need help, quote a1b2c3d4." |
+| Unhandled failure | "The server could not complete this request. If you need help, quote a1b2c3d4." |
 
 **Accessibility.** Focus order: heading, tabs, then each list row followed immediately by that row's
 Withdraw or Restore action, then the name field, then the Add action. The tab bar is a
@@ -17556,7 +19191,7 @@ confirmation**.
 | Version conflict | "This venue was changed by someone else while you were editing. Reload to see the current details, then make your change again. Nothing you typed has been saved." |
 | Not an admin | "This page is for administrators. Your account cannot change films, showtimes, prices or halls." |
 | Load failure | "The venue cannot be loaded right now. Try again shortly." |
-| Unhandled failure | "Something went wrong and nothing was saved. If you need help, quote a1b2c3d4." |
+| Unhandled failure | "The server could not complete this request. If you need help, quote a1b2c3d4." |
 
 **Each of those pairs is a singular and a plural of one string, and the singular is reachable.** One
 showtime at a venue is the ordinary state of a database seeded and then mostly emptied, or of a venue
@@ -17604,8 +19239,10 @@ listing, and — for an administrator — a link to the change log. They leave w
 | Panel | `--fr-surface-raised`, `--fr-radius-lg`, padding `--fr-space-5`, `--fr-shadow-card` | The single container for the figures. | — |
 | Period tabs — Day / Week / Month | `--fr-text-sm`; selected `--fr-surface-accent` on `--fr-ink-on-accent`; min height `--fr-tap-min` | Changes `period` and refetches. Exactly one is selected at all times, and **`Day` is selected on arrival** — see below. | Server rejects anything else with `VALIDATION_FAILED` (`P-RPT-01`) |
 | Period stepper — previous / next | `--fr-control-edge` 1px, `--fr-radius-md`, min height `--fr-tap-min` | Moves the anchor date by one whole period. Never produces a partial period. **Both controls carry a visible label and an accessible name that names the period type**, so "previous" is never ambiguous between a day and a month | Server validates `date` (`P-RPT-01`) |
-| Period line | `--fr-text-sm`, `--fr-ink-muted` | States the period being read and the zone. Not editable. | — |
-| Hall filter | as `COMPONENTS.md §11` field; `--fr-surface-inset`, `--fr-control-edge`, `--fr-radius-md`, min height `--fr-tap-min` | Narrows within the caller's scope. A manager sees only their own halls; an administrator sees all, **including halls that are out of service** (`P-RPT-02`, `P-ADM-16`). **The first option is always the all-halls option and submits no `screen_id`.** An out-of-service hall renders its name followed by the out-of-service suffix in `--fr-ink-muted`, and stays selectable | Server refuses an out-of-scope hall with `FORBIDDEN` (`P-RPT-02`) |
+| Period line | `--fr-text-sm`, `--fr-ink-muted` | States the period being read and the zone. Not editable. Rendered from the local anchor date the screen holds, never from the boundary instants — see the period line's forms, below the copy table. | — |
+| Scope line | `--fr-text-sm`, `--fr-ink-muted` | States which halls the figures cover. **Names come from `EP-RPT-03`'s `screens[]`**, selected by `EP-RPT-01`'s `screen_ids` and rendered in `screen_id` ascending order. **Absent entirely when `scope_empty` is true** — see States. Not editable | — |
+| Live-figures note | `--fr-text-xs`, `--fr-ink-muted`, under the zone note | Ordinary content, announced once with the panel and carrying no `role="alert"`. **Two sentences for a manager, the first alone for an administrator**, who reaches the change log directly (`P-RPT-11`). Absent when `scope_empty` is true, where there is no figure to describe | — |
+| Hall filter | as `COMPONENTS.md §11` field; `--fr-surface-inset`, `--fr-control-edge`, `--fr-radius-md`, min height `--fr-tap-min` | Narrows within the caller's scope. A manager sees only their own halls; an administrator sees all, **including halls that are out of service** (`P-RPT-02`, `P-ADM-16`). **The first option is always the all-halls option and submits no `screen_id`.** The rest are `EP-RPT-03`'s `screens[]` in `screen_id` ascending order, labelled with `screen_name` — **`EP-RPT-01` carries no hall name and cannot populate this control.** An out-of-service hall renders its name followed by the out-of-service suffix in `--fr-ink-muted`, and stays selectable | Server refuses an out-of-scope hall with `FORBIDDEN` (`P-RPT-02`) |
 | Figure — Takings | `--fr-font-mono`, `--fr-text-2xl`, `--fr-weight-black`, `--fr-ink-strong` | Rendered from integer paise at render time, Indian digit grouping, `tabular-nums`. | — |
 | Figure — Occupancy | as above | One decimal place. `—` when capacity is zero. | — |
 | Figure — Seats sold, Shows | as above | Integers. | — |
@@ -17621,11 +19258,37 @@ listing, and — for an administrator — a link to the change log. They leave w
 **There is no control on this screen that writes anything, and no control that downloads anything.**
 That is `P-RPT-09` and `P-RPT-10`, and it is checkable by reading the component's markup.
 
-**The screen's first request, stated because a screen that cannot issue one is not specified.**
+**The screen's opening load, stated because a screen that cannot issue one is not specified.**
 `EP-RPT-01` makes `period` **required** and deliberately gives it no default, so the screen must name
 its own opening value. **`SCR-RPT-01` opens on `period=day` with `date` omitted**, which the server
-resolves to today in Asia/Kolkata from the injected clock (`P-RPT-01`). It is one request:
-`GET /api/reports/dashboard?period=day`.
+resolves to today in Asia/Kolkata from the injected clock (`P-RPT-01`).
+
+**It is three requests, not one, and which one carries what is the part that may not be guessed.**
+
+| # | Request | Issued | What renders from it |
+|---|---|---|---|
+| 1 | `GET /api/reports/scope` (`EP-RPT-03`) | on mount, alongside 2 — neither waits for the other | the **scope line** and the **hall filter**, from `screens[]`: `screen_name` supplies every name and `is_active` supplies the out-of-service suffix. Also `today`, which becomes the screen's local anchor date |
+| 2 | `GET /api/reports/dashboard?period=day` (`EP-RPT-01`) | on mount, alongside 1 | the four figures, the occupancy bar, the per-film table and its truncation line |
+| 3 | `GET /api/reports/showtimes?period=day&limit=50&offset=0` (`EP-RPT-02`) | after 2 returns, because it repeats 2's period and scope exactly (`P-RPT-06`) | the per-show table's first page and its pagination |
+
+**Hall names come from `EP-RPT-03` and from nowhere else.** `EP-RPT-01`'s `screen_ids` is an array of
+**integers**: it states which halls the figures cover and carries no name and no `is_active` flag.
+`screen_name` exists on `EP-RPT-03`'s `screens[]` and on `EP-RPT-02`'s rows, and on no field of
+`EP-RPT-01`. **A screen that fetched only `EP-RPT-01` would render `Halls shown: 3, 5.`** — which is
+what the previous revision of this paragraph specified, by calling the opening load one request while
+the copy table published `Halls shown: Hall 3, Hall 5.`
+
+**So the scope line is rendered by looking each id in `screen_ids` up in `EP-RPT-03`'s `screens[]`,
+in `screen_id` ascending order.** It is keyed on `screen_ids` rather than on `screens[]` because the
+two differ the moment a `screen_id` narrowing is applied: the filter offers every hall the caller may
+read, and the line must state the halls **this response actually covers**. An administrator's
+`screen_ids` is every screen (`P-RPT-02`), and the line takes its own published form,
+`Halls shown: every hall.`, rather than naming six.
+
+**Requests 1 and 2 are issued together and each part renders when its own request lands.** That is
+not a partial render in `P-RPT-07`'s sense: `P-RPT-07` forbids one **figure** having a value while its
+neighbour shows a loading block, and all four figures come from request 2 alone. The scope line and
+the hall filter are not figures, and neither is the per-show listing (`P-RPT-06`).
 
 **`Day`, and the choice costs something, which is why it may not be left to the implementer.** Day and
 Month return **entirely different headline figures** — a different takings total, a different
@@ -17648,7 +19311,7 @@ be a second implementation of the one thing this epic's opening paragraph says w
 
 | State | What renders |
 |---|---|
-| **Empty — no halls assigned** | Period tabs live. All four figures render `—`. The occupancy bar is absent. One line: *"No halls are assigned to this account. Ask an administrator to assign one."* The per-film and per-show tables are absent. **This is not styled as an error** — no danger surface, no danger ink, no error banner. |
+| **Empty — no halls assigned** (`scope_empty: true`) | Period tabs live; the period stepper live; the period line renders. **The scope line is absent and the hall filter is absent** — see below the table. The live-figures note is absent. All four figures render `—`. The occupancy bar is absent. One line: *"No halls are assigned to this account. Ask an administrator to assign one."* The per-film and per-show tables and the per-show pagination are absent. **This is not styled as an error** — no danger surface, no danger ink, no error banner. |
 | **Empty — no shows in this period** | Period tabs live. Takings renders `₹0.00`; Seats sold and Shows render `0`; Occupancy renders `—` and its bar is absent. One line: *"No shows were scheduled in this period."* |
 | **Empty — shows but no sales** | Takings `₹0.00`, Seats sold `0`, Occupancy `0.0 %` with its bar at zero width, Shows the real count. One line: *"No seats were sold in this period."* A zero is a fact. |
 | **Loading** | Figure-sized `--fr-surface-inset` blocks in place of every figure at once. The period tabs stay live. The previous period's figures are **cleared**, not left on screen under a spinner — a stale figure beside a live tab is a wrong number. |
@@ -17659,15 +19322,41 @@ be a second implementation of the one thing this epic's opening paragraph says w
 | **Rate limited** | The banner states the wait. The figures already on screen are cleared, because they belong to the request that was refused. |
 | **Future period selected** | Renders normally. Every per-show row carries *"Still selling"* where `has_started` is false. No projection and no estimate is shown. |
 
+**The scope line and the hall filter are absent when `scope_empty` is true, and the enumeration above
+now says so because it reads as exhaustive.** `P-RPT-02` closed exactly this failure for the
+**administrator** — whose `[]` would have rendered `Halls shown:` with nothing after it — and left the
+**manager's** half of it open, which is the caller the state exists for. **There is nothing to publish
+and nothing to filter here**: `EP-RPT-03` returns `screens: []`, so a scope line would name no hall and
+the hall filter would hold its "All my halls" option alone — a control whose only option is the state
+the reader is already in. **No third scope-line string is published**, because the state's own
+sentence already answers the question a scope line asks, and two sentences answering one question in
+different words is how they later disagree.
+
+**The two zeros a manager can be looking at are different facts and must render differently, which is
+the whole reason `scope_empty` is a boolean on the wire rather than an inference from zeros**
+(`P-RPT-08`).
+
+| The state | What it is a fact about | Scope line | Hall filter | Takings | Occupancy | Tables |
+|---|---|---|---|---|---|---|
+| **No assignment** | the **account** — the cinema did take money and this account cannot see any of it | absent | absent | `—` | `—` | absent |
+| **Assigned, shows scheduled, nothing sold** | the **business** — these halls sold nothing | renders, naming the halls | renders, populated | `₹0.00` | `0.0 %`, bar at zero width | render, with real rows |
+
+A screen that collapsed the two into one "no data" state would tell a manager with **no assignment**
+that their halls took nothing — a claim about the cinema that the response never made, and the
+opposite of what `scope_empty` was put on the wire to prevent.
+
 **Copy.** Every string a reader sees on this screen.
 
 | Where | Verbatim |
 |---|---|
 | Panel heading | "Dashboard" |
 | Zone note, once, under the heading | "All dates and times are Asia/Kolkata." |
+| Live-figures note, first sentence, both roles | "These figures are recomputed from current records each time this page loads." |
+| Live-figures note, second sentence, **manager only** | "If a figure has changed, ask an administrator to check the change log." |
 | Period tabs | "Day" · "Week" · "Month" |
 | Period line, day | "Friday 14 August 2026" |
-| Period line, week | "Monday 10 August to Sunday 16 August 2026" |
+| Period line, week, both dates in one year | "Monday 10 August to Sunday 16 August 2026" |
+| Period line, week, the two dates in different years | "Monday 29 December 2025 to Sunday 4 January 2026" |
 | Period line, month | "August 2026" |
 | Figure labels | "TAKINGS" · "OCCUPANCY" · "SEATS SOLD" · "SHOWS" |
 | Scope line, manager | "Halls shown: Hall 3, Hall 5." |
@@ -17713,13 +19402,50 @@ be a second implementation of the one thing this epic's opening paragraph says w
 
 No string above apologises, exclaims, or uses a figure of speech (`SRC-002 §2.2`, `FR-ADR-052`).
 
+**The period line's forms, published as patterns because four examples are not a rule.**
+
+**`S7.19` owns every rendered *instant* in this product and says in terms that it does not own this
+line.** Its closing clause reads *"a heading that names a span in prose is not"* this section's, it
+names all three of the strings this screen publishes, and it rules that *"they stay `P-RPT`'s."* So
+the full weekday and the full month name here are **not** a sixth `S7.19` form and are **not** a
+non-conformance against it. **What was missing is a pattern**: three examples were published with no
+rule behind them, and `P-RPT` is the owner that owed one.
+
+| Period | Pattern | Example |
+|---|---|---|
+| `day` | weekday in full, day of month with no ordinal suffix, month in full, four-digit year | `Friday 14 August 2026` |
+| `week`, **both dates in one year** | the day form twice with the year dropped from the first, joined by ` to `, with **one** year at the end | `Monday 10 August to Sunday 16 August 2026` |
+| `week`, **the two dates in different years** | the day form **in full on both sides**, joined by ` to ` | `Monday 29 December 2025 to Sunday 4 January 2026` |
+| `month` | month in full, four-digit year | `August 2026` |
+
+**The year-boundary form exists because the one-year form is wrong once a year, silently.** ISO week 1
+of 2026 is the week containing the first Thursday of January — Thursday 1 January 2026 — so
+`P-RPT-01`'s "the Monday on or before the anchor" puts it at **Monday 29 December 2025**, ending
+**Sunday 4 January 2026**. Rendered by the one-year form that week reads *"Monday 29 December to
+Sunday 4 January 2026"*, which files 29 December **2026** under the takings of a week that ended
+eleven months earlier. The manager is given a wrong year against a money figure and nothing else on
+the screen contradicts it. **The test is the two dates' years and never their months**: a week running
+`Monday 31 August to Sunday 6 September 2026` crosses a month, stays inside one year, and takes the
+ordinary form.
+
+**The line is rendered from a local calendar date and never from the boundary instants.**
+`period_start_utc` and `period_end_utc` are bare UTC and `P-RPT-01` rules that they are never
+rendered; a client deriving `Sunday 16 August` from `2026-08-16T18:30:00Z` would be doing zone
+arithmetic on the client, which the same row forbids. The screen instead holds a **local anchor
+date** — `EP-RPT-03`'s `today` on first load, then moved by the period stepper one whole period at a
+time — and derives the weekday, the ISO Monday and the month from that date by calendar arithmetic
+alone, under `P-RPT-01`'s own ISO-8601 Monday-first rule so that the line and the server's window
+cannot describe two different periods. **No instant is converted anywhere on the client.**
+
 **Accessibility.**
 - **Focus order** follows visual order: period tabs → period stepper → hall filter → change log link
   (admin only) → per-film table → per-show table → per-show pagination. The focus ring is
   `--fr-stroke-bold` solid `--fr-focus-ring` with `outline-offset: 2px`, never removed
   (`COMPONENTS.md §0.2`). **Every control in that order has a published string in the copy table
   above** — a control named in a focus order and nowhere else is a control whose words were left to
-  the implementer, which is a defect and not a detail.
+  the implementer, which is a defect and not a detail. **When `scope_empty` is true the hall filter,
+  the two tables and the pagination are absent from the DOM and therefore from this order**, leaving
+  the period tabs and the stepper; nothing is rendered disabled to hold a place.
 - **The period stepper's labels change with the period type**, so its accessible name is `Previous
   week` on a week view and `Previous month` on a month view. One label reading `Previous` would leave
   a screen-reader user to infer the unit from a heading they may not have reached.
@@ -17968,7 +19694,7 @@ knowing what happened, whether anything changed, and — on a 5xx only — a sho
 
 | Element | Token(s) | Behaviour | Validation |
 |---|---|---|---|
-| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | Appears in the sticky header area of the surface it belongs to, visible without scrolling | — |
+| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | **Pinned to the top of the viewport for as long as it is live**, in the page's own scroll context — never inside a component's scroll container, and never riding a sticky application header, because `SCR-XCT-05` marks that header `Not sticky` and the seat map's container scrolls horizontally only (`COMPONENTS.md §1.3`). It reserves its own height rather than overlaying content, so a focused control is never obscured by it (WCAG 2.2 SC 2.4.11). A banner is not permanent chrome: it exists only while there is a message and is removed with it, which is why it may pin where a header may not. **A screen that owns a surface may place its own banner differently and this row defers to it by name** — `SCR-SEA-03` does, for the seat map (`S1.2.1` case 6) | — |
 | Leading rule | 3px `--fr-danger-ink` down the leading edge | Non-colour cue: the banner is identifiable without colour perception | — |
 | Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | One sentence saying what happened, one saying what to do next where there is something to do | — |
 | Named values in the message (seat labels, counts, seconds) | `--fr-font-mono`, `--fr-weight-bold` | Taken from the error envelope's `details`, never parsed out of `message` | — |
@@ -18084,8 +19810,11 @@ finished string, and the right fix is a sentence on the owning P-row rather than
 entity-blind** by necessity, not by preference — it is rendered by a global handler that runs after
 routing has already failed, so it cannot know what was addressed (`P-XCT-11`). **No lane publishes a
 variant naming a film, a showtime or a lookup row**; those sentences belong in the never-deleted note
-on each admin screen, which is where an admin reads them. **It covers only the never-deleted set** —
-a `DELETE` of a seat is a real, mounted, sometimes-successful route (`EP-ADM-21`) and never reaches
+on each admin screen, which is where an admin reads them. **It covers two cases and only two** — a
+`DELETE` at one of the never-deleted entities, and **any non-`GET` method at a path on the read-only
+reports router** (`P-RPT-09`, `P-XCT-05` exception 5b), where the same sentence is the right answer
+for the same reason: the address exists, the verb does not, and nothing was changed. A `DELETE` of a
+seat is a real, mounted, sometimes-successful route (`EP-ADM-21`) and never reaches
 this sentence. **The code appears in no `errors` array until the merge owner registers it**
 (`P-XCT-11`), so a lane that finds it missing from `contract.json` has found the expected state and
 not a defect.
@@ -18247,14 +19976,20 @@ this screen's generic examples; **where an endpoint's own P-row publishes wordin
 `P-ACC-01`, `P-ACC-02`, `P-ACC-07`, `P-XCT-06` — that wording wins and this screen renders it.** It
 never blames the customer and it never says "slow down".
 
-**One surface is deliberately not this screen's, and it is the seat map.** A 429 on the seat-map read
-or on one of its polls renders `SCR-BRW-03`'s string — `"Too many requests. The seat map will update
+**One surface is deliberately not this screen's, and it is the seat map — on its POLLS.** A 429 on one
+of the seat map's polls renders `SCR-BRW-03`'s string — `"Too many requests. The seat map will update
 again shortly."` — and **this row publishes no variant for it.** `P-BRW-11` publishes no string, so
 under `S1.2.1` case 3 the screen that renders it owns it, and that screen is `SCR-BRW-03`. **The
 reason is not precedence, it is that this row's sentence would be wrong there:** the map re-polls on
 its own every `SEATMAP_POLL_INTERVAL_SECONDS`, so there is nothing for the customer to do and telling
 them to try again asks them to take an action the client is already taking. **Every other sentence on
 this screen tells the customer to act because on every other surface they must.**
+
+**A 429 on the seat map's FIRST load is not that case, and this row previously swept it in.** There is
+no map on screen and **no poll loop is running**, so nothing will deliver the update that sentence
+promises. `P-BRW-11` exception 4 governs it: the first-load error and a `Try again`, which is the one
+control that can produce the map (`SCR-BRW-03`). **This row publishes no string for that case either**
+— the distinction is which of `SCR-BRW-03`'s two strings applies, not a third sentence.
 
 **Accessibility.** Announced once when it appears, **not on every countdown tick** — a live region
 that updates every second is unusable with a screen reader. The ticking countdown is `aria-hidden`
@@ -18813,7 +20548,7 @@ immediately.
   "errors": ["NOT_FOUND", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
   "rate_limit": "none",
-  "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record.",
+  "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record. P-BRW-01 tabulates this endpoint as one of the three in the epic that apply no gate, so the row and this block agree; WHETHER it should apply them is OPEN-BRWVIS-01, which is OPEN and reserved, and neither the row nor this block answers it. Until it is ruled, no movie gate is applied here.",
   "satisfies": ["P-BRW-05","P-BRW-06","P-BRW-07"],
   "brd": ["R-BRW-01","R-BRW-04"]
 }
@@ -18859,8 +20594,8 @@ client — which is what keeps one cached entry serving every viewer.
   },
   "errors": ["NOT_FOUND", "VALIDATION_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
-  "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated. The limit exists to stop scraping, not browsing: one legitimate poller uses 20.",
-  "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server.",
+  "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated and there is no user to key one on. The limit exists to stop scraping, not browsing: one legitimate poller uses 20 — so the bucket admits SIX concurrent viewers from one address and refuses the seventh, and guests behind one office, household or carrier NAT address share that single bucket (P-BRW-11). A refused poll takes P-BRW-11 exception 3 and a refused first load takes exception 4; the first load never renders the 'will update again shortly' string, because no poll loop exists yet to deliver that update.",
+  "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server. It applies no movie visibility gate either, exactly as EP-BRW-05 does not: P-BRW-01 tabulates both, and whether either should is OPEN-BRWVIS-01, which is OPEN and reserved.",
   "satisfies": ["P-BRW-05","P-BRW-08","P-BRW-09","P-BRW-10","P-BRW-11","P-BRW-12","P-BRW-13","P-BRW-14","P-BRW-16"],
   "brd": ["R-BRW-01","R-SEAT-01","R-SEAT-03","R-SEAT-06","R-SEAT-07","R-QLY-04"]
 }
@@ -18896,7 +20631,7 @@ returns and renders accordingly, so a second cinema makes the cinema filter appe
         "certifications": "array of {id, name} — name, never code (P-ADM-23 owns the table and it has no code column). In use as languages. Returned for completeness; no certification filter control exists in v1, because SRC-001 §5.1.3 names four filters and certification is not one."
       }
     },
-    "503": {"description": "PostgreSQL unreachable"}
+    "503": {"description": "PostgreSQL unreachable. The listing endpoint is independent and is unaffected: SCR-BRW-01 still renders in full, with no reference-backed filter control, with its date strip and Clear filters intact, and with one line reading 'Filters are unavailable right now.' That line is the only thing distinguishing this outage from the correct day-one rendering, which produces the same three absences and carries no message (P-BRW-04 exception 5, SCR-BRW-01)."}
   },
   "errors": ["DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
@@ -19016,7 +20751,7 @@ same expiry instant, so giving a seat back never buys more time on the others.
     "body": {}
   },
   "responses": {
-    "200": {"description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended.", "body": {"hold_token": "string", "showtime_id": "integer", "expires_at": "string, ISO-8601 instant in UTC, unchanged", "seats": "array of {seat_id: integer, label: string, category: string, price_paise: integer}", "total_paise": "integer"}},
+    "200": {"description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended. P-HLD-08's eight numbered steps are the procedure and the block does not repeat them; two are easy to miss and neither is optional - step 6 DEL cache:seatmap:{showtime_id} AFTER the lock release, and step 8, which on the LAST seat also removes the token from holds:user:{user_id}:showtime:{showtime_id} so P-HLD-04's cap stops counting a hold that has ended.", "body": {"hold_token": "string", "showtime_id": "integer", "expires_at": "string, ISO-8601 instant in UTC, unchanged", "seats": "array of {seat_id: integer, label: string, category: string, price_paise: integer}", "total_paise": "integer"}},
     "401": {"description": "No authenticated customer."},
     "403": {"description": "The token belongs to another user."},
     "409": {"description": "The hold has already expired. A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
@@ -19053,11 +20788,11 @@ than a confirm.
     "body": {}
   },
   "responses": {
-    "204": {"description": "Every key in the hold was released with the compare-and-delete script and the hold record was deleted."},
+    "204": {"description": "The whole hold was released. P-HLD-08 carries the numbered procedure and it is SEVEN steps, not one: assert the caller owns the hold; compare-and-delete every key in ascending seat_id order; remove those keys from instance:{instance_id}:holds; delete the hold record; REMOVE THE TOKEN FROM holds:user:{user_id}:showtime:{showtime_id}, without which P-HLD-04's cap keeps counting a hold that no longer exists and the customer cannot re-take the seats they just gave back; DEL cache:seatmap:{showtime_id} AFTER the releases and never before, without which the seats read held to everyone else for up to the cache TTL instead of about three seconds; then answer 204 with no body. Steps 2 to 6 are best-effort - every structure carries the hold's TTL - and a compare-and-delete returning 0 for one seat is not an error and does not stop the loop."},
     "400": {"description": "The hold token is malformed - not exactly 43 characters, or carrying a character outside the URL-safe base64 alphabet. Checked before Redis is touched. REQUEST_INVALID, never HOLD_EXPIRED, for the reason given on EP-HLD-02."},
     "401": {"description": "No authenticated customer."},
     "403": {"description": "The token belongs to another user."},
-    "409": {"description": "The hold has already expired. A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
+    "409": {"description": "The hold has already expired. None of the release steps run: there are no keys to release, and the hold record and the index entry carried the same TTL and are gone with them. In particular NO cache:seatmap DEL runs on this branch - an expiry frees seats without telling the cache anywhere in this document, and adding one here would invent an invalidation the expiry path has never had (P-HLD-02 exception 3). A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
     "429": {"description": "The per-user or per-IP token bucket is empty."},
     "503": {"description": "Redis is unreachable."}
   },
@@ -19117,14 +20852,14 @@ never held or a price it was never quoted.
   "request": {
     "path_params": {},
     "query": {},
-    "headers": {"Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID"},
+    "headers": {"Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID. GENERATED BY THE CLIENT, never by the server: crypto.randomUUID()'s canonical 36-character form, 122 random bits from a CSPRNG, one per CONFIRM ATTEMPT (not one per hold). It is written to sessionStorage before the request is sent and re-sent unchanged on any repeat of the same attempt, including one whose outcome the client never learned. A fresh key is minted only when there is no stored key, when the stored key was minted against a different hold_token, or when the previous attempt returned 402 PAYMENT_FAILED — the one outcome specified to have committed nothing (P-PAY-09)"},
     "body": {"hold_token": "string, opaque, exactly 43 characters from the URL-safe base64 alphabet, required", "showtime_id": "integer, positive, required, must match the showtime the hold was taken on"}
   },
   "responses": {
     "201": {"description": "The booking was created. The simulated payment reached captured before the booking row was inserted.", "body": {"booking_id": "integer", "booking_reference": "string, the PRESENTATION FORM FR-XXXX-XXXX including its hyphens - the same shape EP-TKT-01 and every other endpoint returning a reference carries. It is re-formatted at serialisation from the 8 characters stored on the booking row; the 8-character stored form is never what crosses the wire (P-TKT-01)", "showtime_id": "integer", "movie_title": "string", "screen_name": "string", "starts_at": "string, ISO-8601 instant serialised WITH THE CINEMA'S UTC OFFSET taken from the cinema row, e.g. 2026-08-20T14:00:00+05:30 - never UTC, never a hardcoded offset. The client renders the wall-clock part as given and CONVERTS NOTHING (P-BRW-06, FR-ADR-018, P-ADM-26)", "seats": "array of objects: {seat_id, seat_label, seat_category_name, price_paise, base_price_paise_applied, uplift_basis_points_applied}", "total_paise": "integer, the sum of the already-rounded per-seat prices, never itself rounded", "currency_code": "string, INR", "payment_status": "string, captured", "created_at": "string, ISO-8601 instant serialised with the cinema's UTC offset, exactly as starts_at - it is shown to the customer as the time they booked, so it is a wall-clock instant and the client converts nothing"}},
     "400": {"description": "The Idempotency-Key header is missing or malformed, a required body field is missing, or the body carries a property this endpoint does not define."},
     "401": {"description": "No valid token. A guest cannot reach this endpoint."},
-    "402": {"description": "The simulated provider returned failed. The transaction rolled back; the hold survives if it has not expired."},
+    "402": {"description": "The simulated provider returned failed. The transaction rolled back in full, taking its idempotency record with it, so nothing was booked and nothing was captured. The hold is untouched by this endpoint and survives if it has not expired. The published message makes no claim about which, because the confirm re-validates the hold at step 2 and the capture is step 6 and Redis is not read again before commit — it names what the server knows and points the customer at the countdown for the rest (P-PAY-01 exception 4). This is the only response after which the client mints a fresh Idempotency-Key."},
     "403": {"description": "The hold token exists but was issued to a different user."},
     "409": {"description": "The hold has expired, one or more seats were taken by another customer, or the same idempotency key is still in flight."},
     "422": {"description": "The same idempotency key was sent with a different request fingerprint."},
@@ -19134,7 +20869,7 @@ never held or a price it was never quoted.
   },
   "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "HOLD_EXPIRED", "HOLD_NOT_OWNED", "SEAT_UNAVAILABLE", "IDEMPOTENCY_IN_FLIGHT", "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "errors_deliberately_absent": "SALES_CLOSED is NOT in the array above and cannot be raised by this endpoint. The sales cut-off is enforced once, at hold acquisition (P-HLD-06), and never re-checked at confirm - SRC-003 OPEN-BOOK-03 rules that anyone already holding seats may finish checking out, and a client ruling outranks FR-ADR-029 step 4, which reads otherwise (see this lane's contradiction 1). A customer whose cut-off passes mid-checkout completes normally: P-PAY-10 step 4 reads the showtime and does not gate on it. The absence is therefore a decision, not an omission, and it is recorded here because four sections discuss the cut-off at confirm and a reader who finds none of them conclusive would otherwise add the code.",
-  "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted.",
+  "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted. On 409 IDEMPOTENCY_IN_FLIGHT the client re-sends the identical request automatically after Retry-After seconds, at most three times, and keeps its busy state while it does; every one of those re-sends spends a rate-limit token, which is why the count is bounded rather than a poll (P-PAY-09).",
   "rate_limit": "Redis token bucket, two independent buckets and both must have a token: 10 per minute per user id, 30 per minute per real client IP. The real IP is the rightmost-but-one X-Forwarded-For entry with exactly one trusted proxy. The limiter fails closed with 503 when Redis is unreachable. A retry carrying an already-seen Idempotency-Key still consumes a token.",
   "authorisation_rule": "The router requires a valid JWT for an existing user row and nothing more; the booking is always written against that user id, which is taken from the token and never from the request body. There is no role check beyond authentication, because no source restricts owning a booking by role and a guest is already stopped one step earlier at the hold.",
   "satisfies": ["P-PAY-01", "P-PAY-04", "P-PAY-05", "P-PAY-06", "P-PAY-07", "P-PAY-08", "P-PAY-09", "P-PAY-10", "P-PAY-11", "P-PAY-12"],
@@ -19731,7 +21466,9 @@ one form; they write two different audit actions.
 }
 ```
 
-Uploading a poster. The body is streamed to a private S3 bucket and never touches the container's disk.
+Uploading a poster. The body never touches the container's disk. It is held in a bounded in-memory
+buffer — bounded by the `Content-Length` check, because the decode and the dimension check need the
+bytes — and uploaded to a private S3 bucket from there (`P-ADM-03`).
 
 ```endpoint
 {
@@ -19745,7 +21482,7 @@ Uploading a poster. The body is streamed to a private S3 bucket and never touche
     "path_params": {"movie_id": "integer, positive"},
     "headers": {
       "Content-Type": "string, must be multipart/form-data, REQUIRED",
-      "Content-Length": "integer, 1..2097152 bytes, REQUIRED - checked before the body is read"
+      "Content-Length": "integer, 1..2097152 bytes, REQUIRED - checked at the header, before the body is read. This check does NOT mean the body is never buffered: steps 6 and 7 of P-ADM-03 decode the image and measure its pixel dimensions, which needs the bytes. What the check buys is that the buffer's size is known and refused before a byte is read, so no request makes the process hold more than 2 MB (P-ADM-03)"
     },
     "body": {"file": "one file part, image/jpeg or image/png or image/webp, magic bytes must match the declared type, must decode, 200..4000 by 300..6000 pixels, required", "version": "integer, the film's current version, REQUIRED. A second form part of the same multipart body - not a header and not a query parameter. Checked before any byte is streamed to S3, so a stale upload costs no object and leaves no orphan (P-ADM-12)"}
   },
@@ -19758,7 +21495,7 @@ Uploading a poster. The body is streamed to a private S3 bucket and never touche
     "413": {"description": "Content-Length above 2 MB; the body was never read"},
     "415": {"description": "Not an accepted image type, or the declared type does not match the bytes, or the image does not decode"},
     "422": {"description": "No file part, more than one file part, no Content-Length, no version part, or dimensions out of range"},
-    "503": {"description": "S3 or Postgres unreachable; the poster was not saved against the film"}
+    "503": {"description": "S3 or Postgres is unreachable, times out, or answers a RETRYABLE failure; the poster was not saved against the film. A NON-retryable S3 refusal - the credential is not permitted to write, the bucket does not exist, or a quota or policy refuses the object - is 500 INTERNAL_ERROR instead, because 'try again in a moment' is false for it and the admin cannot fix a storage credential from a form (P-ADM-03 exceptions 12 and 12b)"}
   },
   "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "FORBIDDEN", "NOT_FOUND", "VERSION_CONFLICT", "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "A repeat of the exact same request fails with VERSION_CONFLICT, because the first upload incremented version - and it fails before any byte reaches S3, so the repeat costs no object. A repeat carrying the CURRENT version is a deliberate replacement: it writes a second S3 object under a new server-generated key and points the film at it. The previous object is never deleted (FR-ADR-012), so an audit row's before value still resolves to a real image. A deliberate replacement therefore costs storage and is otherwise harmless.",
@@ -19914,7 +21651,7 @@ Creating a showtime. Nothing else in this system creates one, at any time, by an
       "screen_id": "integer, must exist and be in service, required",
       "starts_at": "string, ISO-8601 local date and time in Asia/Kolkata, required. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
       "ends_at": "string, ISO-8601 local date and time in Asia/Kolkata, strictly after starts_at, required. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
-      "base_price_paise": "integer, 1 or more, required. Paise only; a decimal is rejected, never rounded",
+      "base_price_paise": "integer, 1 or more, required. Paise only; a decimal is rejected, never rounded. UPPER BOUND, and it is arithmetic and not a business figure: base_price_paise * (10000 + highest stored uplift_basis_points) + 5000 must be <= 2^63 - 1, so that FR-ADR-038's seat-price formula cannot overflow the bigint columns it runs in. At the highest seeded uplift of 3333 basis points that caps the base price at 691770197019033 paise. Above it, 422 VALIDATION_FAILED with P-ADM-10 exception 4's sentence. NO BUSINESS CEILING EXISTS in any source and none is invented - PROPOSED-PRICEBOUND-01 in the Lane notes",
       "format_id": "integer, must be an active row of the format vocabulary (P-ADM-23), optional. A showtime with no format answers null on the browse surface and is excluded by any format filter"
     }
   },
@@ -19953,7 +21690,7 @@ Editing a showtime, including its base price. The hall cannot be changed and the
       "movie_id": "integer, must exist, optional",
       "starts_at": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
       "ends_at": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07). Strictly after starts_at IN THE MERGED ROW - this is a partial update and every bound is evaluated against the row as it would be after the patch, so sending either time alone is checked against the stored other time and can fail 422. The overlap check of P-ADM-08 also runs against the merged interval (P-ADM-09)",
-      "base_price_paise": "integer, 1 or more, optional. Paise only",
+      "base_price_paise": "integer, 1 or more, optional. Paise only. UPPER BOUND, arithmetic and not a business figure, identical to EP-ADM-10's: base_price_paise * (10000 + highest stored uplift_basis_points) + 5000 must be <= 2^63 - 1, so FR-ADR-038's seat-price formula cannot overflow the bigint columns it runs in. At the highest seeded uplift of 3333 basis points that caps the base price at 691770197019033 paise. Above it, 422 VALIDATION_FAILED with P-ADM-10 exception 4's sentence (P-ADM-10)",
       "format_id": "integer, must be an active row of the format vocabulary, optional. Send null to clear it"
     }
   },
@@ -20695,7 +22432,7 @@ the only endpoint a manager or administrator needs in order to see a period's nu
         "evaluated_at_utc": "string, ISO-8601 instant taken from the injected clock",
         "timezone": "string, the cinema's IANA zone, Asia/Kolkata",
         "scope_empty": "boolean, true when the caller has no halls assigned",
-        "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array.",
+        "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array. INTEGERS ONLY: this endpoint carries no screen_name and no is_active flag. SCR-RPT-01 renders its scope line and its hall filter from EP-RPT-03's screens array, looking these ids up in it, and never from this field alone — a screen fetching only this endpoint would render 'Halls shown: 3, 5.'",
         "takings_paise": "integer, minor units, never a float and never a formatted string",
         "seats_sold": "integer",
         "capacity": "integer, the sum of seat_count_at_creation over the period's showtimes",
@@ -20934,7 +22671,7 @@ route at all**, which is the whole of its point.
 ```
 
 ```newerrorcode
-{"code":"METHOD_NOT_ALLOWED","http":405,"when":"a request uses an HTTP method that is mounted on no route at that path, while the path itself is mounted for at least one other method. In this product that is a DELETE addressed at one of the never-deleted entities - movie, showtime, screen, cinema and the four lookup vocabularies - for which no DELETE route is mounted because withdrawal replaces deletion (P-ADM-20, FR-ADR-012). It does NOT cover seats or manager screen assignments, which are genuinely deleted and have real mounted DELETE routes: EP-ADM-21 succeeds while its hall has no showtime rows. It is raised by a global exception handler rather than by any route, so it can carry no information about which entity was addressed.","raised_by":["a global handler, mounted on the application rather than on any router or endpoint. No endpoint block names this code, and none may until the merge owner adds it to the generator registry"],"why_needed":"FR-ADR-052 requires one envelope from every response, and the framework's own method-not-allowed body is a different shape, so without this code a DELETE to a never-deleted entity returns a body the interface cannot parse. Mounting a DELETE route that always refuses was rejected on the distinction that makes the scoping principled: a route that refuses a real request with a real reason has a case where it succeeds, and a route mounted only to say no does not - which is why EP-ADM-21 is allowed to exist and a movie delete route is not. 404 was also rejected, because it would deny that the address exists when the same address serves GET and PATCH, and that misreports the situation to the only audience that ever sees it."}
+{"code":"METHOD_NOT_ALLOWED","http":405,"when":"a request uses an HTTP method that is mounted on no route at that path, while the path itself is mounted for at least one other method. There are exactly two such cases in this product. FIRST: a DELETE addressed at one of the never-deleted entities - movie, showtime, screen, cinema and the four lookup vocabularies - for which no DELETE route is mounted because withdrawal replaces deletion (P-ADM-20, FR-ADR-012). It does NOT cover seats or manager screen assignments, which are genuinely deleted and have real mounted DELETE routes: EP-ADM-21 succeeds while its hall has no showtime rows. SECOND: any non-GET method addressed at a path on the read-only reports router, every route of which is a GET (P-RPT-09). A POST to /api/reports/dashboard is 405 and not 404, because that path exists and serves GET. It is raised by a global exception handler rather than by any route in both cases, so it can carry no information about which entity or router was addressed.","raised_by":["a global handler, mounted on the application rather than on any router or endpoint. No endpoint block names this code, and none may until the merge owner adds it to the generator registry"],"why_needed":"FR-ADR-052 requires one envelope from every response, and the framework's own method-not-allowed body is a different shape, so without this code a DELETE to a never-deleted entity, or a POST to the reports router, returns a body the interface cannot parse. Mounting a DELETE route that always refuses was rejected on the distinction that makes the scoping principled: a route that refuses a real request with a real reason has a case where it succeeds, and a route mounted only to say no does not - which is why EP-ADM-21 is allowed to exist and a movie delete route is not. 404 was also rejected in both cases, because it would deny that the address exists when the same address serves GET and PATCH, and that misreports the situation to the only audience that ever sees it. The reports case is named explicitly because P-XCT-05's worked example published 404 for it while P-RPT-09 published 405, and the negative test for the read-only router is transcribed from one of the two."}
 ```
 
 ---
@@ -21101,23 +22838,60 @@ naming the seats that were taken, **not retried** — retrying a lost race loses
 logged as an expected outcome with a counter, because the rate at which it fires is the signal that
 tells the operator the lock layer has a problem.
 
-**The red-proof drill**, run by hand, in the local environment only, with a recorded outcome and a
+**The red-proof drill runs in two stages, and only the second one reaches the constraint.**
+
+**Why there are two, stated first because a single-stage drill was specified here and could not
+work.** The fifty-request gate fires at the **hold** endpoint (`SRC-002 §9.1`, `P-HLD-13`,
+`P-PAY-11`), where every loser is refused by Redis at `SET … NX` and **the unique constraint is never
+reached**. Dropping the constraint and re-running that gate therefore still yields exactly one winner
+— and the previous version of this procedure classified that outcome as a void proof and a
+stop-the-line finding, which made **the never-waivable gate report failure against a correct
+implementation**. The gate is unchanged; a second stage is added that puts two live holders on one
+seat, which is the only state from which two confirms both reach `P-PAY-10` step 7. **That is
+stricter, not weaker** — the constraint was being exercised zero times and is now exercised, watched
+failing, and watched working again.
+
+**Stage A — the fifty-request gate.** Unchanged, and `P-HLD-13` owns it.
+
+1. Run `scripts/stress_seats.py`. Observe **exactly one 201 and forty-nine 409 `SEAT_UNAVAILABLE`**,
+   the start-instant spread inside `STRESS_CONCURRENCY_SPREAD_MS`, and — after the winner confirms —
+   exactly one `booking_seat` row for the pair, read directly from PostgreSQL.
+2. **Record that the constraint fired zero times.** Stage A proves the lock layer and the end-to-end
+   result. It proves nothing about the constraint, and saying so is what stops Stage B being skipped.
+
+**Stage B — the red proof, run by hand, in the local environment only**, with a recorded outcome and a
 recorded date:
 
-1. Run `scripts/stress_seats.py`. Observe one winner.
-2. **Drop the unique constraint on `(showtime_id, seat_id)`.**
-3. Run it again. **Observe more than one winner.** If it still produces one winner, the test is not
-   exercising the constraint and the whole proof is void. **That outcome is a stop-the-line finding,
-   not a pleasant surprise.**
-4. Restore the constraint.
-5. **Verify the restore** by re-running and observing one winner, and by reading the constraint back
-   from the catalogue.
+3. Customer A takes a hold on seat `S`, then issues a confirm. Step 6 of `P-PAY-10` spends
+   `PAYMENT_SIMULATED_DELAY_MS`, which is the window the rest of this stage runs inside.
+4. **Inside that window, delete `lock:seat:{showtime_id}:{seat_id}` directly in Redis.** That is an
+   eviction, injected by hand — the exact failure the paragraph above names as the reason the database
+   half exists.
+5. Customer B takes a hold on the same seat `S`. `SET … NX` succeeds because the key is gone, and
+   `P-HLD-01` step 7 finds no committed `booking_seat` row because A has not committed. **Two
+   customers now hold one seat**, each with a token their own confirm will re-validate successfully.
+6. B issues a confirm. Both transactions reach step 7. **With the constraint present: one 201, one
+   409 `SEAT_UNAVAILABLE`, and one `booking_seat` row.** That 409 is the constraint firing, observed
+   at the layer that owns it.
+7. **Drop the unique constraint on `(showtime_id, seat_id)` and repeat steps 3 to 6. Observe two 201s
+   and two `booking_seat` rows for one `(showtime_id, seat_id)` — the seat sold twice.** If it still
+   produces one row, the run is not exercising the constraint and the whole proof is void. **That
+   outcome is a stop-the-line finding, not a pleasant surprise.**
+8. Restore the constraint.
+9. **Verify the restore** by repeating steps 3 to 6 and observing one row, and by reading the
+   constraint back from `pg_constraint`.
+
+**Nothing is disabled at any point in Stage B**, and that matters because disabling a control to make
+a test pass is a fake green and waiving a quality check is reserved to the client. Both holds go
+through the real lock acquisition, both confirms re-validate their token, and the rate limiter runs
+throughout. **A key is made to disappear, which is a fault the system is supposed to survive** — the
+same kind of deliberate act as dropping the constraint, and permitted on the same terms.
 
 The drill is local only because dropping a correctness constraint in the deployed environment is a
-destructive schema change and the build session has no write access to AWS at all. **The stress script
-itself runs against both**, by changing a base URL, exactly as `SRC-002 §9.1` requires. Running it
-against the deployed environment writes real bookings there, and the Zone C specification must say so
-and say which showtime to point it at.
+destructive schema change, because Stage B needs direct Redis command access, and because the build
+session has no write access to AWS at all. **The stress script itself runs against both**, by changing
+a base URL, exactly as `SRC-002 §9.1` requires. Running it against the deployed environment writes
+real bookings there, and the Zone C specification must say so and say which showtime to point it at.
 
 **The script proves its own concurrency before its result is trusted.** It records the start instant
 of each of the fifty requests and asserts the spread between first and last is under a configured
@@ -21416,6 +23190,14 @@ deployed environment.** `OPEN-TLS-01` is deferred; **this document does not deci
 nothing about whether TLS is or will be terminated anywhere.** Setting `Secure` without TLS is not the
 stricter option — it is broken, because the browser would never send the cookie over HTTP and nobody
 could stay signed in.
+
+**`SameSite=Lax` is not only a usability choice; it is the product's only cross-site request
+defence, and `P-XCT-06` names it as one.** There is no CSRF token, no double-submit cookie and no
+`Origin` check in this specification. `Lax` withholds the cookie from every cross-site request except
+a top-level navigation using a safe method, which covers every state-changing endpoint here because
+every one of them is a `POST`, `PUT`, `PATCH` or `DELETE`. **Two changes remove it in one line each —
+an endpoint that writes on a `GET`, and relaxing the attribute to `None`** — and `P-XCT-06` carries
+both, so neither can be made without meeting the sentence that says what it costs.
 
 **Authorisation is applied once, on the router, as a dependency. Never per handler.** A check repeated
 in fifty places is a check that eventually misses one. Four routers exist — public, customer, manager,
@@ -21726,6 +23508,8 @@ and a deployment that starts and is quietly wrong.**
 | `DB_POOL_MAX_OVERFLOW` | `2` | Burst connections above the pool | Same ceiling. |
 | `DB_STATEMENT_TIMEOUT_MS` | `5000` | The server-side ceiling on a single SQL statement, set on the connection. **`ASSUMED`** — `P-RPT-12` and `P-RPT-07` both branch on an aggregate exceeding it and no figure, variable or row existed anywhere, which by this inventory's closing rule was a defect. | **Both ends are observable and they fail differently.** Too low and a legitimate month-wide dashboard aggregate is killed mid-query and the admin reads `This period's figures could not be loaded` for a period that is simply large — an error for a correct request. **Too high, or absent, is the worse one:** with no timeout a slow aggregate holds one of `DB_POOL_SIZE` + `DB_POOL_MAX_OVERFLOW` = **7 connections per process** indefinitely, and a handful of them exhausts the pool — so **the failure is the whole dashboard, and then the whole API, rather than the one request that was slow.** Replaced by Phase 7's load test. |
 | `QUEUE_POLL_WAIT_SECONDS` | `20` | Long-poll wait | Short polling against a mostly-empty queue burns the 1M-request free-tier allowance on empty receives. |
+| `QUEUE_SEND_TIMEOUT_MS` | `2000` | The ceiling on one `SendMessage` call, including any SDK-level retry — **retry is disabled on this path, so the wall-clock bound is this value and not a multiple of it**. **`ASSUMED`** — no frozen source names it; the receipt section requires the fast-path send to be bounded and named none, which by this inventory's own rule was a defect. | **This is the only dependency call that runs inside a customer's confirm request** (`P-PAY-10` step 15, `P-TKT-04` step 3), and the confirm response is emitted after it returns. **Absent, the timeout is infinite:** an unreachable queue holds the confirm response open until the load balancer's idle timeout, so a customer whose booking is already committed sees a failed request — the exact cost the transactional outbox exists to prevent. Too high has the same shape more slowly. Too low costs nothing but a relay 30 seconds later. **It must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS`**, or a SIGTERM during a hung send outlives the drain and SIGKILL lands mid-request; at 2000 ms it is a tenth of it. Replaced by Phase 7's load test. |
+| `SES_SEND_TIMEOUT_MS` | `5000` | The ceiling on one `SendEmail` call in the worker. **`ASSUMED`** — no frozen source names it; the receipt and password-reset paths both require the call to be bounded and named no value. | **Absent, a hung call holds the `receipt_dispatch` claim in `sending` and no redelivery can retake the send for `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds in which the customer has paid, no receipt has gone out and nothing is being attempted** (`P-TKT-05`). The same hole exists on `password_reset_token.email_claimed_at`, on the one message a locked-out account depends on (`P-TKT-12`). **It must be shorter than the worker's drain** — `P-XCT-17` exception 5 makes the drain as long as the message in hand — and **far shorter than the queue's visibility timeout**, so a delivery reaches `sent` or `failed` before its own redelivery arrives. Too low fails ordinary receipts under no fault at all. **A timed-out send has an unknown outcome and the retry may deliver a second copy**; the receipt section states that consequence rather than assuming it away. Replaced by Phase 7's load test. |
 | `OUTBOX_RELAY_BATCH_SIZE` | `20` | Rows the worker relays per loop | Too large and the relay starves the queue poll. |
 | `OUTBOX_RELAY_MIN_AGE_SECONDS` | `30` | How old a `pending` row must be before the relay claims it | Too short and the relay races the request that is already sending it. **The receipt section's "roughly 30 to 50 seconds" worst-case arithmetic is derived from this number**, so changing it here without changing that figure makes two sections disagree about how late a receipt can be. |
 | `RECEIPT_CLAIM_STALE_SECONDS` | `900` | When a `sending` claim is treated as abandoned | **Without it, a worker killed mid-send leaves a claim nobody can ever take and the receipt never goes out.** Shorter than the queue's visibility timeout and two workers send twice. |
@@ -21788,7 +23572,7 @@ reads.
 
 | Variable | Default | What it is for | What breaks if it is wrong or absent |
 |---|---|---|---|
-| `SEED_DEFAULT_PASSWORD` | **none — required by the seed script, and by nothing else** | The one password set on every account `scripts/seed.py` creates (`P-XCT-32`) | **Absent: the seed exits non-zero before writing anything, and there is no other route to a first password** — hashes cannot be read back (`P-XCT-06`) and the reset flow needs SES, which is sandboxed and rejects every seeded address (`FR-ADR-060`). **Phase 2 has no admin who can sign in and Phase 4 has no fifty customers, so the concurrency proof cannot run** (`FR-ADR-034`). Over 72 **bytes**: bcrypt silently ignores the excess and a shorter password works, which is worse than a refusal. Equal to the `.env.example` placeholder: refused by value, because the placeholder must never become the deployed password. **It is never committed, never printed and never logged.** |
+| `SEED_DEFAULT_PASSWORD` | **none — required by the seed script, and by nothing else** | The one password set on every account `scripts/seed.py` creates (`P-XCT-32`) | **Absent: the seed exits non-zero before writing anything, and there is no other route to a first password** — hashes cannot be read back (`P-XCT-06`) and the reset flow needs SES, which is sandboxed and rejects every seeded address (`FR-ADR-060`). **Phase 2 has no admin who can sign in and Phase 4 has no fifty customers, so the concurrency proof cannot run** (`FR-ADR-034`). Under `PASSWORD_MIN_LENGTH` **characters**, or over 72 **bytes** — the two bounds are in different units and each is checked in its own: bcrypt silently ignores the excess past 72 bytes and a shorter password works, which is worse than a refusal. Equal to the `.env.example` placeholder: refused by value, because the placeholder must never become the deployed password. **It is never committed, never printed and never logged.** **How it reaches a deployed environment** is `P-XCT-32`'s: an SSM `SecureString` referenced from **the seed's own one-off task definition family**, never the service's, which is what lets it be seed-only and still arrive the way `P-XCT-16` requires. |
 | `SEED_CHANGEOVER_MINUTES` | `20` | Minutes added to a seeded film's runtime to produce `showtime.ends_at`, which is `NOT NULL` (`P-XCT-30`) | **`ASSUMED`, and deliberately not an answer to `PROPOSED-TURNAROUND-01`**, which asks the client to rule the real changeover between shows. The seed needs *a* number because the column cannot hold an open question. Larger than 50 makes the seeded schedule overlap itself at the 210-minute slot spacing and the seed trips `P-ADM-08`'s own overlap refusal; absent, `ends_at` cannot be computed and the seed exits before its first write. **When the client rules the real figure, that row changes and this follows it.** |
 | `SEED_EMAIL_DOMAIN` | `demo.frontrow.invalid` | The domain every seeded address sits at | `.invalid` is reserved by RFC 2606 and can never resolve, which is what makes seeded data identifiable at a glance (`FR-ADR-067`) and makes it impossible for a seeded address to receive real mail. **Set it to a real domain and seeded bookings become hard bounces against the sending identity's reputation**, which can suspend the SES account and take the real receipt path down with it (`FR-ADR-060`). |
 
@@ -21825,9 +23609,13 @@ environment, and each lives in the Zone B configuration file with a comment sayi
 
 **Three checks run at the seed script's own start rather than at the API's boot**, because the seed is
 the only process that reads their variables, and they run **before its first write** so a failure
-leaves the database exactly as it was (`P-XCT-32`): `SEED_DEFAULT_PASSWORD` is present;
-its length is between `PASSWORD_MIN_LENGTH` and 72 **bytes**; and it is not equal to the placeholder
-value `.env.example` ships. Each exits non-zero naming the variable.
+leaves the database exactly as it was (`P-XCT-32`): `SEED_DEFAULT_PASSWORD` is present; it is at
+least `PASSWORD_MIN_LENGTH` **characters** and at most 72 **bytes**; and it is not equal to the
+placeholder value `.env.example` ships. Each exits non-zero naming the variable. **The two length
+bounds are measured in different units on purpose** — the floor is a character count, matching what
+`P-XCT-06` enforces at registration, and only the 72 is a byte bound, because only bcrypt's limit is
+one. A floor stated in bytes would admit a twelve-byte password of four multi-byte characters that the
+registration path refuses.
 
 **Three relationships cannot be checked at boot and must therefore be stated in the Zone C
 specification**, because the values live outside the application: the container stop timeout must
@@ -21929,8 +23717,11 @@ gone.** A unit test proves the function; only the signal proves the wiring.
 lifespan hook, not in the entrypoint's default path, and **not behind a `RUN_MIGRATIONS` flag** — a
 flag would be set to true once, during an incident, and never set back.
 
-**The entrypoint takes a command argument.** `migrate` runs `alembic upgrade head` and exits with the
-migration's status. `api` and `worker` start long-running processes and never touch migrations. In AWS
+**The entrypoint takes a command argument.** There are four: `api`, `worker`, `migrate` and `seed`.
+`migrate` runs `alembic upgrade head` and exits with the migration's status. **`seed` runs
+`scripts/seed.py` and exits with its status, and it is `P-XCT-32`'s** — it is listed here so the
+argument set is complete in one place, and it applies no migration. `api` and `worker` start
+long-running processes and never touch migrations. In AWS
 this is a one-off task using the **same image and the same task definition family**, with the command
 overridden — so the migration and the code are the same build. **That run is Zone C**; the build
 session ships the entrypoint, heavily commented, and owes the specification.
@@ -22121,6 +23912,7 @@ quiet when the thing it watches disappears is worse than no alarm, because it is
 | SES bounce and complaint rate | receipts going nowhere, including into spam folders |
 | `outbox_pending` rising | the relay stuck, so receipts are never even enqueued |
 | RDS free storage | forever retention filling the 20 GB volume |
+| **S3 poster-bucket size and object count** | **the only store in the product with no deletion path at all.** A replaced poster is never deleted (`P-ADM-20`, `FR-ADR-012`), so the bucket only ever grows and nothing reads its size; the first symptom is a failed upload an admin meets mid-task |
 | RDS connection count | pool exhaustion against roughly 110 connections |
 | Host memory | a container killed for exceeding its limit, with no log explaining why |
 
@@ -22360,10 +24152,24 @@ breaks in production if the deployment is got wrong.
 |---|---|---|
 | **1** | `P-XCT-10` `P-XCT-11` `P-XCT-12` `P-XCT-14` `P-XCT-15` `P-XCT-16` `P-XCT-17` `P-XCT-18` `P-XCT-21` `P-XCT-22` `P-XCT-23` `P-XCT-26` `P-XCT-27` `P-XCT-28` `P-XCT-29` `P-XCT-31` | The floors that must exist before anything else is written. `P-XCT-17`'s lock release has nothing to release until Phase 4; the drain and the signal handling are Phase 1. `P-XCT-21`'s **measurement** is a Phase 1 deliverable, not just a deployment. |
 | **2** | `P-XCT-02` `P-XCT-03` `P-XCT-05` `P-XCT-06` `P-XCT-19` `P-XCT-30` `P-XCT-32` | `P-XCT-01`'s unique constraint is created in **this phase's migration**, before any code can write a booking, so no window exists in which bookings are written without it. `P-XCT-20`'s backups are needed by this phase. **`P-XCT-32` ships with the seed and is a hard dependency of Phase 4**: without it the seeded accounts cannot sign in and the concurrency proof has nobody to run as. |
-| **3** | `P-XCT-08` `P-XCT-09` `P-XCT-24` `P-XCT-25` | `P-XCT-09`'s cache half lands here; its lock half is re-checked at Phase 4. |
+| **3** | `P-XCT-08` `P-XCT-09` `P-XCT-24` `P-XCT-25` | `P-XCT-09`'s cache half lands here; its lock half is re-checked at Phase 4. **ElastiCache Redis is therefore needed by *Phase 3*, not Phase 4** — see the note below. |
 | **4** | `P-XCT-01` `P-XCT-04` | The concurrency proof and the red-proof drill. Depends on Phase 2's seed script for fifty authenticated customers. |
 | **7** | `P-XCT-07` `P-XCT-13` `P-XCT-20` | Rate limiting and metrics are Phase 7 by the mandate. `P-XCT-20`'s **restore rehearsal** is a Phase 7 runbook deliverable even though the backups themselves are needed by Phase 2. |
 | **every phase** | `P-XCT-27` | The phase plan governs itself and closes each phase. |
+
+**Redis is a Phase 3 dependency and the prep queue announces it for Phase 4, which is one phase
+late.** Phase 3 is browsing and the seat-map read path. **The seat-map read is rate-limited**
+(`FR-ADR-058`, `RATE_LIMIT_SEATMAP_IP_PER_MIN`) **and the limiter runs before the cache and fails
+closed**, so with no Redis that read returns `503` and **Phase 3's own acceptance cannot be
+demonstrated in AWS at all** — not slower, not degraded: unavailable. `P-XCT-09` is the row that
+settles that, and it lands in this phase. The cache half needs Redis in this phase too; only the lock
+half waits for Phase 4.
+
+**`docs/30 Deployment/AWS_PREP_QUEUE.md` row 8 carries a needed-by of Phase 4 and must read Phase 3.**
+**This lane writes nothing to that file** (`S7.16`, `P-XCT-26`) and names the correction in its return
+instead. The obligation this discharges is the one the zone split rests on: **a dependency announced
+on the day it blocks has broken the exchange** (`P-XCT-26` exception 3), and announcing it a phase
+late is the same failure arriving on time.
 
 **One sequencing consequence worth naming rather than absorbing.** The concurrency proof is Phase 4
 and rate limiting is Phase 7, so **the Phase 4 run happens before the limiter exists.** The proof
@@ -22420,7 +24226,15 @@ those are read months later and out of context.
 5. **The formatting is one function**, taking an instant and a form, in one module. A second
    implementation is a second convention arriving quietly, which is what produced six.
 6. **A surface may not invent a format.** If a surface needs something none of the five forms covers,
-   that is a gap in this section and it is fixed here — **never locally**.
+   that is a gap in this section and it is fixed here — **never locally**. **One class sits outside
+   the five rather than missing from them, and this rule must be read with it**: a **prose naming of a
+   period** — `August 2026`, a week expressed as a range, `Friday 14 August 2026` — **is not a rendered
+   instant and is not governed by this section at all.** See *One thing this section deliberately does
+   not cover*, below, which draws that boundary and names the three strings it releases. **Reading
+   this rule without it is the trap:** `SCR-RPT-01`'s month tab needs a month-only string and its week
+   view needs a range, neither of which is one of the five — and the answer is that neither is this
+   section's to give, **not** that a sixth form is owed. **A gap in the five is fixed here; a string
+   that is not an instant was never in the five to begin with.**
 7. **A relative *instant* is never rendered** — no "2 days ago", no "yesterday", no "in three weeks".
    An instant is rendered as one of the five forms above and nothing else. **A duration is a different
    thing and this section does not own it.** A wait a customer is told to observe — the `Retry-After`
@@ -22500,14 +24314,28 @@ than checking whether this table names them.
 
 ##### One thing this section deliberately does not cover
 
-**A prose heading that names a period is not one of the five forms and is not governed here.** The
-dashboard's period line reads `Friday 14 August 2026`, `Monday 10 August to Sunday 16 August 2026` and
-`August 2026` (lane E7) — a full weekday, a full month name, and a range expressed in words. **Those
-are a heading's sentence rather than a rendered instant**, they have no equivalent among the five, and
-inventing a sixth form here purely to bless them would be this section deciding another lane's copy
-from a distance. **They stay `P-RPT`'s.** The boundary is stated so that neither side reads the
-silence as coverage: **anything that renders one instant** — a showtime, a cut-off, an
-`occurred_at`, a booking's date — **is this section's; a heading that names a span in prose is not.**
+**A prose naming of a period is not one of the five forms and is not governed here** — **in a heading,
+in a period line, in a control's visible label, or in a control's accessible name.** The class is
+stated rather than the one site, because `SCR-RPT-01` names its period in more than one place: the
+period line, and the period stepper's accessible name, which `SCR-RPT-01` requires to name the period
+type. All of them are the same kind of string and all of them are outside the five.
+
+The dashboard's period line reads `Friday 14 August 2026`, `Monday 10 August to Sunday 16 August 2026`
+and `August 2026` (lane E7) — a full weekday, a full month name, and a range expressed in words.
+**Those are a sentence naming a span rather than a rendered instant**, they have no equivalent among
+the five, and inventing a sixth form here purely to bless them would be this section deciding another
+lane's copy from a distance. **They stay `P-RPT`'s, and all three are discharged: `SCR-RPT-01` owes
+this section nothing for them and is not in breach of rule 6 by publishing them.**
+
+The boundary is stated so that neither side reads the silence as coverage: **anything that renders one
+instant** — a showtime, a cut-off, an `occurred_at`, a booking's date — **is this section's; a string
+that names a span in prose is not.** The test is mechanical: *does the string denote a single point in
+time?* `14 Aug 2026, 7:30 pm` does and is governed; `August 2026` does not and is not.
+
+**One consequence, so the release is not read as an absence of rules.** A period string that is
+released here is still `P-RPT`'s to publish and to keep consistent, and `S7.21` still binds any number
+inside it that comes from configuration. **Released from this section is not released from the
+document.**
 
 ---
 
@@ -23899,6 +25727,12 @@ invented an answer, and did not** (`CONSTITUTION.md` Art VII.3).
 | `P-BRW-02`, `EP-BRW-01`, `EP-BRW-02`, `EP-BRW-05`, `EP-BRW-07` | **wire correction, not a judgment call** — `certification` is `{id, name}`, never `{id, code}` | Five wire sites and the certification chip. `P-ADM-23` fixes the table at `id`, `name`, `is_active`, `created_at` and says there is no code; `EP-ADM-26` accepts only `name`. **Nothing could ever have populated `code`**, so the wire was wrong and the wire changed. **No `code` column was added** — that would be a data-model change made from a display field, and the table is `P-ADM-23`'s. |
 | `P-BRW-04`, `SCR-BRW-01` | **contradiction closed inside one row** — the two-or-more rule reaches **every** reference-backed filter, language included | Which controls render. The table's fourth column said language was "Rendered in v1: yes" unconditionally, two lines under a rule that admits no exception; the column meant *exists in v1 at all*. Column split and reworded, `date` marked as the one row the rule does not count (there is no vocabulary of dates), and language given its absence condition in `SCR-BRW-01` beside format's and cinema's. **No rule changed** — the table stopped contradicting it. |
 | `P-BRW-04` | **`[JUDGMENT CALL]`** — "rows in use" on `EP-BRW-07` means *referenced by something the caller can currently see*, and `is_active` is not a filter here | Which filter controls render at all, and whether `P-ADM-24`'s promise holds. **`is_active` is excluded because including it would break `P-ADM-24`'s worked example**, in which a customer filtering by a withdrawn language still finds the film that carries it. **The `cinema` row of the definition table is the build session's, by symmetry with `format`** — the adjudicated table covers the four lookup vocabularies and this endpoint also returns cinemas, and any looser test would render a control for a venue with nothing showing. Reversible: one predicate per `{kind}`. |
+| `P-BRW-01`, `EP-BRW-05`, `EP-BRW-06` | **contradiction closed, and the reserved half deliberately left open** (`J-GST-02`) — this row now tabulates which endpoints apply the visibility gates and which do not | The seat-map header and the seat map. This row claimed the predicate ran on *every* customer-facing query while `EP-BRW-05` stated the opposite for itself and `EP-BRW-03` and `EP-BRW-06` applied none either; **one of the two sentences was wrong today and no ruling on `OPEN-BRWVIS-01` makes both right.** The row is corrected to the endpoints that actually filter, so a developer has one instruction. **Whether the showtime-addressed endpoints *should* gate is `OPEN-BRWVIS-01` — `OPEN`, reserved, and not decided here**, because gating them settles the selling question in one direction and not gating them settles it in the other. Both blocks now carry the flag so the generated contract does too. |
+| `P-BRW-04` | **justification corrected; the rule is unchanged** (`J-GST-01`) — the listing date strip **bounds** the range and does not promise a showtime on every day inside it | `SCR-BRW-01`'s date strip. The row justified the day-before rule on the ground that the strip "must never be able to reach the empty state", which was **false of the strip the same row specifies**: it is computed on the client from `display_until` alone, and `EP-BRW-01` carries no per-day showtime information, so no such test is possible without a request nobody specified. **The bound stands; the reason for it was overstated**, and an overstated reason is what a later reader implements. The accepted weakness — a day button inside the range can reach the ordinary filtered-empty state — is now stated. |
+| `P-BRW-06`, `P-BRW-04` | **gap stated, and the missing check named rather than invented** (`J-GST-04`) — a showtime whose `starts_at` falls outside its film's display window is reachable from **no** guest browse surface | Both date strips and `next_date_with_showtimes` condition 2. All three are bounded by the display window, so all three assume every showtime falls inside it, and **no row in the document makes that true**. The bound is not widened — ranging over `max(starts_at)` would offer days on which the film has left its window, which `P-BRW-04` refuses to draw. **The check belongs on the write path and is raised against `P-ADM-07`**, which owns showtime creation. **Explicitly not `OPEN-BRWVIS-01`**: that row is about a boundary the clock crosses; this showtime is unreachable from the instant it is created. |
+| `P-BRW-11`, `SCR-BRW-03`, `EP-BRW-06` | **contradiction closed** (`J-GST-07`) — a 429 on a **poll** and a 429 on the **first load** take two different strings | The seat map's first load. `SCR-XCT-03` sent every 429 on this endpoint to `SCR-BRW-03`'s `Too many requests. The seat map will update again shortly.`, and on a first load **there is no map and no poll loop**, so the sentence promises an update nothing will deliver. Its own stated reason — the map re-polls on its own — holds for polls only. Exception 4 now names 429 and the copy row is scoped to the poll case. `SCR-XCT-03`'s over-broad sentence is E8's half and is raised there. |
+| `P-BRW-11`, `EP-BRW-06` | **arithmetic stated rather than absorbed** (`J-GST-08`) — 120 per IP per minute admits **six** concurrent viewers from one address and refuses the seventh | Every guest behind an office, household, campus or carrier NAT address. One poller uses `60 / 3 = 20` a minute and `120 / 20 = 6`; the endpoint is unauthenticated so there is **no per-user bucket** to spread the load. The row previously said only that the limit is "far above what a legitimate poller uses", which is true of one viewer and false of six. **The number is not changed** — `120` is `FR-ADR-058`, `APPROVED`, and lengthening the interval trades against the staleness bound. **Six is derived from two configured numbers, not measured; nothing here has run in AWS.** |
+| `P-BRW-04`, `SCR-BRW-01`, `EP-BRW-07` | **`[JUDGMENT CALL]`** (`J-GST-10`) — a reference-endpoint outage renders the listing in full plus one line, `Filters are unavailable right now.` | The listing screen's filter area. This row listed a reachable `EP-BRW-07` as a **precondition with no failure path**, and `SCR-BRW-01`'s Error state covered only the listing failing — so an outage rendered a listing with no filter controls, **which is also the correct day-one rendering**. Two states, byte-identical on screen, meaning opposite things. **The judgment call is the line, not the behaviour**: the controls' absence follows from `FR-ADR-046`, and no source says whether the screen should say so. `SCR-BRW-01` owns the string (`S1.2.1` case 3). The date strip and `Clear filters` are untouched, the latter because a control that vanishes with the thing it repairs cannot repair it. Reversible: one string and one condition. |
 
 #### Where I would have had to guess and did not
 
@@ -23926,9 +25760,13 @@ invented an answer, and did not** (`CONSTITUTION.md` Art VII.3).
    likely to be "helpfully" filled in by a later session, and the seven-minute hold is what that looks
    like a document later.
 
-6. **What happens to a showtime whose movie has left its window.** Raised as `PROPOSED-BRWVIS-01`. I
-   specified only the half `FR-ADR-021` actually settles — the browse surface hides it — and marked
-   `EP-BRW-05`'s authorisation rule accordingly, without deciding whether it may still be sold.
+6. **What happens to a showtime whose movie has left its window.** Raised as `PROPOSED-BRWVIS-01`, now
+   `OPEN-BRWVIS-01`. I specified only the half `FR-ADR-021` actually settles — the browse surface hides
+   it — and marked `EP-BRW-05`'s authorisation rule accordingly, without deciding whether it may still
+   be sold. **`P-BRW-01` now tabulates which endpoints gate and which do not**, so the row and the two
+   blocks agree on the *fact* while the *policy* stays with the client. **Nothing was decided to close
+   that contradiction**, and the temptation was real: gating `EP-BRW-05` would have looked like a
+   tidy-up and would have answered a reserved question by side effect.
 
 7. **Whether a draft movie's poster should be reachable.** `EP-BRW-03` is public and `EP-BRW-02` is
    gated, so a poster id discloses that a draft exists. Consistent with `FR-ADR-017` (movie and
@@ -24013,6 +25851,16 @@ writing down, because the change that would resurface it looks unrelated to it.
 map carries exists only in the thing that is down. That observation stands, and it is the reason this
 row exists.
 
+**`PROPOSED-BULKBUY-01` — nothing limits how many seats one customer may *buy* on one showtime.**
+`P-HLD-04`'s cap is ten seats **held at once**. `P-PAY-10` step 13 removes the hold's token from
+`holds:user:{user_id}:showtime:{showtime_id}` at commit, deliberately, so seats the customer now owns
+stop counting against it — without which a customer who bought ten could buy nothing else on that
+showtime for the remainder of the 180 seconds. **The consequence is that ten-seat bookings can be
+repeated until the hall is gone.** `SRC-003 OPEN-BOOK-01` answers a question about the maximum seats
+in **one booking** and `FR-ADR-026` decides only where the cap is enforced; **neither reaches
+successive bookings.** This lane therefore states no lifetime limit, because inventing one is a scope
+change and scope is reserved. Recorded rather than decided, and it is the client's to answer.
+
 **No other Article X candidate.** Everything else this lane needed was either ruled, or a
 non-reserved technical question the build session may decide, and each of those is listed below rather
 than escalated.
@@ -24036,6 +25884,9 @@ than escalated.
 | judgment call | **A customer may hold on two showtimes at once, and may take a second hold on one showtime** subject to the cap | `FR-ADR-026` rules out a cross-showtime cap explicitly. Two tokens on one showtime is not addressed anywhere; permitting it and counting both against the ten is the reading that keeps the cap meaningful. |
 | `[JUDGMENT CALL]` | **The seat map's post-hold primary action reads `Continue to payment`, not `Pay ₹1,562.49`** (`SCR-SEA-01`) | `SCR-PAY-01` states it is the only screen in the product with a pay action, and a button on this screen labelled `Pay …` contradicted it. No P-row publishes this label, so the screen owns it (`S1.2` rank 3). `Continue to payment` names what the control does — it navigates and sends no request. The amount is not lost: it is on the `TOTAL` line directly above. **Reversible** — one copy-table cell and two prose sentences, here and on `SCR-PAY-01`. |
 | `[JUDGMENT CALL]` | **`RATE_LIMITED`'s published span is 3 seconds, not 20** (`P-HLD-14` row 16, `P-HLD-01` exception 11) | The two rows published *"Try again in 20 seconds"* while this lane's own worked example computed 3. 20 is the seat-hold bucket's **capacity**; the sentence wants its **refill interval**, which at 20 per minute per user is one token every 3 seconds. The copy was made to agree with the arithmetic its owning row already carried, not the other way round. **Reversible** — it is one computed value in two cells and one worked example. |
+| `[JUDGMENT CALL]` | **`SCR-SEA-03` pins to the viewport rather than to the map container's "sticky header area"** | `COMPONENTS.md §6` puts the banner inside the scroll container's sticky header area; `COMPONENTS.md §1.3` says that container scrolls horizontally and **deliberately not vertically**, so a header sticky inside it is sticky against an axis nobody scrolls and the banner is off-screen for a customer reading the far rows of a 220-seat map on a 375px phone. It cannot ride the application header either — `SCR-XCT-05` marks that **`Not sticky`** citing `P-XCT-25`. A banner is not a header: it exists only while a message is live, so it steals no permanent vertical space. **Reversible** — one route line, one container row and one paragraph. |
+| `[JUDGMENT CALL]` | **The closing clause of a hold refusal is `Your hold is unchanged.` on an extend, and `No seats were held.` only on a first hold** (`P-HLD-14`, rows 2b and 3b) | Once `SCR-SEA-01` published a state in which a customer chooses further seats while holding some, `No seats were held.` became a false statement on that path — contradicted by the countdown, the held cells, the heading and the cap, all on the same screen. The behaviour was already settled: `P-HLD-01`'s rollback set excludes keys the customer already owned, so a failed extend cannot release them. **Only the sentence was missing.** **Reversible** — one substitution rule, two published rows and one worked example. |
+| judgment call | **`fr.selection` is the key for the live local selection** (`P-SEA-03`) | No row named a key for a value `P-SEA-03` writes on every change, while `P-ACC-13` named `fr.pending_selection` for a value written once and deleted after restore. One key cannot carry both policies — the restore would delete the only durable copy of a selection still on screen. Two keys, both inside the `fr.` namespace `P-ACC-13` sweeps on sign-out, so neither needs its own clause. |
 | reasoned, not observed | **The ECS stop-timeout relationship** in `P-HLD-12` | This session has never observed this application running in AWS. The ordering requirement is reasoned from `FR-ADR-033` and is owed to `docs/30 Deployment/` as a Zone C specification. |
 
 #### Corrections applied in iteration 6, none of which was a decision
@@ -24067,6 +25918,22 @@ settled elsewhere. None of them chose anything, so none is a judgment call.
 | `B5` | Three variants existed for what are **two** situations: a local refresh, and a return from sign-in | `P-SEA-03` owns the local-refresh string and names `P-ACC-13` for the other; `P-HLD-05` exception 4 and `SCR-SEA-01` now defer the sign-in case to `P-ACC-13` rather than publishing a copy. Both rows say "still selected", never "still held" |
 | `F4` | `P-HLD-01` happy-path step 4 said *"generate one hold token"*, contradicting the paragraph directly beneath it and `EP-HLD-01`'s `idempotency` field | Step 4 is now a lookup before a generation: an existing live hold on this showtime supplies its token **and** its unchanged `expires_at`, and a token is minted only when none exists |
 | `D3` | Seven statements of the hold's seat-membership test, plus two fenced blocks, refused a seat that "does not belong to this showtime's **screen**" | **Membership of this showtime's seat set** (`P-ADM-14`), which is materialised at showtime creation and never changes. **This was a correctness defect, not a wording one:** screen membership and seat-set membership are different sets, and a seat added to a hall after a showtime existed passes the screen test while being absent from that showtime's `seat_count_at_creation` — holdable and sellable on a showtime it is not part of, which is the oversell the materialised set exists to prevent. **The published copy is unchanged**: `Seat C12 is not part of this hall. No seats were held.` is still true from where the customer is standing, and `P-ADM-14` defers that string to `P-HLD-01` |
+
+#### Corrections applied in the journey fix wave
+
+Seven defects were raised against this section by the six independent journey lanes
+(`docs/11 Journeys/DEFECTS_FOUND.tsv`). None of these was a decision about what the product does;
+each made this file state a behaviour that was already settled, or state one it had left unsaid.
+
+| # | What was wrong | What it now says |
+|---|---|---|
+| `J-CUS-03` | The state machine's `held_by_me_paying` + `TAB_REFRESHED` guard said the restored page **re-sends the same confirm**, while `SCR-PAY-01` says in terms that it **never** re-sends and decides from `fr.last_booking_reference` with no request. One of them put a payment request on every `F5` | The guard now says the refresh abandons the **response** and not the **request** — mechanically the same as `TAB_CLOSED` from this state — and that pressing pay again is `CONFIRM_START`, which is what keeps `IDEMPOTENCY_IN_FLIGHT` reachable. `SCR-PAY-01` owns the checkout screen's behaviour; this file was the restatement and therefore the defect. The `sold` + `TAB_REFRESHED` guard is corrected on the same ground |
+| `J-CUS-05` | `P-HLD-14` rows 2 and 3 ended `No seats were held.` on **every** hold refusal, while `SCR-SEA-01` publishes a state in which a hold is live and further seats are chosen — where the sentence is contradicted by the countdown, the held cells, the heading and the cap, all on the same screen | The closing clause has two forms and the server picks: `No seats were held.` on a first hold, **`Your hold is unchanged.`** on an extend. Rows **2b** and **3b** publish the two `SEAT_UNAVAILABLE` extend sentences, with `try again` in place of a button label that interpolates a count. `P-HLD-07`'s flat "never says any seats are still held" is given its scope, and `P-HLD-01` gains exceptions `2b` and `2c` |
+| `J-GST-05` | `P-SEA-03` wrote the selection to `sessionStorage` **on every change** and named no key; `P-ACC-13` writes `fr.pending_selection` **once** and deletes it after the restore. One key means the restore erases a live selection; two means nobody named the second | **`fr.selection`** is named, with a two-column table setting it against `fr.pending_selection` on write policy, read point, deletion and staleness, and a paragraph on why one key cannot carry both. Both sit inside the `fr.` namespace `P-ACC-13` sweeps on sign-out, so neither needs its own clause |
+| `J-XCT-04` | `P-HLD-08` gave the per-seat release eight steps and the **whole-hold** release one sentence; `EP-HLD-04`'s block named neither the cache `DEL` nor the removal from `holds:user:…`. Built from the block, a customer who gave every seat back left them showing held for the cache TTL and could not take ten again until the hold TTL elapsed | A **seven-step** procedure for `EP-HLD-04`, plus answers for the three cases the one-sentence version left open: a compare-and-delete returning 0 is not an error and does not stop the loop; a released seat is claimed by the next `SET NX` and there is no queue; and on an **already-expired** hold none of the steps run and **no cache `DEL` runs**, because the expiry path has never had one. Both `EP-HLD-03` and `EP-HLD-04` now name the two writes in their own blocks |
+| `J-XCT-07` | `SCR-SEA-03` placed the banner *"in the scroll container's sticky header area"*, copying `COMPONENTS.md §6`, while `COMPONENTS.md §1.3` says that container scrolls **horizontally only** — so it was sticky against an axis nobody scrolls — and `SCR-XCT-05` marks the application header `Not sticky` | The banner **pins to the viewport** while it is live, in the page's scroll context, reserving its own height so it can never obscure a focused seat cell. The paragraph states why this does not overturn `SCR-XCT-05`: a banner is not a header, because it is gone when there is nothing to say. Recorded as contradiction 9 against the design system, which is not this lane's to edit |
+| `J-XCT-08` | `P-SEA-03` exception 3 owned the string `C12 is no longer available…` and **no screen named a state that rendered it**; `SCR-SEA-03` rendered "the verbatim string for the `code`" and this event has no code, because nothing was requested. A screen-reader user was never told a seat had left their selection | `SCR-SEA-03` gains a **Seat lost with no request sent** state, a behaviour row, a copy pointer and an accessibility clause putting the codeless notice through the same live region as an error. `SCR-SEA-01` gains the matching state, and its "a seat changes between two polls" row now says which changes are announced and which repaint silently |
+| `J-CUS-10` | `P-HLD-04` was titled *"ten seats per showtime"* and read as a per-showtime limit, while it counts only **live holds** and `P-PAY-10` step 13 deliberately stops counting seats the customer has bought. A test transcribed from the title would assert a rule the server does not enforce | Retitled **"ten seats held at once on one showtime"**, with a paragraph on what the cap bounds and what it does not, exception row 5 (`201` for a second ten-seat hold after a purchase), and a validation note naming the assertion that does **not** belong. No limit is invented: `SRC-003 OPEN-BOOK-01` and `FR-ADR-026` reach one booking and the hold, not successive bookings, so the question is filed as `PROPOSED-BULKBUY-01` |
 
 #### Where I would have had to guess and did not
 
@@ -24113,6 +25980,7 @@ this section now reads 201.
 | 6 | The lane brief names the configuration value `SALES_CUTOFF_MINUTES` | `FR-ADR-042` and `FR-ADR-053` both name it **`SALES_CUTOFF_MINUTES`** | Used `SALES_CUTOFF_MINUTES`, because an `APPROVED` ADR outranks a brief |
 | 7 | `FR-ADR-045`: the running total is "computed from the per-seat prices in the map payload **using the same rounding rule as the server**" | If the payload carries already-rounded per-seat prices, the client applies **no** rounding at all — it sums integers | Read it as the payload carrying rounded integers and the client summing them (`P-SEA-04`). This is the strictest reading and removes the two-implementations risk entirely, which is what `FR-ADR-038` is protecting |
 | 8 | `SRC-002 §8.1.1`: a lock TTL of **7 minutes** | `SRC-002 §E E-1` and `SRC-003 OPEN-HOLD-01`: **3 minutes** | Used 180 seconds from `SEAT_HOLD_TTL_SECONDS`. Recorded here because the withdrawn clause still reads as live text where it stands, and a future reader who opens `§8.1.1` without reading `§E` will get the wrong number |
+| 9 | `COMPONENTS.md §6`: the error banner sits *"inside the scroll container's sticky header area, so it is visible without scrolling"* | `COMPONENTS.md §1.3`, two sections earlier: that container scrolls **horizontally** and *"vertically the map does not scroll inside its own box — rows grow the container and the page scrolls normally"*. A header sticky inside it is sticky against an axis nobody scrolls, so on `P-XCT-25`'s 375px design target the banner naming the lost seat is off-screen | `SCR-SEA-03` pins the banner to the **viewport** while it is live, in the page's scroll context, reserving its own height. **The design system contradicts itself here, two sections apart, and §1.3 is the half that is right** — the horizontal-only scroll is a deliberate decision with its own reasoning. `SCR-XCT-05`'s `Not sticky` application header is not disturbed: a transient banner is not permanent chrome. **`docs/05 B DesignSystem/` is not this lane's to edit; reported, not changed.** |
 
 #### Cross-lane dependencies this lane assumes but does not own
 
@@ -24124,9 +25992,20 @@ this section now reads 201.
   it costs. This dependency is met, not outstanding.
 - **The confirm endpoint and the idempotency record** (lane E3). This lane specifies only the seat's
   view of confirm — the ordering it depends on, and what each outcome does to the seat. It specifies no
-  payment provider, no capture semantics and no idempotency record shape. It does require that the
-  `Idempotency-Key` be generated once per hold and stored in `sessionStorage` beside the hold token, so
-  that `TAB_REFRESHED` in `held_by_me_paying` behaves as the state machine says.
+  payment provider, no capture semantics and no idempotency record shape, **and it does not specify
+  how the `Idempotency-Key` is generated: `P-PAY-09` owns that, because the key is part of
+  `EP-PAY-01`'s wire contract (`S1.2`).** What this lane requires of it is one behaviour and not a
+  generation rule: the key must live in `sessionStorage` beside the hold token and must still be
+  there, unchanged, when a page is refreshed while a confirm is in flight — **so that one confirm can
+  be sent at all and a second press cannot become a second booking**, which is the reason, and **not**
+  so that a refreshed page can replay it. **An earlier version of this note said the key was
+  "generated once per hold".** That would have bound the deliberate payment failure, which fires on a
+  prefix of the key (`P-PAY-07`), to the whole life of a hold — making every retry fail identically
+  and putting `fail -> retry -> succeed` out of reach of the product, which is `J-CUS-04`. `SCR-PAY-01` owns the checkout
+  screen's refresh behaviour and states that it **never** re-sends the confirm; the state machine's
+  `held_by_me_paying` + `TAB_REFRESHED` transition now says the same thing from the seat's side. An
+  earlier version of that guard said the restored page re-sends, which contradicted `SCR-PAY-01`
+  outright and would have put a payment request on every `F5`.
 - **The authentication screen** (lane E6). `P-HLD-05` specifies the stopping point and the
   `sessionStorage` round trip; it does not specify the register-or-sign-in screen itself.
 - **The showtime's materialised seat set** (lane E6, `P-ADM-14`). Every seat-membership test on this
@@ -24160,6 +26039,8 @@ this section now reads 201.
 |---|---|---|
 | `ASSUMED` | Seat category names **Standard, Premium, Recliner** (`SRC-003 OPEN-SEAT-01`, "you pick") | Every worked example in `P-PAY-03` and `P-PAY-04` names them. **The arithmetic does not depend on the names**, only on the uplift integers, so a rename changes the examples and nothing else. The categories are a table, not an enum, so a fourth costs no migration. |
 | `ASSUMED` | Category uplifts `0` / `1250` / `3333` basis points, and the base price `27500` paise, used in the worked examples | These are illustrative inputs, not configured values. A test written from the worked examples must supply them explicitly rather than read them from seed data. |
+| `ASSUMED` | `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX = FAIL_` | No source names a value. The *bound* is not assumed: `P-PAY-07` requires at least one character outside `[0-9a-f-]`, so a browser-minted key cannot carry it by chance, and `FAIL_` satisfies it twice over. Any other value satisfying the check works identically. |
+| `ASSUMED` | `CHECKOUT_EXPIRY_RETURN_DELAY_MS = 5000` | `SCR-PAY-01`'s expired state. Derived from a 13-word zero-state sentence at a **reasoned, not measured** default screen-reader rate of 180 words per minute. **No accessibility testing was performed.** Measure it in Phase 3 and replace the figure. Nothing about correctness depends on it — the hold is already gone at `0:00` and every outcome is decided by the server from Redis. |
 | `ASSUMED` | `PAYMENT_SIMULATED_DELAY_MS = 1500` | `FR-ADR-041` says "a small number of seconds" and names no figure. The value drives the `Retry-After` formula in `P-PAY-09` and the transaction-duration example in `P-PAY-10`. **Measure it in Phase 4 and replace the figure.** The *bound* is not assumed: `FR-ADR-041` requires the delay "well below" the hold, and `P-PAY-07` fixes that as **strictly less than a tenth of `SEAT_HOLD_TTL_SECONDS * 1000`** — 18,000 ms at the ruled 180-second hold. `1500` is a twelfth of that bound and has ample room. |
 | `PROVISIONAL` | Sales close **15 minutes after** the advertised start (`SRC-003 OPEN-BOOK-03`, `FR-ADR-042`) | It bites this lane only through `P-PAY-10` step 4, which does **not** enforce the cut-off. Reversing the sign changes when a hold can be taken, and changes nothing in this epic. |
 | `PROVISIONAL` | Base price is per showtime rather than global (`SRC-003 OPEN-PRICE-01`, `FR-ADR-037`) | `P-PAY-03` reads `showtime.base_price_paise`. If the client reverses this to one global price, the read moves to a configuration value and the formula, the rounding and every worked example are unchanged. |
@@ -24200,6 +26081,41 @@ this section now reads 201.
   request contract, which matters because `P-PAY-06` and `P-PAY-08` both forbid additional properties
   on the body. Rejected alternative: a `simulate_failure` boolean in the body, which would have to be
   accepted by the schema and would then exist in the contract forever.
+- **`[JUDGMENT CALL]` The `Idempotency-Key` is minted per confirm attempt, not per hold, and is
+  discarded on exactly one response.** No source states who generates the key, when, with what entropy
+  or whether it is reissued; the only sentence on the subject anywhere was in lane E2's cross-lane
+  notes, which under `S1.2` carry no authority over this lane's endpoint. Per-hold makes the deliberate
+  payment failure inescapable — the trigger reads the key, so every retry for the life of that hold
+  carries the prefix and `fail -> retry -> succeed` cannot be performed at all. Per-press without a
+  rule is worse: a press after an outcome the client never learned would create a second booking and a
+  second capture. **The rule adopted takes the safe half of each** — re-send the stored key on every
+  ending whose effect is unknown, mint a fresh one only after `402` `PAYMENT_FAILED`, the one response
+  specified to have rolled everything back including its own key row. **Reversible** — it is one stored
+  value, one comparison against the hold token and one clear-on-`402`, and it adds nothing to the wire
+  contract. **It contradicts lane E2's cross-lane note**, which says the key is generated once per
+  hold; that note is named in *Seams this lane depends on* below.
+- **`[JUDGMENT CALL]` `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` must contain a character outside
+  `[0-9a-f-]`.** `FR-ADR-041` bounds the prefix's length and not its alphabet. With the client minting
+  `crypto.randomUUID()`, an all-hex prefix is reachable by chance — `a` fails one confirm in sixteen —
+  which is exactly the randomness `P-PAY-07`'s first paragraph forbids, arriving through configuration
+  rather than through the provider. Rejected alternative: a minimum prefix length, which only names a
+  number an operator can undercut. **Reversible** — one boot-time check.
+- **`[JUDGMENT CALL]` `PAYMENT_FAILED` publishes one string, not two chosen by the hold's state.** The
+  pair claimed a fact the server does not hold at the moment it composes the `402`; the argument is at
+  `P-PAY-01`. Rejected alternative: a Redis read after the failed capture, which buys a true sentence
+  and owes a specification for what the sentence says when *that* read fails. **Reversible** — one
+  string in one owning row and two deferrals.
+- **`[JUDGMENT CALL]` `SCR-PAY-01` re-sends automatically at most three times on
+  `IDEMPOTENCY_IN_FLIGHT`.** `FR-ADR-020` requires the header and specifies nobody's behaviour on
+  receiving it, and this screen's banners carry no control, so the customer had no specified next move.
+  Three is derived at `P-PAY-09` against the per-user bucket and against `P-PAY-10`'s worked
+  transaction duration, which is **reasoned from the configured delay, not measured**. **Reversible**
+  — one integer. 
+- **`[JUDGMENT CALL]` `SCR-PAY-01` waits `CHECKOUT_EXPIRY_RETURN_DELAY_MS` before returning to the seat
+  map at `0:00`, and does not return at all while a confirm is in flight.** Nothing specified an
+  ordering between the disabled label, the zero-state sentence and the navigation, and the in-flight
+  case was not excluded from the navigation at all — which would have abandoned a request the product
+  had just told the customer not to leave. **Reversible** — one named constant and one condition.
 - **`[JUDGMENT CALL]` A failed capture commits its `payment` row in a separate transaction** while the
   booking transaction rolls back. `FR-ADR-041` gives the payment record a `failed` state, and
   `FR-ADR-029` puts the capture inside a transaction that rolls back on failure — so a `failed` row
@@ -24304,9 +26220,20 @@ Named here rather than resolved silently. Both sides are stated.
   render those strings and none of them restates one. **If `P-HLD-14` ever stops publishing an *at
   confirm* row for one of the four, this lane has no copy for it and that is a gap to escalate, not a
   gap to fill.**
+  **Lane E2's cross-lane note says the `Idempotency-Key` is "generated once per hold". This lane now
+  specifies otherwise** — once per confirm attempt, bound to the hold token, re-sent unchanged on any
+  ending whose effect is unknown (`P-PAY-09`). **The behaviour E2's note was protecting is preserved**:
+  `TAB_REFRESHED` in `held_by_me_paying` still finds the key in `sessionStorage` and re-sends it,
+  because the key is cleared only on a `201`, on a `402`, on sign-out, or when the hold token changes —
+  none of which a mid-flight refresh is. **The key is E3's, because it is a property of E3's endpoint**
+  (`S1.2`), and E2's note should be amended to point here rather than to state the rule.
 - **Lane E4** owns the booking reference format and generation, the receipt job, and the confirmation
   screen. `EP-PAY-01` returns `booking_reference` in its `201` body because it is this endpoint's
-  response; the value's shape is `FR-ADR-015`'s and its rendering is `COMPONENTS.md §9`.
+  response; the value's shape is `FR-ADR-015`'s and its rendering is `COMPONENTS.md §9`. **It also owns
+  `SCR-TKT-01`, which `P-PAY-12` requires to carry the line
+  `This booking cannot be changed, cancelled or refunded.`** — that page declares itself the single
+  source for everything it says, so the string lives there; this lane states the requirement and the
+  ruling behind it and writes no copy on that route.
 - **Lane E5** owns the admin writes that set `showtime.base_price_paise` and
   `seat_category.uplift_basis_points`. This lane consumes both and never writes either.
 - **Lane E8** owns `/health/ready`, which `P-PAY-07` requires to report the configured payment
@@ -24318,15 +26245,42 @@ Named here rather than resolved silently. Both sides are stated.
 
 #### Article X candidates raised by this lane
 
-**None new.** Every reserved question this lane touches maps onto an Article X row that already
-exists:
+**No new reserved question. One new `PROPOSED-` row, and it is not reserved** —
+`PROPOSED-REFCHAR-01`, below the table. Every **reserved** question this lane touches maps onto an
+Article X row that already exists:
 
 | Question this lane hit | Existing row |
 |---|---|
-| What a customer is told when the receipt definitively fails, and whether the booking stays valid | `OPEN-EMAILFAIL-01` (`FR-ADR-049`) — carried as `P-TKT-10`, written as `OPEN` |
+| What a customer is told when the receipt definitively fails, whether the booking stays valid, **and what an operator may do about one** — no admin resend exists and none is specified (`P-TKT-11`) | `OPEN-EMAILFAIL-01` (`FR-ADR-049`) — carried as `P-TKT-10`, written as `OPEN` |
 | Whether the receipt may carry a poster or any supplied image | `OPEN-ATTRIB-01` (`FR-ADR-007`) — resolved conservatively: **no image in the email at all** |
 | Whether the link in the receipt reaches the site over TLS | `OPEN-TLS-01` (`FR-ADR-069`) — the link reads `PUBLIC_BASE_URL` from configuration and this lane asserts nothing about the scheme. `FR-ADR-060` records that deliverability without a verified domain is materially worse, which is a second argument for closing this row and a different one from TLS itself |
 | What happens to a receipt when an admin withdraws a showtime that has bookings | `OPEN-SHOWCANCEL-01` (`FR-ADR-023`) — no withdraw capability exists in v1, so this lane specifies nothing for it |
+
+**`PROPOSED-REFCHAR-01` — should the booking reference carry a check character, and should the
+alphabet drop `2`/`Z`, `5`/`S`, `8`/`B` and `6`/`G`?** Class: **product**. Not reserved, and **not
+raised because the build session may not decide it** — `SRC-003 OPEN-TICKET-01` rules the exclusions
+and then says *"Format specified in the PRD"*, so the format is this document's to set and adopting a
+narrower alphabet would be the stricter option, needing no signature (`CONSTITUTION.md` Art III.10).
+
+It is raised rather than decided for two reasons, and the second is the one with a date on it.
+
+1. **It is a larger decision than the gap it closes.** A check character changes the length and
+   therefore the `FR-XXXX-XXXX` presentation form, the copy control, the accessible name that spells
+   the characters, `SCR-TKT-02`'s subject and body, and both endpoints' `reference` parameter — and
+   it only detects a mis-read, it does not correct one, so `P-TKT-02` still refuses to guess. A
+   narrower alphabet fixes the four *visual* pairs and does nothing at all about the spoken set
+   (`B` `C` `D` `E` `G` `P` `T` `V` `Z` `3`, `M`/`N`, `F`/`S`), which is the half that bites at a door.
+   Neither is a small change and neither is a complete fix; choosing between them is a product
+   decision the client should see.
+2. **It stops being decidable at Phase 4.** A reference already issued to a customer cannot be
+   re-cut, and there are no refunds and no reissue path (`SRC-003 OPEN-CANCEL-01`). The change is free
+   while no booking exists and impossible once the first one is confirmed — **the same deadline shape
+   as `OPEN-SEATLABEL-01`, on a different mechanism** (`P-TKT-01`). If the client is to rule it, they
+   must be asked **before the first confirmed booking**, not when somebody notices at a door.
+
+Until it is ruled, `P-TKT-01` stands as written — 8 characters, 30-character alphabet, no check
+character — and `P-TKT-01` now states the residual ambiguity rather than implying the exclusion list
+removed it.
 
 #### Assumptions I had to flag
 
@@ -24334,6 +26288,8 @@ exists:
 |---|---|---|
 | `RECEIPT_RESEND_MIN_INTERVAL_SECONDS = 300` | **`ASSUMED`** | `FR-ADR-048` rules that the resend is rate limited per booking; no source gives a value, and `FR-ADR-058`'s table has no row for this endpoint. The number is a configuration value with a starting figure, not a constraint. It appears in `P-TKT-07`'s worked example and in the copy "in 4 minutes", which is computed from the bucket and not typed into the string |
 | `RECEIPT_CLAIM_STALE_SECONDS = 900`, against a visibility timeout of 120 | **`ASSUMED`**; the name and the value are the cross-cutting configuration inventory's and are adopted here verbatim | `FR-ADR-032` requires the threshold to be configuration rather than a literal and does not give a value. The **ordering** — the threshold must exceed the visibility timeout — is not assumed; it is what stops a duplicate receipt, and `900 > 120` holds with a margin of seven and a half visibility timeouts. The deployment specification owes the client that sentence, and the second one under it: at 900 a stale claim costs eight redeliveries before the reclaim, so `maxReceiveCount` must exceed eight or the message reaches the dead letter queue first (`FR-ADR-059`, `P-TKT-05` worked example). **This lane earlier carried the name `RECEIPT_CLAIM_ABANDON_SECONDS` and the value `300`; both are withdrawn** |
+| `QUEUE_SEND_TIMEOUT_MS = 2000` | **`ASSUMED`**; the name is this lane's and `S7.9` owes it a row | No source states a timeout for the queue client, and `S7.9`'s inventory carried one for Redis, one for the database and one for bcrypt and **none for SQS** — which left the one call that runs inside the customer's confirm request as the only unbounded dependency call in the product. **The bound is not assumed:** it must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS` (20 s) or a SIGTERM during a hung send outlives the drain, and it is the customer's worst-case confirm latency on top of `P-PAY-10`'s ~1.56 s transaction. The **retry** rule is not assumed either — SDK-level retry is disabled on this path, or the wall-clock bound is a multiple of the value. Replaced by Phase 7's load test |
+| `SES_SEND_TIMEOUT_MS = 5000` | **`ASSUMED`**; the name is this lane's and `S7.9` owes it a row | No source states a timeout for the mail client and `S7.9` had no row for one. **The bounds are not assumed:** shorter than the worker's drain (`P-XCT-17` exception 5 makes the drain as long as the message in hand), and far shorter than the queue's visibility timeout so a delivery reaches `sent` or `failed` before its own redelivery arrives. Without it a hung call holds the claim `sending` and **nothing can retake the send for `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds** (`P-TKT-05`). The **unknown-outcome** consequence is stated in `P-TKT-05` rather than assumed away |
 | `OUTBOX_RELAY_MIN_AGE_SECONDS = 30` | **`ASSUMED`** | `FR-ADR-031` says "older than a short threshold" and gives no figure. It sets how long a receipt is delayed after an API crash, which is the figure in `P-TKT-04`'s worked example |
 | Hall sizes and the 100,000-booking figure in `P-TKT-01` | **`ASSUMED`** / illustrative | The hall sizes are `SRC-003 OPEN-SCALE-02`, `ASSUMED`. The 100,000 is a round number chosen to make the collision arithmetic legible and is labelled in the text as not a forecast |
 | Sales close **after** the advertised start | **`PROVISIONAL`** | `SRC-003 OPEN-BOOK-03`. It does not bite this lane — a receipt is sent for a confirmed booking regardless of the cut-off's direction — but it changes which bookings exist, and the seed and test data this lane's tests rely on |
@@ -24415,6 +26371,18 @@ business process, not software, and I specified no door screen, no staff account
 door attendant could use. `EP-TKT-01` is authenticated and returns only the caller's own booking
 precisely so it cannot quietly become the door tool.
 
+**4a. Whether the reference should carry a check character, or a narrower alphabet.** The format is
+the PRD's to set (`SRC-003 OPEN-TICKET-01`: *"Format specified in the PRD"*), so this is not a
+question I was forbidden to answer — it is one I judged larger than the defect that exposed it and
+**time-limited in a way the client has to be told about before Phase 4.** Raised as
+`PROPOSED-REFCHAR-01`. What I did do is stop `P-TKT-01` implying that the exclusion list made the
+reference unambiguous, which it does not.
+
+**4b. What an operator does about a receipt that has definitively failed.** No admin resend endpoint
+was added, no dead-letter redrive was specified, and no bounce subscription was designed. All three
+are the product acting on a post-capture send failure, which is `OPEN-EMAILFAIL-01`. `P-TKT-11` now
+says the operator has nothing to act with, and stops there.
+
 **5. The value of the per-booking resend interval, the claim-stale threshold and the relay
 threshold.** Every one of these is a number no source states. Each is a named configuration value with
 an `ASSUMED` starting figure, flagged above, rather than a literal in the code.
@@ -24478,6 +26446,15 @@ deleted rather than reconciled.
 `SRC-002 §E E-5`. Not a defect — the erratum governs — but it is recorded because a session reading
 `§8.5.1` alone will build a QR code. The same applies to `SRC-001 §5.3.3`'s "scannable ticket",
 corrected by `SRC-001 §E E-9`. **No QR code is generated anywhere in this lane.**
+
+**4a. `FR-ADR-032`'s "a duplicate receipt is impossible" has one case it cannot cover, and it is named
+rather than left implied.** The claim makes two *senders* impossible. It cannot make two *sends*
+impossible when a send's outcome was never returned — a `SendEmail` call abandoned at
+`SES_SEND_TIMEOUT_MS` may or may not have been accepted, and the retry that follows may deliver a
+second identical receipt (`P-TKT-05`). The record is not re-opened and the mechanism is not changed:
+the alternative to retrying an unknown outcome is a customer who has paid and gets nothing, which is
+the worse failure on this product's own terms. **Recorded here because a reader of `FR-ADR-032` alone
+will believe the guarantee is unconditional.**
 
 **5. `CONSTITUTION.md` Art I.6 still names "a booking reference and a scannable ticket" in the win
 condition.** Already recorded as stale by BRD `B1.5` and `lens-merge.md §4`, and not re-litigated here.
@@ -24636,7 +26613,7 @@ lane's endpoint is exactly the convergence this lane structure exists to prevent
 
 #### Article X candidates raised by this lane
 
-Six. Each is a question no frozen source, client ruling or `APPROVED` record answers, and each was
+Seven. Each is a question no frozen source, client ruling or `APPROVED` record answers, and each was
 left open rather than filled with a plausible figure.
 
 **1. `PROPOSED-TURNAROUND-01` — how long between two showtimes in one hall?**
@@ -24691,6 +26668,18 @@ product** — it changes what the product is, which `R-CON-11` reserves. The int
 fail-closed and matches `PROPOSED-ADMINCOUNT-01`'s: no endpoint creates one, a second row is a
 deliberate database action, and **nothing in the design blocks it** — the endpoints are plural, the
 zone is per row, and `EP-ADM-16` keeps `cinema_id` required.
+
+**7. `PROPOSED-SEATALPHA-01` — which letters may a row label use, and is `I` one of them?**
+`P-XCT-30` lays every **seeded** hall out with row letters that skip `I`, because `I` and `1` are
+misread on a printed row marker and at 375 pixels. **`P-ADM-13`'s bound is `1..4` letters and refuses
+nothing**, so an admin laying a hall out by hand may type row `I`, and `EP-ADM-19` and `EP-ADM-20`
+accept it. The label is printed on the emailed receipt and read aloud at the door, and `P-ADM-14`
+freezes it permanently the moment the hall's first showtime exists — **so the correction window
+closes before anyone reads a receipt.** **No source states a permitted alphabet**, the seed's skip is
+demonstration-data convention, and banning a letter is not free either: a hall whose physical markers
+read `I` could not be described accurately. **Class: product.** Distinct from `OPEN-SEATLABEL-01`,
+which asks about **case** and is `reserved: irreversible`; this one asks which letters exist at all,
+and neither answers the other.
 
 #### Judgment calls recorded by the iteration-6 to iteration-9 fix passes
 
@@ -24953,6 +26942,11 @@ merge pass to route. *(Class: cross-lane, and it contradicts a `RULED` BRD row.)
 | **The 429 wait is 1 second, not 30** | **defect corrected**, `S7.20` · `P-RPT-12` | `P-RPT-03` ex. 3, `P-RPT-12` ex. 3 and `SCR-RPT-01`'s copy table all published `Try again in 30 seconds.` The bucket is 60 per 60 s, so `ceil(60/60) = 1` and `S7.20` names this bucket as one where the **singular** ships. **Thirty was neither the capacity, the window, nor the refill interval.** Fourth instance of one class — a bucket's capacity or window written into copy that wanted its refill interval — so the arithmetic is now shown once in `P-RPT-12` and the other two point at it. |
 | **`screen_ids` carries the halls the response covers; an admin gets every screen** | **defect corrected** (`P-RPT-02`, `EP-RPT-01`) | An admin previously emitted `[]` for "no filter", which was **byte-identical to an unassigned manager** while meaning the opposite, and would have rendered `SCR-RPT-01`'s `Halls shown:` line empty for the one caller who sees everything. The resolver's internal `None` no longer reaches the wire. `[]` now means one thing only. `EP-RPT-03` already carried `all_halls` and was left alone. |
 | **The change log's option sets are computed over the date window alone** | **`[JUDGMENT CALL]`** (`P-RPT-11`, `EP-RPT-04`, `SCR-RPT-02`) | Both selects on `SCR-RPT-02`. **Decided because the other reading collapses each select to the option already chosen**, so a reader cannot switch filters without clearing one, and `SCR-RPT-02`'s drop-and-announce rule then cascades between the two selects. The old one-row worked example could not distinguish the readings; it is replaced with a three-row, two-action window where `rows` has one entry and both option sets have two. Reversible: one clause in the query. |
+| **`SCR-RPT-01`'s opening load was specified as one request** | **defect corrected** (`SCR-RPT-01`, `EP-RPT-01`) | The scope line and the hall filter. The screen said *"It is one request: `GET /api/reports/dashboard?period=day`"* while its copy table published `Halls shown: Hall 3, Hall 5.` and its hall filter rendered names and out-of-service marks — and **`EP-RPT-01` returns `screen_ids` as integers only**, with `screen_name` living on `EP-RPT-03` alone. The screen could not render what it was specified to render from the data it was specified to fetch, and would have shipped `Halls shown: 3, 5.` The opening load is now published as a three-request table naming which endpoint carries what, the scope line is a row in the fields table, and `EP-RPT-01`'s own generator block says it carries no name. |
+| **`P-RPT-09`'s 405 escaped the error envelope** | **defect corrected** (`P-RPT-09` exception 3) | Any non-`GET` against a reports path. The row said 405 **with no error code from the registry** and the framework's own body, while `P-XCT-11` exception 3a and the generated `api/error_codes.md` fix `METHOD_NOT_ALLOWED` at 405 inside the envelope. `FR-ADR-052` requires the client to branch on `code`; under the old reading it received none. **This lane's side was the wrong one and was changed.** `METHOD_NOT_ALLOWED` is deliberately absent from every `errors` array here — the generator's `VALID_CODES` would raise, and the code is raised by no route. |
+| **The empty-scope state named neither the scope line nor the hall filter** | **defect corrected** (`SCR-RPT-01` States) | A newly created manager, the caller the state exists for. The enumeration read as exhaustive and no scope-line string was published for an empty scope, so `Halls shown: ` would have shipped with nothing after it — **the same failure `P-RPT-02` closed for the administrator's `[]` and left open for the manager's.** Both are now **absent** when `scope_empty` is true, and no third string is published, because the state's own sentence already answers what a scope line asks. A table now contrasts the two zeros a manager can be looking at — a fact about the account against a fact about the business. |
+| **The week period line broke at a year boundary, and the line had no pattern at all** | **defect corrected** (`SCR-RPT-01` Copy) | The manager's only statement of which window the money covers. One published form carried a single year at the end, so ISO week 1 of 2026 — **Monday 29 December 2025 to Sunday 4 January 2026** — would have rendered `Monday 29 December to Sunday 4 January 2026`, filing 29 December **2026** under a week that ended eleven months earlier. A second form is published for that case and all four period lines are now patterns rather than examples. **`S7.19` is not violated and never was**: it names these three strings and rules that a prose heading naming a span *"stays `P-RPT`'s"*, which is why the pattern was this lane's to owe. |
+| **A manager has no route to an explanation when a figure moves** | **partially closed; the rest is `OPEN-RPTIMMUT-01`, reserved** (`P-RPT-11`, `SCR-RPT-01`) | A manager who reported a number yesterday and reads a different one today. Nothing is stored to compare against (`P-RPT-12`), so **no surface can state that a figure changed** and none claims to; the change log that records the administrator's edit is admin-only with no link in a manager's DOM. Closed: the screen states the figures are recomputed on every load and names an administrator as the route, in two published sentences and **no link**, because a link answering 403 teaches the reader the product is broken. Not closed, and not closable here: *why* a figure moved is `OPEN-RPTIMMUT-01`, reserved for reporting integrity, and widening the change log to managers is an access-to-financial-data decision rather than a stricter adoption. |
 | **The occupancy denominator is the size of the showtime's materialised seat set** | **`[JUDGMENT CALL]`** — recorded as a **deferral**, not a decision of this lane (`P-ADM-14`, `FR-ADR-022`) | `P-RPT-04`'s denominator, and with it every occupancy figure in this epic. **Decided so that the numerator and the denominator are counted over one set**, which is what makes occupancy unable to exceed 100 %; the alternative — a denominator computed live from the screen's current seats — lets a seat added after the showtime existed be sold and counted while the denominator does not move. **The rule is `P-ADM-14`'s and is not restated here**; this lane names the column and points. Reversible in one place: if `P-ADM-14` changes what a seat set is, this row's denominator follows it with no change to any formula above. |
 
 #### Where I would have had to guess and did not
@@ -25119,6 +27113,11 @@ deliberately **not** raised as rows:
 | **`[JUDGMENT CALL]` — one read-path `DEPENDENCY_UNAVAILABLE` sentence** | `SCR-XCT-01`'s copy table, with the boundary stated on `SCR-XCT-02`. **Decided:** "This could not be loaded right now. Nothing was being saved, so nothing was lost. Try again in a moment.", registered as the default for any read endpoint whose own row publishes none. **Why:** every existing sentence for this code says some version of "Nothing was saved", which is **false on a `GET`**; the admin lane hit this, correctly declined to mint a local variant, and a cross-cutting code belongs in a cross-cutting registry. **What it is not:** a replacement for the two read sentences that already exist — `P-BRW-12`'s seat-map string and the browse section's public-site string both outrank it under `S1.2` and both stay. **No frozen source specifies error copy.** **Reversible:** one string in one table. |
 | **`[JUDGMENT CALL]` — one duration-rendering rule** | **S7.20**, with `S7.19` rule 7 pointing at it. **Decided:** the `Retry-After` header is always integer seconds and is never rendered; the sentence reads seconds below 120 and `ceil`-ed whole minutes at 120 and above, with the singular forms specified. **Why:** seven published verbatim strings could not all have come from one function — 240 and 720 became minutes while 900 stayed seconds — and they are rank-2 copy, so an engineer could not pick without overriding a row. The threshold is 120 rather than 60 so a 90-second wait is not overstated by a third. **No frozen source specifies a duration format.** **Reversible:** one function and one constant. **The rendering rule is the judgment call; the arithmetic beside it is not.** The strings changed in this lane are `P-XCT-06` rows 7 to 9 and `SCR-XCT-03`'s copy table, from one wrong figure to three derived ones. **Corrected once since, and the correction is the entry that matters:** the table was published as one constant per bucket, and `P-ACC-14` was right that `Retry-After` is the time actually remaining until the next token. A constant is correct only at the instant the bucket empties and overstates every later retry. The table is **relabelled as the maximum** rather than deleted — the maximum is what it always was, and it is why every published example carries that figure — and a two-retry worked example now shows the value falling. **No published string changed as a result**, because rule 6 already forbade typing the number. |
 
+| **`[JUDGMENT CALL]` — the red-proof drill runs in two stages, and only the second reaches the constraint** | `P-XCT-01` and `S7.1`, deciding `J-XCT-01`. **Decided:** Stage A is the fifty-request hold gate exactly as `SRC-002 §9.1` and `P-HLD-13` require, and it is recorded as exercising the constraint **zero** times; Stage B puts **two live holders on one seat** — by deleting the lock key in Redis inside the `PAYMENT_SIMULATED_DELAY_MS` window of a confirm already in flight — so that two confirms both reach `P-PAY-10` step 7, and *that* is the run the constraint is dropped under. **Why:** the drill as specified could not produce more than one winner. `P-HLD-13` and `P-PAY-11` both fix the gate at the **hold**, where all forty-nine losers are refused by Redis and the constraint is never reached, so dropping it changed nothing — and `P-XCT-01` exception 5 and `P-HLD-13` exception 4 then classified that outcome as a void proof and a stop-the-line finding. **The one gate this project calls never waivable reported failure against a correct implementation.** **Nothing is weakened:** the Redis lock still provides the hold, the constraint plus row locking still provides the truth, and the database half still may not be waived. **It is stricter** — a guard exercised zero times is now exercised, watched failing, and watched working again — so it needs no signature (Art III.10). **Deleting a lock key is a fault injection, not a disabled control:** the lock layer, both `SET … NX` calls, both token re-validations and the rate limiter all run normally, and a key disappearing is what an eviction or a restart does on its own — the very failure `S7.1` names as the reason the second layer exists. **Local only**, because Stage B needs direct Redis access and the constraint drop is a destructive schema change. **Reversible:** it is a test procedure; no schema, no application code and no published customer string changes. **Two cross-file corrections follow from it** — `P-HLD-13`'s acceptance criterion and exception 4 in `E2_seat_hold.md`, and `P-PAY-11`'s worked example in `E3_checkout_payment.md` — **named, not edited.** |
+| **`[JUDGMENT CALL]` — how the seed is run against a deployed environment, and how its password gets there** | `P-XCT-32`, deciding `J-XCT-03`. **Decided:** a fourth entrypoint command, `seed`; a one-off ECS task on **its own task definition family**, not the service's; and `SEED_DEFAULT_PASSWORD` as an SSM `SecureString` referenced by `valueFrom` **from that family alone**. **Why:** both this row and `P-XCT-30` assigned the deployed run to the client and neither said how, while `S7.9` makes the variable seed-only so it cannot ride in on the service's `secrets` block — leaving the only route to a first password with no route into the environment. **Phase 2 had no admin who could sign in and Phase 4 had no fifty customers.** **Why a separate family rather than a command override:** overriding a command is ECS's ordinary mechanism and the migration run uses it, but a secret must be *in* a family to be resolved from it, and putting it in the shared family is exactly what the seed-only rule forbids. **Two families, one image**, so the code and the seed stay the same build. **All of it is Zone C and the build session builds none of it** — what is owed is the command, the variable, the parameter path, the execution-role grant and the acceptance criterion. **A prep-queue row with a needed-by of Phase 2 is owed and is named in the return, not written** (`S7.16`). **Reversible:** one entrypoint branch and one task definition. |
+| **`[JUDGMENT CALL]` — four rules that say who scrolls the seat map and to where** | `P-XCT-25`, deciding `J-XCT-06`. **Decided:** the container is scrolled to its leading edge on first paint; to the minimum position that brings a keyboard-focused seat **fully** into view; to the first restored seat of a restored selection; and to the first seat an error names. Plus `scroll-padding-inline-start: var(--fr-seat-gutter)`, so no focused cell can come to rest under the pinned row gutter. **Why:** every row in the document said the map *scrolls* and **nothing anywhere moved it**, so arrow-key focus routinely landed on a seat outside the visible strip and the pinned gutter overlaid the leftmost cells. The second of those is **WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum)**, new at AA in 2.2 and inside the target `P-XCT-24` adopts. **It is fixed rather than recorded as a deviation**, because `P-XCT-24` carries exactly one deviation — the unextendable hold — and a second one would be a real regression dressed as bookkeeping. **The hall size behind the ten-of-twenty split is `ASSUMED`** under `OPEN-SCALE-02` and does not harden; the rule does not depend on it. **Reversible:** four scroll calls and one CSS property. |
+| **`[JUDGMENT CALL]` — the seed writes no `audit_log` row, and the absence is specified** | `P-XCT-30`, deciding `J-ADM-13`. **Decided:** `scripts/seed.py` writes no audit row for anything it creates, and every seeded row is identified instead by its `DEMO` prefix and the reserved `.invalid` domain. **Why:** `P-ADM-19` makes `actor_user_id` non-null and forbids **both** a role name and a service account, and the seed creates the first admin itself — so at its earliest writes no user row exists for an actor column to point at. All three ways out are worse: a null actor breaks the rule in the one table whose value is that its rows are true; a `seed` service account is forbidden in terms; attributing 720 showtimes to `admin-01` is a false statement about who did it. **The scope this rests on:** a privileged write is an admin action arriving through the API, and the seed is provisioning by a script. **It is the only exemption from `P-XCT-03` in the product and no application code path inherits it.** **The gap is recorded, not closed:** the Phase 8 change log shows nothing before the first real admin action, and a reader will assume the catalogue was made by hand. **Reversible:** it is an absence; adding rows later needs an actor the product does not yet have. |
+
 #### Where I would have had to guess and did not
 
 1. **What a customer is told when the receipt definitively fails after payment is captured.**
@@ -25202,7 +27201,30 @@ deliberately **not** raised as rows:
    itself** — `900 seconds`, which is the sign-in *window* — which is why the fix was to tabulate the
    derivation for all thirteen buckets in **S7.20** rather than to correct four strings. **The three
    are named there and not edited**; each is copy its own lane's row publishes.
-6. **"This repository is public" appears in several `APPROVED` records, and the repository is now
+6. **`P-XCT-05` gave `404` where `P-RPT-09` and the error registry give `405`.** A `POST` on the
+   reports router addresses a path that exists and serves `GET`, so `405` is correct and `404` denies
+   that the address exists. **The negative test for the read-only router is transcribed from one of
+   the two rows**, so a suite built from the old line passed against a wrong implementation while one
+   built from the registry failed against a correct one. **This section's line was the wrong one and
+   is corrected here**; the `newerrorcode` block in `S6` is widened in the same pass, because it
+   described only the `DELETE` case and **the machine-readable copy is the one that reaches the
+   artifact.** `P-RPT-09` row 3 additionally calls the response *"the framework's method-not-allowed
+   response"*, which contradicts `FR-ADR-052` and `P-XCT-11` — **that half is lane E7's and is named
+   here, not edited.**
+7. **`P-XCT-05` and `P-RPT-01`/`P-RPT-02`/`P-RPT-08` publish different sentences for the same four
+   refusals.** No session, wrong role, an out-of-scope hall, an empty scope — and two of the four
+   pairs are different sentences rather than paraphrases. **Both are rank-2 rows, so `S1.2` does not
+   settle it and `S1.2.1` case 1 makes an unresolved rank-2 tie a defect rather than the implementer's
+   choice.** Resolved the way `SCR-XCT-01` resolves `FORBIDDEN` and `AUTH_REQUIRED`: **the row that
+   knows what the caller could not reach owns the words**, and this section's four are the generic
+   floor for any router whose own P-row publishes nothing. **Nothing in `E7_dashboard.md` was
+   touched.**
+8. **`S7.18` puts `P-XCT-08` and `P-XCT-09` in Phase 3 while `AWS_PREP_QUEUE.md` row 8 gives
+   ElastiCache Redis a needed-by of Phase 4.** Phase 3's seat-map read is rate-limited and the limiter
+   fails closed, so without Redis **Phase 3's own acceptance cannot be demonstrated in AWS at all.**
+   The phase table is right and the queue row is one phase late. **This lane writes nothing to that
+   file** (`S7.16`); the correction is named in the return.
+9. **"This repository is public" appears in several `APPROVED` records, and the repository is now
    private.** Adjudicated in `FR-ADR-071`: no rule changes, one rationale does, and the records are not
    edited. **This section asserts neither**, and states the no-credentials floor as a constitutional
    floor rather than as a consequence of visibility — which is the stronger ground `FR-ADR-071`

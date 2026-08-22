@@ -947,7 +947,7 @@
         },
         "headers": {
           "Content-Type": "string, must be multipart/form-data, REQUIRED",
-          "Content-Length": "integer, 1..2097152 bytes, REQUIRED - checked before the body is read"
+          "Content-Length": "integer, 1..2097152 bytes, REQUIRED - checked at the header, before the body is read. This check does NOT mean the body is never buffered: steps 6 and 7 of P-ADM-03 decode the image and measure its pixel dimensions, which needs the bytes. What the check buys is that the buffer's size is known and refused before a byte is read, so no request makes the process hold more than 2 MB (P-ADM-03)"
         },
         "body": {
           "file": "one file part, image/jpeg or image/png or image/webp, magic bytes must match the declared type, must decode, 200..4000 by 300..6000 pixels, required",
@@ -985,7 +985,7 @@
           "description": "No file part, more than one file part, no Content-Length, no version part, or dimensions out of range"
         },
         "503": {
-          "description": "S3 or Postgres unreachable; the poster was not saved against the film"
+          "description": "S3 or Postgres is unreachable, times out, or answers a RETRYABLE failure; the poster was not saved against the film. A NON-retryable S3 refusal - the credential is not permitted to write, the bucket does not exist, or a quota or policy refuses the object - is 500 INTERNAL_ERROR instead, because 'try again in a moment' is false for it and the admin cannot fix a storage credential from a form (P-ADM-03 exceptions 12 and 12b)"
         }
       },
       "errors": [
@@ -1254,7 +1254,7 @@
           "screen_id": "integer, must exist and be in service, required",
           "starts_at": "string, ISO-8601 local date and time in Asia/Kolkata, required. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
           "ends_at": "string, ISO-8601 local date and time in Asia/Kolkata, strictly after starts_at, required. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
-          "base_price_paise": "integer, 1 or more, required. Paise only; a decimal is rejected, never rounded",
+          "base_price_paise": "integer, 1 or more, required. Paise only; a decimal is rejected, never rounded. UPPER BOUND, and it is arithmetic and not a business figure: base_price_paise * (10000 + highest stored uplift_basis_points) + 5000 must be <= 2^63 - 1, so that FR-ADR-038's seat-price formula cannot overflow the bigint columns it runs in. At the highest seeded uplift of 3333 basis points that caps the base price at 691770197019033 paise. Above it, 422 VALIDATION_FAILED with P-ADM-10 exception 4's sentence. NO BUSINESS CEILING EXISTS in any source and none is invented - PROPOSED-PRICEBOUND-01 in the Lane notes",
           "format_id": "integer, must be an active row of the format vocabulary (P-ADM-23), optional. A showtime with no format answers null on the browse surface and is excluded by any format filter"
         }
       },
@@ -1333,7 +1333,7 @@
           "movie_id": "integer, must exist, optional",
           "starts_at": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
           "ends_at": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07). Strictly after starts_at IN THE MERGED ROW - this is a partial update and every bound is evaluated against the row as it would be after the patch, so sending either time alone is checked against the stored other time and can fail 422. The overlap check of P-ADM-08 also runs against the merged interval (P-ADM-09)",
-          "base_price_paise": "integer, 1 or more, optional. Paise only",
+          "base_price_paise": "integer, 1 or more, optional. Paise only. UPPER BOUND, arithmetic and not a business figure, identical to EP-ADM-10's: base_price_paise * (10000 + highest stored uplift_basis_points) + 5000 must be <= 2^63 - 1, so FR-ADR-038's seat-price formula cannot overflow the bigint columns it runs in. At the highest seeded uplift of 3333 basis points that caps the base price at 691770197019033 paise. Above it, 422 VALIDATION_FAILED with P-ADM-10 exception 4's sentence (P-ADM-10)",
           "format_id": "integer, must be an active row of the format vocabulary, optional. Send null to clear it"
         }
       },
@@ -2702,7 +2702,7 @@
       ],
       "idempotency": "safe method — no state change",
       "rate_limit": "none",
-      "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record.",
+      "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record. P-BRW-01 tabulates this endpoint as one of the three in the epic that apply no gate, so the row and this block agree; WHETHER it should apply them is OPEN-BRWVIS-01, which is OPEN and reserved, and neither the row nor this block answers it. Until it is ruled, no movie gate is applied here.",
       "satisfies": [
         "P-BRW-05",
         "P-BRW-06",
@@ -2769,8 +2769,8 @@
         "INTERNAL_ERROR"
       ],
       "idempotency": "safe method — no state change",
-      "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated. The limit exists to stop scraping, not browsing: one legitimate poller uses 20.",
-      "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server.",
+      "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated and there is no user to key one on. The limit exists to stop scraping, not browsing: one legitimate poller uses 20 — so the bucket admits SIX concurrent viewers from one address and refuses the seventh, and guests behind one office, household or carrier NAT address share that single bucket (P-BRW-11). A refused poll takes P-BRW-11 exception 3 and a refused first load takes exception 4; the first load never renders the 'will update again shortly' string, because no poll loop exists yet to deliver that update.",
+      "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server. It applies no movie visibility gate either, exactly as EP-BRW-05 does not: P-BRW-01 tabulates both, and whether either should is OPEN-BRWVIS-01, which is OPEN and reserved.",
       "satisfies": [
         "P-BRW-05",
         "P-BRW-08",
@@ -2820,7 +2820,7 @@
           }
         },
         "503": {
-          "description": "PostgreSQL unreachable"
+          "description": "PostgreSQL unreachable. The listing endpoint is independent and is unaffected: SCR-BRW-01 still renders in full, with no reference-backed filter control, with its date strip and Clear filters intact, and with one line reading 'Filters are unavailable right now.' That line is the only thing distinguishing this outage from the correct day-one rendering, which produces the same three absences and carries no message (P-BRW-04 exception 5, SCR-BRW-01)."
         }
       },
       "errors": [
@@ -3022,7 +3022,7 @@
       },
       "responses": {
         "200": {
-          "description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended.",
+          "description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended. P-HLD-08's eight numbered steps are the procedure and the block does not repeat them; two are easy to miss and neither is optional - step 6 DEL cache:seatmap:{showtime_id} AFTER the lock release, and step 8, which on the LAST seat also removes the token from holds:user:{user_id}:showtime:{showtime_id} so P-HLD-04's cap stops counting a hold that has ended.",
           "body": {
             "hold_token": "string",
             "showtime_id": "integer",
@@ -3096,7 +3096,7 @@
       },
       "responses": {
         "204": {
-          "description": "Every key in the hold was released with the compare-and-delete script and the hold record was deleted."
+          "description": "The whole hold was released. P-HLD-08 carries the numbered procedure and it is SEVEN steps, not one: assert the caller owns the hold; compare-and-delete every key in ascending seat_id order; remove those keys from instance:{instance_id}:holds; delete the hold record; REMOVE THE TOKEN FROM holds:user:{user_id}:showtime:{showtime_id}, without which P-HLD-04's cap keeps counting a hold that no longer exists and the customer cannot re-take the seats they just gave back; DEL cache:seatmap:{showtime_id} AFTER the releases and never before, without which the seats read held to everyone else for up to the cache TTL instead of about three seconds; then answer 204 with no body. Steps 2 to 6 are best-effort - every structure carries the hold's TTL - and a compare-and-delete returning 0 for one seat is not an error and does not stop the loop."
         },
         "400": {
           "description": "The hold token is malformed - not exactly 43 characters, or carrying a character outside the URL-safe base64 alphabet. Checked before Redis is touched. REQUEST_INVALID, never HOLD_EXPIRED, for the reason given on EP-HLD-02."
@@ -3108,7 +3108,7 @@
           "description": "The token belongs to another user."
         },
         "409": {
-          "description": "The hold has already expired. A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."
+          "description": "The hold has already expired. None of the release steps run: there are no keys to release, and the hold record and the index entry carried the same TTL and are gone with them. In particular NO cache:seatmap DEL runs on this branch - an expiry frees seats without telling the cache anywhere in this document, and adding one here would invent an invalidation the expiry path has never had (P-HLD-02 exception 3). A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."
         },
         "429": {
           "description": "The per-user or per-IP token bucket is empty."
@@ -3151,7 +3151,7 @@
         "path_params": {},
         "query": {},
         "headers": {
-          "Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID"
+          "Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID. GENERATED BY THE CLIENT, never by the server: crypto.randomUUID()'s canonical 36-character form, 122 random bits from a CSPRNG, one per CONFIRM ATTEMPT (not one per hold). It is written to sessionStorage before the request is sent and re-sent unchanged on any repeat of the same attempt, including one whose outcome the client never learned. A fresh key is minted only when there is no stored key, when the stored key was minted against a different hold_token, or when the previous attempt returned 402 PAYMENT_FAILED — the one outcome specified to have committed nothing (P-PAY-09)"
         },
         "body": {
           "hold_token": "string, opaque, exactly 43 characters from the URL-safe base64 alphabet, required",
@@ -3182,7 +3182,7 @@
           "description": "No valid token. A guest cannot reach this endpoint."
         },
         "402": {
-          "description": "The simulated provider returned failed. The transaction rolled back; the hold survives if it has not expired."
+          "description": "The simulated provider returned failed. The transaction rolled back in full, taking its idempotency record with it, so nothing was booked and nothing was captured. The hold is untouched by this endpoint and survives if it has not expired. The published message makes no claim about which, because the confirm re-validates the hold at step 2 and the capture is step 6 and Redis is not read again before commit — it names what the server knows and points the customer at the countdown for the rest (P-PAY-01 exception 4). This is the only response after which the client mints a fresh Idempotency-Key."
         },
         "403": {
           "description": "The hold token exists but was issued to a different user."
@@ -3217,7 +3217,7 @@
         "INTERNAL_ERROR"
       ],
       "errors_deliberately_absent": "SALES_CLOSED is NOT in the array above and cannot be raised by this endpoint. The sales cut-off is enforced once, at hold acquisition (P-HLD-06), and never re-checked at confirm - SRC-003 OPEN-BOOK-03 rules that anyone already holding seats may finish checking out, and a client ruling outranks FR-ADR-029 step 4, which reads otherwise (see this lane's contradiction 1). A customer whose cut-off passes mid-checkout completes normally: P-PAY-10 step 4 reads the showtime and does not gate on it. The absence is therefore a decision, not an omission, and it is recorded here because four sections discuss the cut-off at confirm and a reader who finds none of them conclusive would otherwise add the code.",
-      "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted.",
+      "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted. On 409 IDEMPOTENCY_IN_FLIGHT the client re-sends the identical request automatically after Retry-After seconds, at most three times, and keeps its busy state while it does; every one of those re-sends spends a rate-limit token, which is why the count is bounded rather than a poll (P-PAY-09).",
       "rate_limit": "Redis token bucket, two independent buckets and both must have a token: 10 per minute per user id, 30 per minute per real client IP. The real IP is the rightmost-but-one X-Forwarded-For entry with exactly one trusted proxy. The limiter fails closed with 503 when Redis is unreachable. A retry carrying an already-seen Idempotency-Key still consumes a token.",
       "authorisation_rule": "The router requires a valid JWT for an existing user row and nothing more; the booking is always written against that user id, which is taken from the token and never from the request body. There is no role check beyond authentication, because no source restricts owning a booking by role and a guest is already stopped one step earlier at the hold.",
       "satisfies": [
@@ -3273,7 +3273,7 @@
             "evaluated_at_utc": "string, ISO-8601 instant taken from the injected clock",
             "timezone": "string, the cinema's IANA zone, Asia/Kolkata",
             "scope_empty": "boolean, true when the caller has no halls assigned",
-            "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array.",
+            "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array. INTEGERS ONLY: this endpoint carries no screen_name and no is_active flag. SCR-RPT-01 renders its scope line and its hall filter from EP-RPT-03's screens array, looking these ids up in it, and never from this field alone — a screen fetching only this endpoint would render 'Halls shown: 3, 5.'",
             "takings_paise": "integer, minor units, never a float and never a formatted string",
             "seats_sold": "integer",
             "capacity": "integer, the sum of seat_count_at_creation over the period's showtimes",

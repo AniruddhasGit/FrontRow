@@ -482,8 +482,31 @@ questions the build session may not answer.** Each is stated in full in `docs/11
 documents stop and went no further - `CONSTITUTION.md` Art III.7 and the `GOAL_06` guardrail both
 say an unknown becomes a row here, never a plausible guess.
 
-**Total open rows: 22** - four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e.
-**Fifteen are reserved and seven are not.** Count them from this file, never from this sentence.
+### X.0f - Raised by the PRD fix wave, 2026-08-22 - filed, **not decided**
+
+Nine agents repaired the 65 PRD defects the journeys filed (`docs/11 Journeys/DEFECTS_FOUND.tsv`).
+**Four times an agent reached a question it could not answer without deciding something reserved,
+and stopped.** Each is recorded here with the fix it was refused to. Two carry a deadline rather
+than only a direction.
+
+| ID | Raised by | Question | Class |
+|---|---|---|---|
+| `OPEN-REFCHAR-01` | E4, from `J-ENT-06` | **The booking reference alphabet drops `0 1 I L O U` as `SRC-003 OPEN-TICKET-01` asked, but keeps `2/Z`, `5/S`, `8/B` and `6/G`, and carries no check character.** The reference is the customer's only proof of purchase and only way into the hall, and it is **read aloud and transcribed by eye at a door with no software in the path** - there is no scanner and no validation endpoint. A misread character is a paying customer refused entry. Adding a check character or narrowing the alphabet costs nothing today. **A reference already issued cannot be re-cut**, so this stops being fixable at the first confirmed booking. | **reserved: irreversible** |
+| `OPEN-SEATALPHA-01` | E6, from `J-ADM-10` | **The seed skips the letter `I` in row labels; `P-ADM-13` permits it; `P-ADM-14` freezes the label permanently once a showtime exists on that hall.** The agent refused to ban the letter on the strength of a demonstration-data convention, naming it as the same failure `SRC-002 §8.1.1`'s seven-minute hold already produced on this project - an assumption hardening into a specification because nobody decided it. Banning `I` is also not free: a hall whose physical row markers **do** read `I` could not be described accurately, and a label that does not match the sign on the wall is the door problem from the other side. | **reserved: irreversible** |
+| `OPEN-BULKBUY-01` | E2, from `J-CUS-10` | **The ten-seat maximum is per BOOKING. Nothing limits how many seats one customer may buy on one showtime across successive bookings.** `SRC-003 OPEN-BOOK-01` reads *"10 maxx"* against a question about one booking, and `FR-ADR-026` decides only **where** the cap is enforced, not what it counts. One customer can therefore take a hall in ten-seat instalments. The agent documented the actual behaviour and **added no limit**, because adding one is a scope change. | **reserved: scope** |
+| `OPEN-EMAILOWN-01` | E5, from `J-XCT-09` | **Registering with an address that is not yours is an accepted weakness (`P-ACC-04`, no email-verification gate in v1). What was not recorded when it was accepted is that it has no route back.** The real owner resets the password to that address, the password-version increment kills the registrant's sessions, `/api/me` then scopes to the new owner - and **no endpoint patches an account's email**, the address is permanent, and there is no support desk. The chain is a complete account takeover in either direction with no recovery, on accounts holding permanent, non-refundable bookings. **The client accepted the weakness; this consequence was not in front of them when they did.** | **reserved: product** |
+
+**Two of these expire.** `OPEN-REFCHAR-01` is free until the first confirmed booking, which is
+**Phase 4** - the same phase as the never-waivable concurrency proof. `OPEN-SEATALPHA-01` is free
+until the first showtime exists on a hall, which is **Phase 2**, the same deadline `OPEN-SEATLABEL-01`
+already carries and for the same reason. **A reserved row with no deadline waits for the client.
+These two do not.**
+
+**Each was raised by an agent that could have quietly decided it and did not.** That is the
+behaviour Art III.7 asks for, recorded here so the refusals are visible rather than invisible.
+
+**Total open rows: 26** - four in X.0, thirteen in X.0b, one in X.0c, one in X.0d, three in X.0e, four in X.0f.
+**Nineteen are reserved and seven are not.** Count them from this file, never from this sentence.
 
 > **The reserved count was wrong everywhere it was written before now.** `HANDOFF_2026-08-15_0425`
 > and `PROGRESS.md` both say *"18 open Article X rows, 7 reserved."* **Seven is the count of the rows

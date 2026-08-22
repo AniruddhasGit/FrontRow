@@ -190,15 +190,29 @@ does not remove it by omission. **The fix is to add the step**, so the procedure
 fact and not only in form.
 
 This case has now been found twice, which is why it is a rule and not a correction. `P-PAY-10`'s
-confirm transaction listed eleven steps and a sixteen-row crash table and never mentioned the
-`receipt_dispatch` insert that `P-TKT-04` says happens inside it — build it from its owning row alone
-and **no receipt is ever sent**. `P-HLD-01` and `P-HLD-08` list the hold and release procedures and
-never mention the seat-map cache `DEL` that `P-BRW-12` — the declared owner of seat-map invalidation
-— requires after both. The consequence there is smaller and still observable: the live seat map moves
-in about three seconds or in about thirteen, on the one screen the product is about.
+confirm transaction listed eleven steps and a crash table walking every one of them, and never
+mentioned the `receipt_dispatch` insert that `P-TKT-04` says happens inside it — build it from its
+owning row alone and **no receipt is ever sent**. `P-HLD-01` and `P-HLD-08` listed the hold and
+release procedures and never mentioned the seat-map cache `DEL` that `P-BRW-12` — the declared owner
+of seat-map invalidation, whose invalidation table names a release as a trigger in the same breath as
+a booking — requires after both. The consequence there was smaller and still observable: the live
+seat map would move in about three seconds or in about thirteen, on the one screen the product is
+about.
 
 **Both were found by readers, not by the checks**, and that is the point worth keeping: a missing step
 resolves cleanly, produces no contradiction a grep can find, and every gate stays green.
+
+**Both have since been fixed at their sites, and both examples are written in the past tense for that
+reason.** `P-PAY-10` now carries the `receipt_dispatch` insert; `P-HLD-01` and `P-HLD-08` each now
+carry the `DEL`, and each states on its own row why it sits where it does in the order rather than
+leaving the position to be inferred. **A reader who checks this case against those rows will find the step already
+there, and that is the rule having been applied rather than the rule having been withdrawn.** The
+distinction is not decoration: an example that reads as live when its instance is closed is itself the
+drift this section exists to catch, and a reader who cannot tell which they are looking at will
+reasonably conclude the rule was dropped. **A case that has been closed everywhere it was found is
+still a case** — this rule stands on the shape of the situation, not on there being a live instance
+of it, and the next exhaustive step list written in this document will be silent about something in
+exactly the same way.
 
 **8. One owning row that contradicts itself.** The ranking compares passages of different kinds, so
 it has nothing to say when **a single row, declared owner of a thing, states it two ways.** There is

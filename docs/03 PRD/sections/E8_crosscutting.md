@@ -51,25 +51,64 @@ environment.
   an untimed warm-up phase that signs in through the real sign-in endpoint, and why the login rate
   limiter therefore cannot touch the result — is `P-XCT-07`'s, and the arithmetic is written there
   once rather than in every row that depends on it.**
+- **Stage B of the drill additionally needs direct command access to the Redis instance under test
+  and a non-zero `PAYMENT_SIMULATED_DELAY_MS`.** Both hold in the local compose stack and neither
+  holds in AWS, which is one more reason the drill is local only.
 
 **Happy path.**
 1. A customer holds seats. Redis grants the lock atomically, one winner per seat.
 2. The customer confirms. The confirm transaction re-validates the hold, then inserts the
    seat-occupancy rows.
 3. The unique constraint accepts them. The booking commits.
-4. Fifty simultaneous requests for one seat produce exactly one HTTP 201 and forty-nine 409s, **and
-   exactly one row in the seat-occupancy table for that `(showtime_id, seat_id)`, read directly from
-   PostgreSQL.**
+4. Fifty simultaneous **hold** requests for one seat produce exactly one HTTP 201 and forty-nine 409
+   `SEAT_UNAVAILABLE`, and — once the winner confirms — **exactly one row in the seat-occupancy table
+   for that `(showtime_id, seat_id)`, read directly from PostgreSQL.** **All forty-nine are refused by
+   the Redis lock at `SET … NX`; the unique constraint fires zero times in a passing run of that gate.**
+   `P-HLD-13` owns the gate and this row does not redefine it.
+
+**Which layer refuses whom — and why the drill cannot fire at the hold.**
+
+**The two layers are not two chances at the same event. They catch different events, and only one of
+them is reachable from the fifty-request gate.**
+
+| Layer | Refuses | Reached by |
+|---|---|---|
+| The Redis lock, `SET … NX` | a second customer asking for a seat **while a first customer holds it** | every one of the forty-nine losers in the fifty-request gate |
+| The unique constraint at insert | a second customer **confirming** a seat that already has a committed `booking_seat` row — which can only happen when **Redis was wrong**: an eviction, a restart, a clock difference or a bug in the release path | **nothing in the fifty-request gate.** Only one caller ever reaches `P-PAY-10` step 7, and they reach it uncontended |
+
+**So dropping the unique constraint changes nothing observable at the hold endpoint.** Redis still
+grants one lock, one customer still confirms, and `SELECT count(*)` still returns `1`. **A drill that
+drops the constraint, re-runs the fifty-request gate and expects more than one winner is asking the
+wrong endpoint a question it cannot answer** — and, worse, the specification then classifies a correct
+implementation as a stop-the-line finding. That defect was real and is corrected here: **the red-proof
+drill runs in two stages, and only the second one touches the constraint.** The stages are below, and
+`S7.1` carries the procedure.
+
+**The two-system guarantee is unchanged and is not weakened by this.** A Redis lock still provides the
+hold, the unique constraint plus row locking still provides the truth, and **the database half may
+still not be waived.** What changed is which endpoint the proof fires at, and the change is **stricter**
+— the gate as it stood exercised the constraint zero times, and it now exercises it explicitly and
+watches it fail. Adopting a stricter option needs no signature (`CONSTITUTION.md` Art III.10).
 
 **Exception paths.**
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | The unique constraint fires at insert — another booking took the seat first | 409 `SEAT_UNAVAILABLE` | "C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected." |
+| 1 | The unique constraint fires at insert — another booking took the seat first. **This is the confirm path** (`P-PAY-10` step 7), never the hold | 409 `SEAT_UNAVAILABLE`, the whole confirm transaction rolled back | **`P-HLD-14` row 4 (one seat lost) or row 4b (two or more) — the *at confirm* sentences. This row publishes none of its own** (`P-PAY-11`) |
 | 2 | The hold is gone at confirm | 409 `HOLD_EXPIRED` | "The hold on your seats has ended and they have been released. You have not been charged." |
 | 3 | Redis is unreachable on the hold or confirm path | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. Browsing still works. Try again in a few minutes." |
 | 4 | The stress script's fifty request start instants span more than the configured threshold | the script exits non-zero with "not concurrent" | *(no user-facing surface — this is a build gate)* |
-| 5 | The red-proof drill runs with the constraint dropped and still produces one winner | the drill is recorded as **failed** and the whole proof is void | *(no user-facing surface — this is a stop-the-line finding)* |
+| 5 | **Stage B** of the drill runs with the constraint dropped and still produces exactly **one** `booking_seat` row for the pair | the drill is recorded as **failed** and the whole proof is void — the run did not reach the constraint | *(no user-facing surface — this is a stop-the-line finding)* |
+| 5a | **Stage A** — the fifty-request gate — is run with the constraint dropped and produces one winner | **that is the expected result and it is not a finding.** Stage A fires at the hold, where Redis decides the winner and the constraint is never reached. **A drill that reads Stage A as the red proof has proved nothing**, and reading it as a failure blocks a story for a defect that is not there | *(no user-facing surface)* |
+
+**Why exception 1 publishes no sentence of its own, when it used to.** It previously carried
+`"C12 and C13 were taken by another customer. No seats were held. Your other choices are still
+selected."` — which is `P-HLD-14` row 3, the ***at hold*** sentence, on a trigger that fires at
+**confirm**. A customer who held seats, paid, and had the whole transaction rolled back was being told
+that no seats were held and that their other choices were still selected: both halves untrue, and
+`P-SEA-03` states in terms that a message on that path may never say *held* where the customer's seats
+were only *selected*. `P-HLD-14` declares itself the complete message set for these codes and gives
+the confirm case rows 4 and 4b; `P-PAY-11` defers to them by name and so does this row.
 
 **Server-side validation.** The constraint is a database object, not a check in code. A pre-insert
 `SELECT` to see whether a seat is free is **not** validation and must not be written: a
@@ -77,18 +116,51 @@ environment.
 row, both proceed and both insert. The violation is caught at insert and translated; it is never
 retried, and it is logged as an expected outcome with a counter, not as an exception.
 
-**Worked example.** Fifty concurrent requests for showtime `41`, seat `312`.
+**Worked example — Stage A, the fifty-request gate** (`SRC-002 §9.1`, `P-HLD-13`). Fifty concurrent
+**hold** requests for showtime `41`, seat `312`.
 
 ```
 HTTP 201 responses ............ 1        (exactly one, never "at most one")
-HTTP 409 SEAT_UNAVAILABLE ..... 49
-rows in booking_seat where (showtime_id, seat_id) = (41, 312) ....... 1
+HTTP 409 SEAT_UNAVAILABLE ..... 49       all forty-nine refused by Redis at SET … NX
+rows in booking_seat where (showtime_id, seat_id) = (41, 312) ....... 1   (after the winner confirms)
 request start-instant spread .. 38 ms    (threshold 100 ms — the script trusts its own result)
+unique-constraint violations .. 0        <- the figure that makes Stage B necessary
 ```
 
-Then the drill: drop the unique constraint, re-run, observe **more than one** row for `(41, 312)`;
-restore the constraint; re-run and observe one row again; read the constraint back from the
-catalogue. Recorded with who ran it and when. **An undated claim that it was run is not evidence.**
+**Worked example — Stage B, the red-proof drill.** Stage B has to produce **two live holders of one
+seat**, because that is the only state from which two confirms both reach `P-PAY-10` step 7. It
+produces it by injecting the exact Redis failure the database half exists to survive — **the loss of a
+lock key** — inside the confirm window that `PAYMENT_SIMULATED_DELAY_MS` opens.
+
+```
+PAYMENT_SIMULATED_DELAY_MS = 1500        the window step 6 spends, and the drill's working room
+
+t = 0.00 s   A: POST hold (41, 312)          -> 201, token tA, key lock:seat:41:312 = tA
+t = 0.10 s   A: POST confirm, async          -> step 2 re-validates tA and passes; step 6 begins
+t = 0.30 s   drill: DEL lock:seat:41:312     <- an eviction, injected by hand, in Redis
+t = 0.40 s   B: POST hold (41, 312)          -> 201, token tB.  SET … NX succeeds, the key is gone;
+                                                P-HLD-01 step 7 reads booking_seat and finds nothing,
+                                                because A has not committed.  TWO LIVE HOLDERS.
+t = 0.50 s   B: POST confirm, async          -> step 2 re-validates tB and passes; step 6 begins
+t ≈ 1.6-2.0  both reach P-PAY-10 step 7 and insert
+```
+
+| The constraint | What Stage B produces | What it proves |
+|---|---|---|
+| **present** | exactly one `201`, exactly one `409 SEAT_UNAVAILABLE`, and **one** `booking_seat` row for `(41, 312)` | **the constraint firing, observed.** The 409 here is the database half, not Redis |
+| **dropped** | **two `201`s and two `booking_seat` rows for `(41, 312)`** — the seat sold twice, to two customers who both paid | **the red proof.** This is the outcome the drill exists to watch |
+| **restored** | one row again, and the constraint read back from `pg_constraint` | the restore verified rather than assumed |
+
+**Deleting a lock key is not disabling a control, and the distinction is the same one `P-XCT-07`
+draws about bucket sizes.** Nothing is switched off: the lock layer runs normally throughout, both
+holds go through the real `SET … NX`, and both confirms re-validate their token exactly as
+`P-PAY-10` step 2 requires. What is injected is a **fault** — a key disappearing — which is a thing
+Redis does on its own under memory pressure and does wholesale on a restart, and it is precisely the
+event `S7.1` names as the reason the database half may not be waived. **Dropping a constraint on
+purpose and evicting a key on purpose are the same kind of act**, and both are local-environment only.
+
+Recorded with who ran it and when, for both stages. **An undated claim that it was run is not
+evidence.**
 
 ---
 
@@ -181,7 +253,7 @@ audit trail that starts when its reader is built has a hole exactly as long as t
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | The audit insert fails | the whole transaction rolls back; the change does not land | "That change was not saved. Try again." |
+| 1 | The audit insert fails | the whole transaction rolls back; the change does not land | "The server could not complete this request. If you need help, quote `a1b2c3d4`." — the registry's one published sentence for the code, as exception 3. **No variant is minted for the audit path** |
 | 2 | The change fails | the transaction rolls back; no audit row exists for a change that did not happen | *(the change's own error is shown)* |
 | 3 | Code attempts `UPDATE` or `DELETE` on `audit_log` | the database refuses — the grant does not exist | 500 `INTERNAL_ERROR`, and the customer sees "The server could not complete this request. If you need help, quote `a1b2c3d4`." |
 | 4 | An `action` value outside the controlled vocabulary is used | 500 `INTERNAL_ERROR` at the boundary check, before the transaction opens | as above |
@@ -309,12 +381,35 @@ contains no role check.
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | No session on a non-public router | 401 `AUTH_REQUIRED` | "Sign in to continue." |
+| 1 | No session on a non-public router | 401 `AUTH_REQUIRED` | "Sign in to continue." — **this row's generic default. On the reports surface `P-RPT-02` row 1's sentence ships instead** |
 | 2 | The session's JWT is expired or does not verify | 401 `AUTH_REQUIRED` | "You were signed out. Sign in again to continue." |
-| 3 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." |
-| 4 | A manager requests data for a screen they are not assigned to | 403 `FORBIDDEN` | "This account does not have access to that hall." |
-| 5 | A manager reaches any write endpoint | cannot occur — no write endpoint exists on the manager router | *(no user-facing surface)* |
-| 6 | A manager has no screens assigned yet | 200 with an empty dashboard — the correct state for a new account, not an error | "No halls are assigned to this account yet." |
+| 3 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." — **generic default; on the reports surface `P-RPT-02` row 2's sentence ships instead** |
+| 4 | A manager requests data for a screen they are not assigned to | 403 `FORBIDDEN` | "This account does not have access to that hall." — **generic default; on the reports surface `P-RPT-02` row 3's sentence ships instead** |
+| 5 | A manager reaches a write endpoint **on the manager router** | cannot occur — **the manager router mounts no write route at all**, which is the control (`P-RPT-09`) | *(no user-facing surface)* |
+| 5a | A manager addresses a write endpoint **on the admin router** — a hand-made request, or a client bug | **403 `FORBIDDEN`, refused by the admin router's role dependency before the body is parsed.** This case is entirely reachable and **it is the one `SRC-003 OPEN-OPS-03` exists to prevent, so it carries a test** | **`P-RPT-09` row 1 publishes it and this row publishes none** |
+| 5b | A non-`GET` method is addressed at a path on the reports router | **405 `METHOD_NOT_ALLOWED`**, rendered by the global handler as the product envelope (`P-XCT-11`) — **not 404**, because the path exists for `GET` | `SCR-XCT-01`'s `METHOD_NOT_ALLOWED` string, published once and reused |
+| 6 | A manager has no screens assigned yet | 200 with an empty dashboard — the correct state for a new account, not an error | "No halls are assigned to this account yet." — **generic default; on the reports surface `P-RPT-08` row 1's sentence ships instead** |
+
+**Exception 5 used to read "a manager reaches *any* write endpoint — cannot occur", and that sentence
+had a hole exactly where it mattered.** It is true of the **manager router**, which mounts no write
+route; it is false of the **admin router**, which a manager can address directly and which refuses
+them with 403. **A developer building the authorisation floor from this row alone would have written
+no test for the single case `SRC-003 OPEN-OPS-03` exists to prevent**, because the floor row said the
+case was impossible. Rows 5 and 5a now say which is which, and 5a says it carries a test.
+
+**Why four of these sentences are defaults rather than the words that ship.** `P-RPT-01`, `P-RPT-02`
+and `P-RPT-08` publish wording for the same four conditions on the reports surface, and two of the
+four pairs are **different sentences rather than paraphrases** — *"Sign in to see the dashboard."*
+against *"Sign in to continue."*, and *"That hall is not assigned to this account."* against *"This
+account does not have access to that hall."* Both rows are rank 2, so `S1.2`'s ranking does not settle
+it and `S1.2.1` case 1 makes an unresolved rank-2 tie a defect rather than the implementer's choice.
+**It is settled the way `SCR-XCT-01` settles `FORBIDDEN` and `AUTH_REQUIRED`: the row that knows what
+the caller could not reach owns the words.** A manager refused another hall's dashboard needs
+different words from a customer refused another customer's booking, and a sentence that avoids saying
+which serves neither. **This row's four sentences are the floor's generic restatement**, used on any
+router whose own P-row publishes nothing, and they carry no authority over the reports surface. **A
+lane that finds itself shipping one of them on a surface that has an owning P-row has found a gap in
+that row**, not a finished string.
 
 **Server-side validation.** The role is read from the database on every request, never from a claim
 in the token, so a role change takes effect on the next request rather than at the next sign-in. The
@@ -330,8 +425,23 @@ nothing.
 GET  /api/reports/dashboard                → 200, non-empty   (screens 2 and 5, resolved from the session)
 GET  /api/reports/dashboard?screen_id=2    → 200, non-empty   (a narrowing inside the resolved scope)
 GET  /api/reports/dashboard?screen_id=4    → 403 FORBIDDEN    (not assigned — refused, never honoured)
-POST anything on the reports router        → 404, no such route
+POST /api/reports/dashboard                → 405 METHOD_NOT_ALLOWED   (the path exists for GET)
+PATCH /api/admin/showtimes/101 as manager  → 403 FORBIDDEN    (the admin router's role dependency)
 ```
+
+**Line four says 405 and not 404, and the difference is the whole of the negative test.** This row
+previously read *"POST anything on the reports router → 404, no such route"*, which contradicts
+`P-RPT-09` row 3, the `METHOD_NOT_ALLOWED` registry entry and `P-XCT-11` exception 3a — all three of
+which give **405** for a path that exists under another method. **The negative test for the read-only
+reports router is transcribed from one of these rows**, so a suite built from the old line asserts 404
+and passes against a wrong implementation, while a suite built from the registry asserts 405 and fails
+against a correct one. **404 was also the wrong answer on the merits**: `/api/reports/dashboard`
+exists and serves `GET`, and a 404 denies that to the only audience that ever sees it.
+
+**Line five is the case exception 5 used to call impossible.** It is a real request a manager can
+make, it is refused at the admin router by the same dependency this row specifies, and it is the case
+`SRC-003 OPEN-OPS-03` exists to prevent — so it is in the worked example rather than left to be
+inferred from a row that said it could not happen.
 
 **The scope comes from the session, not from the request.** Line one carries no `screen_id` at all and
 still returns exactly screens 2 and 5, because the dependency reads the caller's assignments from
@@ -407,6 +517,36 @@ account exists.
 72 Latin characters      = 72 bytes  → accepted
 25 Devanagari characters = 75 bytes  → rejected with message #2, not truncated
 ```
+
+**`SameSite=Lax` is this product's only cross-site request defence, and this paragraph exists because
+nothing said so.** The session cookie is attached by the browser to **every** request to this origin,
+including one a different site caused. **There is no CSRF token, no double-submit cookie and no
+`Origin` or `Referer` check anywhere in this specification** — the attribute was chosen and justified
+here only on the ground that `Strict` would drop the cookie on the cross-site return from an emailed
+link, which is a usability reason for a security control. **A defence nobody has named is a defence
+somebody removes by accident.**
+
+**What it buys.** A browser withholds a `SameSite=Lax` cookie on every cross-site request except a
+**top-level navigation using a safe method**. So a cross-site `POST`, `PUT`, `PATCH` or `DELETE`, and
+every cross-site `fetch` or `XMLHttpRequest` whatever its method, arrives with **no session**. Every
+state-changing endpoint in this product is one of those, so every state change is covered.
+
+**The two changes that remove it, named so that neither can be made without meeting this sentence:**
+
+1. **A state-changing `GET`.** `Lax` sends the cookie on a top-level `GET` navigation, so an endpoint
+   that writes on a `GET` is reachable cross-site with the customer's session attached. **This is the
+   reason no endpoint in this product may change state on a `GET`** — a stated security reason, not
+   REST tidiness, and the distinction matters because tidiness is negotiable and this is not.
+2. **Relaxing the attribute to `SameSite=None`.** One line, and it is exactly what someone reaches for
+   the first time a second origin is introduced. **There is nothing behind it**: with `None` set and no
+   token, every authenticated write in the product is cross-site reachable.
+
+**What it does not buy, stated rather than glossed.** `Lax` is a **browser** behaviour and not a server
+check, so it binds only clients that implement it. **Nothing is added here** — no token, no
+double-submit, no `Origin` check. The gap is recorded on the same terms as Argon2id in `P-XCT-23`:
+this is a demonstration environment that carries no real customer data by ruling (`R-CON-08`,
+`P-XCT-29`), and **a server-side CSRF check is the thing to add before it ever carries a real
+person's booking.** Naming it is what turns a later removal into a decision instead of a discovery.
 
 **Two accepted weaknesses, recorded rather than solved.** There is **no email-verification gate in
 v1**, so a customer can register with a mistyped address and book; the mitigation is that the address
@@ -789,7 +929,7 @@ only**.
 | 1 | Any unhandled exception | 500 `INTERNAL_ERROR`, generic message, stack trace in the log only | "The server could not complete this request. If you need help, quote `a1b2c3d4`." |
 | 2 | A request body fails validation | 422 `VALIDATION_FAILED` with the failing fields in `details` | *(the field's own message, beside the field)* |
 | 3 | A path or resource does not exist for **any** method | 404 `NOT_FOUND` | "That page does not exist." |
-| 3a | A path exists for some method but **not the one used** — in practice a `DELETE` addressed at one of the never-deleted entities, for which no `DELETE` route is mounted | 405 `METHOD_NOT_ALLOWED`, rendered by **a global handler and not by any route** | "That action is not available. Nothing was changed." |
+| 3a | A path exists for some method but **not the one used**. Two cases: a `DELETE` addressed at one of the never-deleted entities, for which no `DELETE` route is mounted; and **any non-`GET` method addressed at a path on the read-only reports router** (`P-RPT-09`), every route of which is a `GET` | 405 `METHOD_NOT_ALLOWED`, rendered by **a global handler and not by any route** | "That action is not available. Nothing was changed." |
 | 4 | A signed-in user reaches a router their role does not permit | 403 `FORBIDDEN` | "This account does not have access to that page." |
 | 5 | A unique-constraint violation on seat occupancy | 409 `SEAT_UNAVAILABLE` — **not** `INTERNAL_ERROR`; it is the guard working | "C12 was taken by another customer." |
 | 6 | A 4xx of any kind | the envelope carries `request_id`, and the interface does **not** display it | *(no id — it is noise on an error the customer can act on)* |
@@ -1057,10 +1197,19 @@ worst first:**
 | 5xx rate at the load balancer | the application failing while its task is still running |
 | Target group unhealthy hosts | readiness failing on PostgreSQL or Redis |
 | RDS free storage | forever retention filling 20 GB |
+| **S3 poster-bucket size and object count** | **the one store in the product with no deletion path at all filling up.** A replaced poster object is never deleted (`P-ADM-20`, `FR-ADR-012`), so the bucket **grows monotonically** — every re-upload adds a key and removes none — and nothing anywhere reads its size. **The first symptom is a failed poster upload**, which an admin meets mid-task with no warning that anything was filling |
 | RDS connection count | pool exhaustion against roughly 110 connections |
 | Host memory | a container killed for exceeding its limit |
 | SES bounce and complaint rate | receipts going nowhere |
 | `outbox_pending` rising | the relay stuck, receipts not enqueued |
+
+**The bucket was missing from this list, and the omission had a shape worth naming.** Every other row
+here names a store that something else bounds — RDS has a provisioned size, CloudWatch has a
+retention setting, ECR has a lifecycle policy the specification already asks for. **S3 is the only one
+with no deletion path and no bound**, which makes it the row most in need of a watcher and it was the
+row that was absent. It is added rather than solved: **no lifecycle policy is proposed and no
+retention is chosen**, because deleting a poster object would contradict `P-ADM-20` and because
+choosing a cost-against-evidence trade is the client's, exactly as the CloudWatch retention period is.
 
 **The first is the worst, and it is named:** the product's central promise is that a customer receives
 a receipt that gets them into a hall; when that fails repeatedly the message lands in the dead letter
@@ -1309,7 +1458,8 @@ property being specified and a reader of this row needs one concrete crash to se
 hook, not in the entrypoint's default path, and not behind a flag. **There is no code path in the API
 or the worker that can apply a migration.** The entrypoint supports an explicit `migrate` command as
 its argument; running the image with `api` or `worker` starts a long-running process and never touches
-migrations.
+migrations. **`seed` is the fourth command and it is `P-XCT-32`'s** — it is named here only so the
+entrypoint's argument set is stated in one place; it runs no migration either.
 
 **Who may do it.** The client, by hand, before updating the service to the new image. In AWS this is a
 one-off ECS task using the same image and task definition family with the command overridden to
@@ -1643,6 +1793,36 @@ regularly needs this.
 3. The page body does not scroll horizontally.
 4. The checkout action stays reachable without scrolling the map.
 
+**Something has to move the map, and nothing did.** A container that scrolls is only half a
+specification: the other half is **who scrolls it and to where**, and no P-row, screen spec or
+component spec ever moved it — not on first paint, not when keyboard focus left the visible strip, not
+for a restored selection, and not for a seat named in an error. On the design target roughly **half of
+a twenty-column row is off screen at any scroll position** (the arithmetic is below), so the omission
+is not cosmetic: arrow-key focus routinely landed on a seat nobody could see. **These four rules are
+the missing half**, and they bind every surface that renders the map.
+
+| # | When | What scrolls, and by how much |
+|---|---|---|
+| 1 | **First paint** | the container is scrolled to its **leading edge**, so seat `1` of every row is visible and the opening view is a decision rather than whatever the browser last remembered. **A customer with a restored selection is rule 3's case and overrides this one.** |
+| 2 | **Keyboard focus leaves the visible strip** | the container scrolls the **minimum** amount that brings the newly focused seat **fully** inside it. Never centred, never animated past `--fr-motion-base`, and **never the page body** — only this container moves. |
+| 3 | **A selection is restored** — the return from sign-in (`SCR-XCT-04`), or a reload carrying a `sessionStorage` selection | the container scrolls to bring the **first** restored seat fully into view, on the same minimum-movement rule. |
+| 4 | **An error names seats** — `details.unavailable_seats` on `SEAT_UNAVAILABLE` (`SCR-XCT-01`) | the container scrolls to bring the **first named** seat fully into view, so the seat the banner is talking about is the seat the reader can see. |
+
+**The pinned row gutter is what makes "fully inside it" load-bearing.** `SCR-SEA-01` pins the
+28-pixel row-label gutter to the leading edge while the seats scroll under it, so a cell scrolled to
+the container's exact leading edge is **underneath** the gutter rather than beside it. A focus ring
+drawn there is obscured by page content, which is **WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum),
+new at AA in 2.2** and inside the target `P-XCT-24` adopts. **It is fixed rather than recorded as a
+deviation**, because `P-XCT-24` has exactly one deviation and this is not it: the container carries
+`scroll-padding-inline-start: var(--fr-seat-gutter)`, so every one of the four rules above stops short
+of the gutter and no focused cell can come to rest under it.
+
+**Two things these rules deliberately do not do.** They **never scroll while the reader is scrolling**
+— a programmatic scroll that fights a finger is worse than none — so rules 2 to 4 fire on focus and on
+error arrival, not on poll. And they **never move the page body**: `--fr-page-max` and the shell
+(`SCR-XCT-05`) both depend on the body having one scroll direction, and a horizontal body scroll is
+exception 3 below.
+
 **Exception paths.**
 
 | # | Trigger | Server | What the user sees, verbatim |
@@ -1651,22 +1831,44 @@ regularly needs this.
 | 2 | The seat size is reduced to make a hall fit | rejected — it breaks the target-size minimum | *(no user-facing surface)* |
 | 3 | The page body scrolls horizontally | a defect | *(no user-facing surface)* |
 | 4 | A hall larger than 220 seats is configured | nothing breaks — the map scrolls further. **The 220 figure is a design target, not a limit**, because it is `ASSUMED` | *(nothing)* |
+| 5 | Arrow-key focus moves to a seat outside the visible strip and nothing scrolls | a defect. The focus ring is drawn where nobody can see it, and the reader has no way to know which seat is focused | *(nothing appears to happen when the arrow key is pressed)* |
+| 6 | A focused seat comes to rest under the pinned row gutter | a defect — **SC 2.4.11 at the adopted AA level**, fixed by the scroll padding above and not by recording a second deviation | *(the focus ring is partly or wholly hidden behind the row letter)* |
+| 7 | The map is scrolled by centring the target rather than by minimum movement | rejected. Centring moves the whole map on every arrow press, so the reader loses their place on a grid they are navigating one cell at a time | *(the map lurches on every key press)* |
 
 **Server-side validation.** None.
 
-**Worked example.** Why the map must scroll rather than shrink.
+**Worked example — the row is wider than the viewport, and the visible strip is narrower than the
+viewport.** Both halves matter, and the second was previously left out.
 
 ```
-seat size ............... 24 px      --fr-seat-size   (WCAG 2.2 target-size minimum)
-seat gap ................  4 px      --fr-seat-gap
-per seat ................ 28 px
-a 20-seat row ........... 20 × 28 − 4 = 556 px
-plus row-label gutter ... 28 px      --fr-seat-gutter
-total ................... 584 px  >  375 px viewport
+seat size ............................... 24 px   --fr-seat-size  (WCAG 2.2 target-size minimum)
+seat gap ................................  4 px   --fr-seat-gap
+per seat ................................ 28 px
+a 20-column row ......................... 20 × 28 − 4 = 556 px      <- this is what scrolls
+
+viewport ................................ 375 px
+less page gutter, both sides ............ 2 × 16 = 32 px   --fr-space-4  (COMPONENTS.md §0.1)
+less map-field padding, both sides ...... 2 × 16 = 32 px   --fr-space-4  (SCR-SEA-01, "Map field")
+less the pinned row gutter .............. 28 px            --fr-seat-gutter (pinned, never scrolls)
+= visible seat strip .................... 375 − 32 − 32 − 28 = 283 px
+
+columns visible at once ................. floor((283 + 4) / 28) = 10 of 20
+hidden at any scroll position ........... 556 − 283 = 273 px, ten of the twenty columns
 ```
+
+**The figure this block previously carried was `584 px > 375 px viewport`, and it was wrong in two
+directions at once.** It counted the pinned 28-pixel gutter as part of the scrolling row, which it is
+not, and it compared the result against the whole 375-pixel viewport as though the map occupied it —
+omitting the page gutter and the field padding, **64 pixels in total**. The stated gap was therefore
+209 pixels where the real one is 273, and a reviewer checking whether the map fits was checking
+against a strip 92 pixels wider than the one a customer actually sees. **It is corrected here rather
+than quietly restated**, because `S1.5` transcribes these figures into tests.
 
 **Every one of these figures is a token, not a decision made here**, and the hall size that produced
-the row width is `ASSUMED`.
+the twenty-column row is **`ASSUMED`** under `OPEN-SCALE-02` — the 10-of-20 split moves with it and
+**does not harden into a constraint.** What does not move with it is the rule: whatever the hall size,
+the visible strip is narrower than the viewport by the gutters and the pinned column, and the four
+scroll rules above are what make the seats outside it reachable.
 
 ---
 
@@ -1910,6 +2112,68 @@ this row produces sixty-three accounts nobody can use, Phase 2 has no admin and 
 customers for the concurrency proof. **The seed also enqueues no receipt job**, for the bounce reason
 `P-XCT-32` states, **and writes each dispatch row `suppressed` instead (`P-TKT-04`)** — so a seeded
 booking has a dispatch row that records the truth about it rather than no row at all.
+
+#### The seed writes no `audit_log` row, and that is a decision rather than an omission
+
+**`scripts/seed.py` inserts directly into PostgreSQL with no request, no session and no acting user,
+and it writes no row into `audit_log` for anything it creates.** The row said nothing about this, and
+silence here is not neutral: a developer writing the script has to choose, and every choice available
+to them breaks a stated rule.
+
+**Why there is no honest actor to name.** `P-ADM-19` makes `actor_user_id` a **non-null** foreign key
+to the acting user and forbids **both** a role name and a service account. The seed **creates the
+first admin itself**, so at the moment of its earliest writes — the cinema, the screens, the seats, the
+twelve lookup rows — no user row exists that any actor column could point at. The three ways out are
+each worse than the absence:
+
+| The way out | Why it is refused |
+|---|---|
+| Write the audit row with a null or a placeholder actor | breaks `P-ADM-19`'s non-null rule in the one table whose whole value is that its rows are true |
+| Invent a `seed` or `system` service account | **`P-ADM-19` forbids a service account in terms.** It is also a real user row that can be signed in as, if it ever gets a password |
+| Attribute every seeded row to `admin-01` | a **false statement about who did it.** `admin-01` did nothing; the row would say they created 720 showtimes in one second |
+
+**The scope this rests on, stated so it is not read wider than it is.** `S7.3` and `P-XCT-03` audit
+**every privileged write**, and a privileged write is **an admin action arriving through the API**.
+The seed is database provisioning by a script the client runs once, deliberately, with the application
+not necessarily running at all. **This is the only process in the product that writes to these tables
+without a request, and it is the only exemption there is.** No application code path inherits it: a
+handler that writes without an audit row is a defect, exactly as `P-XCT-03` says.
+
+**What identifies a seeded row instead**, since the audit log does not: the `DEMO` prefix on every
+name and the reserved `.invalid` email domain (`FR-ADR-067`, `P-XCT-32`). An operator asking *where
+did this come from* gets an answer from the row itself, which is the question they were going to ask
+the audit log.
+
+**The gap, recorded rather than closed:** the Phase 8 change log shows **nothing** before the first
+real admin action. A reader of it cannot tell whether the catalogue was seeded or created by hand, and
+they will assume it was created by hand because that is all the log contains. That is the accepted
+cost of the three refusals above.
+
+#### Running the seed freezes every hall's layout, permanently, and this is the sentence that says so
+
+**The seed inserts 720 `showtime` rows across all six screens. `P-ADM-14` freezes a hall's layout the
+moment *any* showtime row exists on it.** So the seed's showtime pass closes, for all six halls at
+once: **renumbering a seat, removing a seat, and moving a seat to a different category are refused
+with 409 `LAYOUT_FROZEN` from then on.** Adding a seat, taking one out of service and changing its
+grid coordinates stay permitted; the identity of an existing seat does not.
+
+**It does not thaw.** Nothing is ever deleted, so the showtime rows that froze it stay, and the freeze
+is therefore permanent unless the separate, explicitly named wipe-and-reseed command is run —
+**which this row already forbids in the deployed environment** (exception 5). In that environment
+there is no route back at all.
+
+**This is `OPEN-SEATLABEL-01`'s deadline arriving, and nothing warned anyone of it.** That row is the
+one open item with a deadline rather than only a direction: it stops being fixable once the first
+showtime exists. **The seed is what makes the first showtime exist.** So:
+
+- **The seed prints one line before its first showtime write**, naming what is about to become
+  permanent and naming the halls it affects. It is a notice and not a prompt — the seed does not stop
+  and wait, because a script that blocks on input cannot be run as a one-off container task.
+- **The specification tells the client to settle seat labelling before running the seed against a
+  deployed environment**, and says why in the same breath: the labels are what a receipt carries and
+  what the person at the door reads (`P-ADM-14`).
+- **Local runs are recoverable and deployed runs are not.** Wipe and reseed locally; there is no
+  equivalent in AWS.
 
 #### The films are published, and the poster that makes that possible
 
@@ -2363,6 +2627,8 @@ discussion — **and are named here, not edited.** The two in this section are c
 | 7 | The seed inserts a film before its vocabulary exists | `P-ADM-01`'s rule refuses it and the seed **exits non-zero without a partial catalogue**. The ordering is fixed — vocabulary, then screens and seats, then films — and it is a property of the script rather than a comment in it | *(no user-facing surface)* |
 | 8 | A seat label uses the letter `I` | forbidden. The letter is skipped, so a nine-row screen ends at `J`. A label containing `I` means a second labelling implementation exists | *(no user-facing surface)* |
 | 9 | A screen's seat count does not equal its rows × columns, or its three bands do not sum to its row count | the seed exits non-zero naming the screen, before its first write. **A layout that is typed rather than computed is how the two disagree** | *(no user-facing surface)* |
+| 10 | The seed writes an `audit_log` row for anything it creates | forbidden. There is no honest `actor_user_id` — the seed creates the first admin itself — and `P-ADM-19` forbids both substitutes, a role name and a service account. **The absence is specified rather than left open**, and it is the only exemption from `P-XCT-03` anywhere in the product | *(no user-facing surface)* |
+| 11 | The seed is run before seat labelling is settled | **all six halls freeze** under `P-ADM-14` at the first showtime insert, and no seat can be renumbered, removed or recategorised afterwards. Locally, wipe and reseed; **in the deployed environment there is no way back**, because the wipe is never run there (row 5). **This is `OPEN-SEATLABEL-01`'s deadline arriving** | *(no user-facing surface — an admin meets 409 `LAYOUT_FROZEN` later, with no clue that the seed is what closed it)* |
 
 **Server-side validation.** Every seeded row is identifiable as seeded: a `DEMO` prefix on names and a
 reserved email domain, so an operator looking at the database can tell demonstration data from real
@@ -2472,10 +2738,57 @@ the client — a reserved one, because it is about real people's accounts.
 **Who may do it.** The client runs the seed. The build session writes it (Zone A, `SRC-002 §6.1.6`)
 and runs it locally only.
 
+**How the seed is run against the deployed environment, and how the password reaches it.**
+
+**This had to be written down, because without it Phase 2 and Phase 4 both stop at their first step.**
+This row and `P-XCT-30` both assign the deployed seed run to the client and neither said how to
+perform it; `S7.9` makes `SEED_DEFAULT_PASSWORD` **seed-only**, read by no container the service runs,
+so it deliberately cannot ride in on the service task definition's `secrets` block — which left the
+one value the whole phase depends on with no route into the environment at all.
+
+**It is the same shape as the migration run, deliberately, so the client learns one pattern rather
+than two** (`P-XCT-19`):
+
+| | The migration run | The seed run |
+|---|---|---|
+| What it is | a one-off ECS task, same image | a one-off ECS task, same image |
+| Entrypoint command | `migrate` | **`seed`** |
+| Task definition | the service's family, command overridden | **its own family** — see below |
+| Extra secret | none | **`SEED_DEFAULT_PASSWORD`** |
+| Frequency | before every deploy that carries a migration | **once, deliberately** |
+
+- **The entrypoint takes `seed` as a fourth command**, alongside `api`, `worker` and `migrate`. It runs
+  `scripts/seed.py` and exits with its status. **No long-running process runs the seed and there is no
+  flag that makes one**, for the same reason `P-XCT-19` gives about migrations.
+- **`SEED_DEFAULT_PASSWORD` is an SSM `SecureString` at `/frontrow/<environment>/SEED_DEFAULT_PASSWORD`,
+  referenced by `valueFrom` from a task definition family that is the seed's alone** — never the API's
+  and never the worker's. That is what keeps `S7.9`'s seed-only rule true: **the service's task
+  definition never carries the parameter**, so no container is made to refuse to boot over a value it
+  never reads, and the secret still reaches the process the way `P-XCT-16` requires every secret to,
+  with the application reading an ordinary environment variable and knowing nothing about SSM.
+- **A separate task definition family, not the service's with an override.** Overriding a command is
+  ECS's ordinary mechanism and it is what the migration run uses; overriding a command **and** adding a
+  `secrets` entry is not — the secret would have to be in the shared family to be overridable, which is
+  exactly what the previous bullet forbids. **Two families, one image**, so the code and the seed are
+  still the same build.
+- **The client builds all of it and the build session builds none of it.** The task definition, the SSM
+  parameter, the execution-role grant for that parameter and the run itself are Zone C (`P-XCT-26`).
+  What is owed here is the specification: the command, the variable, the parameter path, the extra
+  `ssm:GetParameters` resource on the execution role, and the acceptance criterion — **sign in as
+  `admin-01@` with the value that was stored**.
+- **Needed by Phase 2**, and again as a hard dependency of Phase 4. It is an AWS dependency this
+  section owes to `docs/30 Deployment/AWS_PREP_QUEUE.md` with that needed-by phase; **this lane writes
+  nothing to that file** (`S7.16`) and names the dependency in its return instead.
+
 **Preconditions.**
 - `SEED_DEFAULT_PASSWORD` is set in the environment the seed runs in, and is not in the repository.
-- It is at least `PASSWORD_MIN_LENGTH` bytes and at most 72 **bytes** — the bcrypt limit
-  (`P-XCT-06`), which is a byte limit and not a character limit.
+- It is at least `PASSWORD_MIN_LENGTH` **characters** — the same floor the registration path enforces
+  (`P-XCT-06`), which is a character count and not a byte count — and at most 72 **bytes**, which is
+  the bcrypt limit and is a byte bound. **The two bounds are measured in different units and that is
+  not a slip.** Stating the floor in bytes, as this row previously did, would let the seed accept a
+  twelve-byte password of four multi-byte characters that `P-XCT-06` refuses at registration — seeded
+  accounts carrying a credential the application's own rules would not have allowed, in the row that
+  spends two paragraphs on bytes not being characters.
 - It is not the placeholder string `.env.example` ships with.
 - The hashing function is the application's own.
 
@@ -2494,7 +2807,7 @@ and runs it locally only.
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
 | 1 | `SEED_DEFAULT_PASSWORD` is absent | **the seed exits non-zero before writing anything**, naming the variable. Not a warning and not a generated value | *(a terminal message naming the variable — there is no user-facing surface)* |
-| 2 | It is shorter than `PASSWORD_MIN_LENGTH`, or over 72 bytes | the seed exits non-zero naming the bound. **Over 72 bytes is the dangerous one**: bcrypt silently ignores the excess, so the client would set a long password and a shorter one would work | *(no user-facing surface)* |
+| 2 | It is shorter than `PASSWORD_MIN_LENGTH` **characters**, or over 72 **bytes** | the seed exits non-zero naming the bound, **and the two bounds are checked in their own units** — the floor by character count, exactly as `P-XCT-06` checks it at registration, and the ceiling by byte count. **Over 72 bytes is the dangerous one**: bcrypt silently ignores the excess, so the client would set a long password and a shorter one would work | *(no user-facing surface)* |
 | 3 | It equals the `.env.example` placeholder | the seed exits non-zero. **The placeholder must never become the deployed password**, and the only way to be sure is to refuse it by value | *(no user-facing surface)* |
 | 4 | The seed prints the password "for convenience" | forbidden. It reaches a terminal scrollback, a CI log and a screenshot, and **a credential in a log is a committed credential with extra steps** | *(no user-facing surface)* |
 | 5 | A hash is committed to the repository instead of a password | forbidden. A bcrypt hash of a known-weak password is a credential; the repository being private (`FR-ADR-071`) changes the audience and not the rule | *(no user-facing surface)* |
@@ -2611,7 +2924,7 @@ knowing what happened, whether anything changed, and — on a 5xx only — a sho
 
 | Element | Token(s) | Behaviour | Validation |
 |---|---|---|---|
-| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | Appears in the sticky header area of the surface it belongs to, visible without scrolling | — |
+| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | **Pinned to the top of the viewport for as long as it is live**, in the page's own scroll context — never inside a component's scroll container, and never riding a sticky application header, because `SCR-XCT-05` marks that header `Not sticky` and the seat map's container scrolls horizontally only (`COMPONENTS.md §1.3`). It reserves its own height rather than overlaying content, so a focused control is never obscured by it (WCAG 2.2 SC 2.4.11). A banner is not permanent chrome: it exists only while there is a message and is removed with it, which is why it may pin where a header may not. **A screen that owns a surface may place its own banner differently and this row defers to it by name** — `SCR-SEA-03` does, for the seat map (`S1.2.1` case 6) | — |
 | Leading rule | 3px `--fr-danger-ink` down the leading edge | Non-colour cue: the banner is identifiable without colour perception | — |
 | Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | One sentence saying what happened, one saying what to do next where there is something to do | — |
 | Named values in the message (seat labels, counts, seconds) | `--fr-font-mono`, `--fr-weight-bold` | Taken from the error envelope's `details`, never parsed out of `message` | — |
@@ -2727,8 +3040,11 @@ finished string, and the right fix is a sentence on the owning P-row rather than
 entity-blind** by necessity, not by preference — it is rendered by a global handler that runs after
 routing has already failed, so it cannot know what was addressed (`P-XCT-11`). **No lane publishes a
 variant naming a film, a showtime or a lookup row**; those sentences belong in the never-deleted note
-on each admin screen, which is where an admin reads them. **It covers only the never-deleted set** —
-a `DELETE` of a seat is a real, mounted, sometimes-successful route (`EP-ADM-21`) and never reaches
+on each admin screen, which is where an admin reads them. **It covers two cases and only two** — a
+`DELETE` at one of the never-deleted entities, and **any non-`GET` method at a path on the read-only
+reports router** (`P-RPT-09`, `P-XCT-05` exception 5b), where the same sentence is the right answer
+for the same reason: the address exists, the verb does not, and nothing was changed. A `DELETE` of a
+seat is a real, mounted, sometimes-successful route (`EP-ADM-21`) and never reaches
 this sentence. **The code appears in no `errors` array until the merge owner registers it**
 (`P-XCT-11`), so a lane that finds it missing from `contract.json` has found the expected state and
 not a defect.
@@ -2890,14 +3206,20 @@ this screen's generic examples; **where an endpoint's own P-row publishes wordin
 `P-ACC-01`, `P-ACC-02`, `P-ACC-07`, `P-XCT-06` — that wording wins and this screen renders it.** It
 never blames the customer and it never says "slow down".
 
-**One surface is deliberately not this screen's, and it is the seat map.** A 429 on the seat-map read
-or on one of its polls renders `SCR-BRW-03`'s string — `"Too many requests. The seat map will update
+**One surface is deliberately not this screen's, and it is the seat map — on its POLLS.** A 429 on one
+of the seat map's polls renders `SCR-BRW-03`'s string — `"Too many requests. The seat map will update
 again shortly."` — and **this row publishes no variant for it.** `P-BRW-11` publishes no string, so
 under `S1.2.1` case 3 the screen that renders it owns it, and that screen is `SCR-BRW-03`. **The
 reason is not precedence, it is that this row's sentence would be wrong there:** the map re-polls on
 its own every `SEATMAP_POLL_INTERVAL_SECONDS`, so there is nothing for the customer to do and telling
 them to try again asks them to take an action the client is already taking. **Every other sentence on
 this screen tells the customer to act because on every other surface they must.**
+
+**A 429 on the seat map's FIRST load is not that case, and this row previously swept it in.** There is
+no map on screen and **no poll loop is running**, so nothing will deliver the update that sentence
+promises. `P-BRW-11` exception 4 governs it: the first-load error and a `Try again`, which is the one
+control that can produce the map (`SCR-BRW-03`). **This row publishes no string for that case either**
+— the distinction is which of `SCR-BRW-03`'s two strings applies, not a third sentence.
 
 **Accessibility.** Announced once when it appears, **not on every countdown tick** — a live region
 that updates every second is unusable with a screen reader. The ticking countdown is `aria-hidden`
@@ -3142,7 +3464,7 @@ route at all**, which is the whole of its point.
 ```
 
 ```newerrorcode
-{"code":"METHOD_NOT_ALLOWED","http":405,"when":"a request uses an HTTP method that is mounted on no route at that path, while the path itself is mounted for at least one other method. In this product that is a DELETE addressed at one of the never-deleted entities - movie, showtime, screen, cinema and the four lookup vocabularies - for which no DELETE route is mounted because withdrawal replaces deletion (P-ADM-20, FR-ADR-012). It does NOT cover seats or manager screen assignments, which are genuinely deleted and have real mounted DELETE routes: EP-ADM-21 succeeds while its hall has no showtime rows. It is raised by a global exception handler rather than by any route, so it can carry no information about which entity was addressed.","raised_by":["a global handler, mounted on the application rather than on any router or endpoint. No endpoint block names this code, and none may until the merge owner adds it to the generator registry"],"why_needed":"FR-ADR-052 requires one envelope from every response, and the framework's own method-not-allowed body is a different shape, so without this code a DELETE to a never-deleted entity returns a body the interface cannot parse. Mounting a DELETE route that always refuses was rejected on the distinction that makes the scoping principled: a route that refuses a real request with a real reason has a case where it succeeds, and a route mounted only to say no does not - which is why EP-ADM-21 is allowed to exist and a movie delete route is not. 404 was also rejected, because it would deny that the address exists when the same address serves GET and PATCH, and that misreports the situation to the only audience that ever sees it."}
+{"code":"METHOD_NOT_ALLOWED","http":405,"when":"a request uses an HTTP method that is mounted on no route at that path, while the path itself is mounted for at least one other method. There are exactly two such cases in this product. FIRST: a DELETE addressed at one of the never-deleted entities - movie, showtime, screen, cinema and the four lookup vocabularies - for which no DELETE route is mounted because withdrawal replaces deletion (P-ADM-20, FR-ADR-012). It does NOT cover seats or manager screen assignments, which are genuinely deleted and have real mounted DELETE routes: EP-ADM-21 succeeds while its hall has no showtime rows. SECOND: any non-GET method addressed at a path on the read-only reports router, every route of which is a GET (P-RPT-09). A POST to /api/reports/dashboard is 405 and not 404, because that path exists and serves GET. It is raised by a global exception handler rather than by any route in both cases, so it can carry no information about which entity or router was addressed.","raised_by":["a global handler, mounted on the application rather than on any router or endpoint. No endpoint block names this code, and none may until the merge owner adds it to the generator registry"],"why_needed":"FR-ADR-052 requires one envelope from every response, and the framework's own method-not-allowed body is a different shape, so without this code a DELETE to a never-deleted entity, or a POST to the reports router, returns a body the interface cannot parse. Mounting a DELETE route that always refuses was rejected on the distinction that makes the scoping principled: a route that refuses a real request with a real reason has a case where it succeeds, and a route mounted only to say no does not - which is why EP-ADM-21 is allowed to exist and a movie delete route is not. 404 was also rejected in both cases, because it would deny that the address exists when the same address serves GET and PATCH, and that misreports the situation to the only audience that ever sees it. The reports case is named explicitly because P-XCT-05's worked example published 404 for it while P-RPT-09 published 405, and the negative test for the read-only router is transcribed from one of the two."}
 ```
 
 ---
@@ -3307,23 +3629,60 @@ naming the seats that were taken, **not retried** — retrying a lost race loses
 logged as an expected outcome with a counter, because the rate at which it fires is the signal that
 tells the operator the lock layer has a problem.
 
-**The red-proof drill**, run by hand, in the local environment only, with a recorded outcome and a
+**The red-proof drill runs in two stages, and only the second one reaches the constraint.**
+
+**Why there are two, stated first because a single-stage drill was specified here and could not
+work.** The fifty-request gate fires at the **hold** endpoint (`SRC-002 §9.1`, `P-HLD-13`,
+`P-PAY-11`), where every loser is refused by Redis at `SET … NX` and **the unique constraint is never
+reached**. Dropping the constraint and re-running that gate therefore still yields exactly one winner
+— and the previous version of this procedure classified that outcome as a void proof and a
+stop-the-line finding, which made **the never-waivable gate report failure against a correct
+implementation**. The gate is unchanged; a second stage is added that puts two live holders on one
+seat, which is the only state from which two confirms both reach `P-PAY-10` step 7. **That is
+stricter, not weaker** — the constraint was being exercised zero times and is now exercised, watched
+failing, and watched working again.
+
+**Stage A — the fifty-request gate.** Unchanged, and `P-HLD-13` owns it.
+
+1. Run `scripts/stress_seats.py`. Observe **exactly one 201 and forty-nine 409 `SEAT_UNAVAILABLE`**,
+   the start-instant spread inside `STRESS_CONCURRENCY_SPREAD_MS`, and — after the winner confirms —
+   exactly one `booking_seat` row for the pair, read directly from PostgreSQL.
+2. **Record that the constraint fired zero times.** Stage A proves the lock layer and the end-to-end
+   result. It proves nothing about the constraint, and saying so is what stops Stage B being skipped.
+
+**Stage B — the red proof, run by hand, in the local environment only**, with a recorded outcome and a
 recorded date:
 
-1. Run `scripts/stress_seats.py`. Observe one winner.
-2. **Drop the unique constraint on `(showtime_id, seat_id)`.**
-3. Run it again. **Observe more than one winner.** If it still produces one winner, the test is not
-   exercising the constraint and the whole proof is void. **That outcome is a stop-the-line finding,
-   not a pleasant surprise.**
-4. Restore the constraint.
-5. **Verify the restore** by re-running and observing one winner, and by reading the constraint back
-   from the catalogue.
+3. Customer A takes a hold on seat `S`, then issues a confirm. Step 6 of `P-PAY-10` spends
+   `PAYMENT_SIMULATED_DELAY_MS`, which is the window the rest of this stage runs inside.
+4. **Inside that window, delete `lock:seat:{showtime_id}:{seat_id}` directly in Redis.** That is an
+   eviction, injected by hand — the exact failure the paragraph above names as the reason the database
+   half exists.
+5. Customer B takes a hold on the same seat `S`. `SET … NX` succeeds because the key is gone, and
+   `P-HLD-01` step 7 finds no committed `booking_seat` row because A has not committed. **Two
+   customers now hold one seat**, each with a token their own confirm will re-validate successfully.
+6. B issues a confirm. Both transactions reach step 7. **With the constraint present: one 201, one
+   409 `SEAT_UNAVAILABLE`, and one `booking_seat` row.** That 409 is the constraint firing, observed
+   at the layer that owns it.
+7. **Drop the unique constraint on `(showtime_id, seat_id)` and repeat steps 3 to 6. Observe two 201s
+   and two `booking_seat` rows for one `(showtime_id, seat_id)` — the seat sold twice.** If it still
+   produces one row, the run is not exercising the constraint and the whole proof is void. **That
+   outcome is a stop-the-line finding, not a pleasant surprise.**
+8. Restore the constraint.
+9. **Verify the restore** by repeating steps 3 to 6 and observing one row, and by reading the
+   constraint back from `pg_constraint`.
+
+**Nothing is disabled at any point in Stage B**, and that matters because disabling a control to make
+a test pass is a fake green and waiving a quality check is reserved to the client. Both holds go
+through the real lock acquisition, both confirms re-validate their token, and the rate limiter runs
+throughout. **A key is made to disappear, which is a fault the system is supposed to survive** — the
+same kind of deliberate act as dropping the constraint, and permitted on the same terms.
 
 The drill is local only because dropping a correctness constraint in the deployed environment is a
-destructive schema change and the build session has no write access to AWS at all. **The stress script
-itself runs against both**, by changing a base URL, exactly as `SRC-002 §9.1` requires. Running it
-against the deployed environment writes real bookings there, and the Zone C specification must say so
-and say which showtime to point it at.
+destructive schema change, because Stage B needs direct Redis command access, and because the build
+session has no write access to AWS at all. **The stress script itself runs against both**, by changing
+a base URL, exactly as `SRC-002 §9.1` requires. Running it against the deployed environment writes
+real bookings there, and the Zone C specification must say so and say which showtime to point it at.
 
 **The script proves its own concurrency before its result is trusted.** It records the start instant
 of each of the fifty requests and asserts the spread between first and last is under a configured
@@ -3622,6 +3981,14 @@ deployed environment.** `OPEN-TLS-01` is deferred; **this document does not deci
 nothing about whether TLS is or will be terminated anywhere.** Setting `Secure` without TLS is not the
 stricter option — it is broken, because the browser would never send the cookie over HTTP and nobody
 could stay signed in.
+
+**`SameSite=Lax` is not only a usability choice; it is the product's only cross-site request
+defence, and `P-XCT-06` names it as one.** There is no CSRF token, no double-submit cookie and no
+`Origin` check in this specification. `Lax` withholds the cookie from every cross-site request except
+a top-level navigation using a safe method, which covers every state-changing endpoint here because
+every one of them is a `POST`, `PUT`, `PATCH` or `DELETE`. **Two changes remove it in one line each —
+an endpoint that writes on a `GET`, and relaxing the attribute to `None`** — and `P-XCT-06` carries
+both, so neither can be made without meeting the sentence that says what it costs.
 
 **Authorisation is applied once, on the router, as a dependency. Never per handler.** A check repeated
 in fifty places is a check that eventually misses one. Four routers exist — public, customer, manager,
@@ -3932,6 +4299,8 @@ and a deployment that starts and is quietly wrong.**
 | `DB_POOL_MAX_OVERFLOW` | `2` | Burst connections above the pool | Same ceiling. |
 | `DB_STATEMENT_TIMEOUT_MS` | `5000` | The server-side ceiling on a single SQL statement, set on the connection. **`ASSUMED`** — `P-RPT-12` and `P-RPT-07` both branch on an aggregate exceeding it and no figure, variable or row existed anywhere, which by this inventory's closing rule was a defect. | **Both ends are observable and they fail differently.** Too low and a legitimate month-wide dashboard aggregate is killed mid-query and the admin reads `This period's figures could not be loaded` for a period that is simply large — an error for a correct request. **Too high, or absent, is the worse one:** with no timeout a slow aggregate holds one of `DB_POOL_SIZE` + `DB_POOL_MAX_OVERFLOW` = **7 connections per process** indefinitely, and a handful of them exhausts the pool — so **the failure is the whole dashboard, and then the whole API, rather than the one request that was slow.** Replaced by Phase 7's load test. |
 | `QUEUE_POLL_WAIT_SECONDS` | `20` | Long-poll wait | Short polling against a mostly-empty queue burns the 1M-request free-tier allowance on empty receives. |
+| `QUEUE_SEND_TIMEOUT_MS` | `2000` | The ceiling on one `SendMessage` call, including any SDK-level retry — **retry is disabled on this path, so the wall-clock bound is this value and not a multiple of it**. **`ASSUMED`** — no frozen source names it; the receipt section requires the fast-path send to be bounded and named none, which by this inventory's own rule was a defect. | **This is the only dependency call that runs inside a customer's confirm request** (`P-PAY-10` step 15, `P-TKT-04` step 3), and the confirm response is emitted after it returns. **Absent, the timeout is infinite:** an unreachable queue holds the confirm response open until the load balancer's idle timeout, so a customer whose booking is already committed sees a failed request — the exact cost the transactional outbox exists to prevent. Too high has the same shape more slowly. Too low costs nothing but a relay 30 seconds later. **It must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS`**, or a SIGTERM during a hung send outlives the drain and SIGKILL lands mid-request; at 2000 ms it is a tenth of it. Replaced by Phase 7's load test. |
+| `SES_SEND_TIMEOUT_MS` | `5000` | The ceiling on one `SendEmail` call in the worker. **`ASSUMED`** — no frozen source names it; the receipt and password-reset paths both require the call to be bounded and named no value. | **Absent, a hung call holds the `receipt_dispatch` claim in `sending` and no redelivery can retake the send for `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds in which the customer has paid, no receipt has gone out and nothing is being attempted** (`P-TKT-05`). The same hole exists on `password_reset_token.email_claimed_at`, on the one message a locked-out account depends on (`P-TKT-12`). **It must be shorter than the worker's drain** — `P-XCT-17` exception 5 makes the drain as long as the message in hand — and **far shorter than the queue's visibility timeout**, so a delivery reaches `sent` or `failed` before its own redelivery arrives. Too low fails ordinary receipts under no fault at all. **A timed-out send has an unknown outcome and the retry may deliver a second copy**; the receipt section states that consequence rather than assuming it away. Replaced by Phase 7's load test. |
 | `OUTBOX_RELAY_BATCH_SIZE` | `20` | Rows the worker relays per loop | Too large and the relay starves the queue poll. |
 | `OUTBOX_RELAY_MIN_AGE_SECONDS` | `30` | How old a `pending` row must be before the relay claims it | Too short and the relay races the request that is already sending it. **The receipt section's "roughly 30 to 50 seconds" worst-case arithmetic is derived from this number**, so changing it here without changing that figure makes two sections disagree about how late a receipt can be. |
 | `RECEIPT_CLAIM_STALE_SECONDS` | `900` | When a `sending` claim is treated as abandoned | **Without it, a worker killed mid-send leaves a claim nobody can ever take and the receipt never goes out.** Shorter than the queue's visibility timeout and two workers send twice. |
@@ -3994,7 +4363,7 @@ reads.
 
 | Variable | Default | What it is for | What breaks if it is wrong or absent |
 |---|---|---|---|
-| `SEED_DEFAULT_PASSWORD` | **none — required by the seed script, and by nothing else** | The one password set on every account `scripts/seed.py` creates (`P-XCT-32`) | **Absent: the seed exits non-zero before writing anything, and there is no other route to a first password** — hashes cannot be read back (`P-XCT-06`) and the reset flow needs SES, which is sandboxed and rejects every seeded address (`FR-ADR-060`). **Phase 2 has no admin who can sign in and Phase 4 has no fifty customers, so the concurrency proof cannot run** (`FR-ADR-034`). Over 72 **bytes**: bcrypt silently ignores the excess and a shorter password works, which is worse than a refusal. Equal to the `.env.example` placeholder: refused by value, because the placeholder must never become the deployed password. **It is never committed, never printed and never logged.** |
+| `SEED_DEFAULT_PASSWORD` | **none — required by the seed script, and by nothing else** | The one password set on every account `scripts/seed.py` creates (`P-XCT-32`) | **Absent: the seed exits non-zero before writing anything, and there is no other route to a first password** — hashes cannot be read back (`P-XCT-06`) and the reset flow needs SES, which is sandboxed and rejects every seeded address (`FR-ADR-060`). **Phase 2 has no admin who can sign in and Phase 4 has no fifty customers, so the concurrency proof cannot run** (`FR-ADR-034`). Under `PASSWORD_MIN_LENGTH` **characters**, or over 72 **bytes** — the two bounds are in different units and each is checked in its own: bcrypt silently ignores the excess past 72 bytes and a shorter password works, which is worse than a refusal. Equal to the `.env.example` placeholder: refused by value, because the placeholder must never become the deployed password. **It is never committed, never printed and never logged.** **How it reaches a deployed environment** is `P-XCT-32`'s: an SSM `SecureString` referenced from **the seed's own one-off task definition family**, never the service's, which is what lets it be seed-only and still arrive the way `P-XCT-16` requires. |
 | `SEED_CHANGEOVER_MINUTES` | `20` | Minutes added to a seeded film's runtime to produce `showtime.ends_at`, which is `NOT NULL` (`P-XCT-30`) | **`ASSUMED`, and deliberately not an answer to `PROPOSED-TURNAROUND-01`**, which asks the client to rule the real changeover between shows. The seed needs *a* number because the column cannot hold an open question. Larger than 50 makes the seeded schedule overlap itself at the 210-minute slot spacing and the seed trips `P-ADM-08`'s own overlap refusal; absent, `ends_at` cannot be computed and the seed exits before its first write. **When the client rules the real figure, that row changes and this follows it.** |
 | `SEED_EMAIL_DOMAIN` | `demo.frontrow.invalid` | The domain every seeded address sits at | `.invalid` is reserved by RFC 2606 and can never resolve, which is what makes seeded data identifiable at a glance (`FR-ADR-067`) and makes it impossible for a seeded address to receive real mail. **Set it to a real domain and seeded bookings become hard bounces against the sending identity's reputation**, which can suspend the SES account and take the real receipt path down with it (`FR-ADR-060`). |
 
@@ -4031,9 +4400,13 @@ environment, and each lives in the Zone B configuration file with a comment sayi
 
 **Three checks run at the seed script's own start rather than at the API's boot**, because the seed is
 the only process that reads their variables, and they run **before its first write** so a failure
-leaves the database exactly as it was (`P-XCT-32`): `SEED_DEFAULT_PASSWORD` is present;
-its length is between `PASSWORD_MIN_LENGTH` and 72 **bytes**; and it is not equal to the placeholder
-value `.env.example` ships. Each exits non-zero naming the variable.
+leaves the database exactly as it was (`P-XCT-32`): `SEED_DEFAULT_PASSWORD` is present; it is at
+least `PASSWORD_MIN_LENGTH` **characters** and at most 72 **bytes**; and it is not equal to the
+placeholder value `.env.example` ships. Each exits non-zero naming the variable. **The two length
+bounds are measured in different units on purpose** — the floor is a character count, matching what
+`P-XCT-06` enforces at registration, and only the 72 is a byte bound, because only bcrypt's limit is
+one. A floor stated in bytes would admit a twelve-byte password of four multi-byte characters that the
+registration path refuses.
 
 **Three relationships cannot be checked at boot and must therefore be stated in the Zone C
 specification**, because the values live outside the application: the container stop timeout must
@@ -4135,8 +4508,11 @@ gone.** A unit test proves the function; only the signal proves the wiring.
 lifespan hook, not in the entrypoint's default path, and **not behind a `RUN_MIGRATIONS` flag** — a
 flag would be set to true once, during an incident, and never set back.
 
-**The entrypoint takes a command argument.** `migrate` runs `alembic upgrade head` and exits with the
-migration's status. `api` and `worker` start long-running processes and never touch migrations. In AWS
+**The entrypoint takes a command argument.** There are four: `api`, `worker`, `migrate` and `seed`.
+`migrate` runs `alembic upgrade head` and exits with the migration's status. **`seed` runs
+`scripts/seed.py` and exits with its status, and it is `P-XCT-32`'s** — it is listed here so the
+argument set is complete in one place, and it applies no migration. `api` and `worker` start
+long-running processes and never touch migrations. In AWS
 this is a one-off task using the **same image and the same task definition family**, with the command
 overridden — so the migration and the code are the same build. **That run is Zone C**; the build
 session ships the entrypoint, heavily commented, and owes the specification.
@@ -4327,6 +4703,7 @@ quiet when the thing it watches disappears is worse than no alarm, because it is
 | SES bounce and complaint rate | receipts going nowhere, including into spam folders |
 | `outbox_pending` rising | the relay stuck, so receipts are never even enqueued |
 | RDS free storage | forever retention filling the 20 GB volume |
+| **S3 poster-bucket size and object count** | **the only store in the product with no deletion path at all.** A replaced poster is never deleted (`P-ADM-20`, `FR-ADR-012`), so the bucket only ever grows and nothing reads its size; the first symptom is a failed upload an admin meets mid-task |
 | RDS connection count | pool exhaustion against roughly 110 connections |
 | Host memory | a container killed for exceeding its limit, with no log explaining why |
 
@@ -4566,10 +4943,24 @@ breaks in production if the deployment is got wrong.
 |---|---|---|
 | **1** | `P-XCT-10` `P-XCT-11` `P-XCT-12` `P-XCT-14` `P-XCT-15` `P-XCT-16` `P-XCT-17` `P-XCT-18` `P-XCT-21` `P-XCT-22` `P-XCT-23` `P-XCT-26` `P-XCT-27` `P-XCT-28` `P-XCT-29` `P-XCT-31` | The floors that must exist before anything else is written. `P-XCT-17`'s lock release has nothing to release until Phase 4; the drain and the signal handling are Phase 1. `P-XCT-21`'s **measurement** is a Phase 1 deliverable, not just a deployment. |
 | **2** | `P-XCT-02` `P-XCT-03` `P-XCT-05` `P-XCT-06` `P-XCT-19` `P-XCT-30` `P-XCT-32` | `P-XCT-01`'s unique constraint is created in **this phase's migration**, before any code can write a booking, so no window exists in which bookings are written without it. `P-XCT-20`'s backups are needed by this phase. **`P-XCT-32` ships with the seed and is a hard dependency of Phase 4**: without it the seeded accounts cannot sign in and the concurrency proof has nobody to run as. |
-| **3** | `P-XCT-08` `P-XCT-09` `P-XCT-24` `P-XCT-25` | `P-XCT-09`'s cache half lands here; its lock half is re-checked at Phase 4. |
+| **3** | `P-XCT-08` `P-XCT-09` `P-XCT-24` `P-XCT-25` | `P-XCT-09`'s cache half lands here; its lock half is re-checked at Phase 4. **ElastiCache Redis is therefore needed by *Phase 3*, not Phase 4** — see the note below. |
 | **4** | `P-XCT-01` `P-XCT-04` | The concurrency proof and the red-proof drill. Depends on Phase 2's seed script for fifty authenticated customers. |
 | **7** | `P-XCT-07` `P-XCT-13` `P-XCT-20` | Rate limiting and metrics are Phase 7 by the mandate. `P-XCT-20`'s **restore rehearsal** is a Phase 7 runbook deliverable even though the backups themselves are needed by Phase 2. |
 | **every phase** | `P-XCT-27` | The phase plan governs itself and closes each phase. |
+
+**Redis is a Phase 3 dependency and the prep queue announces it for Phase 4, which is one phase
+late.** Phase 3 is browsing and the seat-map read path. **The seat-map read is rate-limited**
+(`FR-ADR-058`, `RATE_LIMIT_SEATMAP_IP_PER_MIN`) **and the limiter runs before the cache and fails
+closed**, so with no Redis that read returns `503` and **Phase 3's own acceptance cannot be
+demonstrated in AWS at all** — not slower, not degraded: unavailable. `P-XCT-09` is the row that
+settles that, and it lands in this phase. The cache half needs Redis in this phase too; only the lock
+half waits for Phase 4.
+
+**`docs/30 Deployment/AWS_PREP_QUEUE.md` row 8 carries a needed-by of Phase 4 and must read Phase 3.**
+**This lane writes nothing to that file** (`S7.16`, `P-XCT-26`) and names the correction in its return
+instead. The obligation this discharges is the one the zone split rests on: **a dependency announced
+on the day it blocks has broken the exchange** (`P-XCT-26` exception 3), and announcing it a phase
+late is the same failure arriving on time.
 
 **One sequencing consequence worth naming rather than absorbing.** The concurrency proof is Phase 4
 and rate limiting is Phase 7, so **the Phase 4 run happens before the limiter exists.** The proof
@@ -4626,7 +5017,15 @@ those are read months later and out of context.
 5. **The formatting is one function**, taking an instant and a form, in one module. A second
    implementation is a second convention arriving quietly, which is what produced six.
 6. **A surface may not invent a format.** If a surface needs something none of the five forms covers,
-   that is a gap in this section and it is fixed here — **never locally**.
+   that is a gap in this section and it is fixed here — **never locally**. **One class sits outside
+   the five rather than missing from them, and this rule must be read with it**: a **prose naming of a
+   period** — `August 2026`, a week expressed as a range, `Friday 14 August 2026` — **is not a rendered
+   instant and is not governed by this section at all.** See *One thing this section deliberately does
+   not cover*, below, which draws that boundary and names the three strings it releases. **Reading
+   this rule without it is the trap:** `SCR-RPT-01`'s month tab needs a month-only string and its week
+   view needs a range, neither of which is one of the five — and the answer is that neither is this
+   section's to give, **not** that a sixth form is owed. **A gap in the five is fixed here; a string
+   that is not an instant was never in the five to begin with.**
 7. **A relative *instant* is never rendered** — no "2 days ago", no "yesterday", no "in three weeks".
    An instant is rendered as one of the five forms above and nothing else. **A duration is a different
    thing and this section does not own it.** A wait a customer is told to observe — the `Retry-After`
@@ -4706,14 +5105,28 @@ than checking whether this table names them.
 
 #### One thing this section deliberately does not cover
 
-**A prose heading that names a period is not one of the five forms and is not governed here.** The
-dashboard's period line reads `Friday 14 August 2026`, `Monday 10 August to Sunday 16 August 2026` and
-`August 2026` (lane E7) — a full weekday, a full month name, and a range expressed in words. **Those
-are a heading's sentence rather than a rendered instant**, they have no equivalent among the five, and
-inventing a sixth form here purely to bless them would be this section deciding another lane's copy
-from a distance. **They stay `P-RPT`'s.** The boundary is stated so that neither side reads the
-silence as coverage: **anything that renders one instant** — a showtime, a cut-off, an
-`occurred_at`, a booking's date — **is this section's; a heading that names a span in prose is not.**
+**A prose naming of a period is not one of the five forms and is not governed here** — **in a heading,
+in a period line, in a control's visible label, or in a control's accessible name.** The class is
+stated rather than the one site, because `SCR-RPT-01` names its period in more than one place: the
+period line, and the period stepper's accessible name, which `SCR-RPT-01` requires to name the period
+type. All of them are the same kind of string and all of them are outside the five.
+
+The dashboard's period line reads `Friday 14 August 2026`, `Monday 10 August to Sunday 16 August 2026`
+and `August 2026` (lane E7) — a full weekday, a full month name, and a range expressed in words.
+**Those are a sentence naming a span rather than a rendered instant**, they have no equivalent among
+the five, and inventing a sixth form here purely to bless them would be this section deciding another
+lane's copy from a distance. **They stay `P-RPT`'s, and all three are discharged: `SCR-RPT-01` owes
+this section nothing for them and is not in breach of rule 6 by publishing them.**
+
+The boundary is stated so that neither side reads the silence as coverage: **anything that renders one
+instant** — a showtime, a cut-off, an `occurred_at`, a booking's date — **is this section's; a string
+that names a span in prose is not.** The test is mechanical: *does the string denote a single point in
+time?* `14 Aug 2026, 7:30 pm` does and is governed; `August 2026` does not and is not.
+
+**One consequence, so the release is not read as an absence of rules.** A period string that is
+released here is still `P-RPT`'s to publish and to keep consistent, and `S7.21` still binds any number
+inside it that comes from configuration. **Released from this section is not released from the
+document.**
 
 ---
 
@@ -5128,6 +5541,11 @@ deliberately **not** raised as rows:
 | **`[JUDGMENT CALL]` — one read-path `DEPENDENCY_UNAVAILABLE` sentence** | `SCR-XCT-01`'s copy table, with the boundary stated on `SCR-XCT-02`. **Decided:** "This could not be loaded right now. Nothing was being saved, so nothing was lost. Try again in a moment.", registered as the default for any read endpoint whose own row publishes none. **Why:** every existing sentence for this code says some version of "Nothing was saved", which is **false on a `GET`**; the admin lane hit this, correctly declined to mint a local variant, and a cross-cutting code belongs in a cross-cutting registry. **What it is not:** a replacement for the two read sentences that already exist — `P-BRW-12`'s seat-map string and the browse section's public-site string both outrank it under `S1.2` and both stay. **No frozen source specifies error copy.** **Reversible:** one string in one table. |
 | **`[JUDGMENT CALL]` — one duration-rendering rule** | **S7.20**, with `S7.19` rule 7 pointing at it. **Decided:** the `Retry-After` header is always integer seconds and is never rendered; the sentence reads seconds below 120 and `ceil`-ed whole minutes at 120 and above, with the singular forms specified. **Why:** seven published verbatim strings could not all have come from one function — 240 and 720 became minutes while 900 stayed seconds — and they are rank-2 copy, so an engineer could not pick without overriding a row. The threshold is 120 rather than 60 so a 90-second wait is not overstated by a third. **No frozen source specifies a duration format.** **Reversible:** one function and one constant. **The rendering rule is the judgment call; the arithmetic beside it is not.** The strings changed in this lane are `P-XCT-06` rows 7 to 9 and `SCR-XCT-03`'s copy table, from one wrong figure to three derived ones. **Corrected once since, and the correction is the entry that matters:** the table was published as one constant per bucket, and `P-ACC-14` was right that `Retry-After` is the time actually remaining until the next token. A constant is correct only at the instant the bucket empties and overstates every later retry. The table is **relabelled as the maximum** rather than deleted — the maximum is what it always was, and it is why every published example carries that figure — and a two-retry worked example now shows the value falling. **No published string changed as a result**, because rule 6 already forbade typing the number. |
 
+| **`[JUDGMENT CALL]` — the red-proof drill runs in two stages, and only the second reaches the constraint** | `P-XCT-01` and `S7.1`, deciding `J-XCT-01`. **Decided:** Stage A is the fifty-request hold gate exactly as `SRC-002 §9.1` and `P-HLD-13` require, and it is recorded as exercising the constraint **zero** times; Stage B puts **two live holders on one seat** — by deleting the lock key in Redis inside the `PAYMENT_SIMULATED_DELAY_MS` window of a confirm already in flight — so that two confirms both reach `P-PAY-10` step 7, and *that* is the run the constraint is dropped under. **Why:** the drill as specified could not produce more than one winner. `P-HLD-13` and `P-PAY-11` both fix the gate at the **hold**, where all forty-nine losers are refused by Redis and the constraint is never reached, so dropping it changed nothing — and `P-XCT-01` exception 5 and `P-HLD-13` exception 4 then classified that outcome as a void proof and a stop-the-line finding. **The one gate this project calls never waivable reported failure against a correct implementation.** **Nothing is weakened:** the Redis lock still provides the hold, the constraint plus row locking still provides the truth, and the database half still may not be waived. **It is stricter** — a guard exercised zero times is now exercised, watched failing, and watched working again — so it needs no signature (Art III.10). **Deleting a lock key is a fault injection, not a disabled control:** the lock layer, both `SET … NX` calls, both token re-validations and the rate limiter all run normally, and a key disappearing is what an eviction or a restart does on its own — the very failure `S7.1` names as the reason the second layer exists. **Local only**, because Stage B needs direct Redis access and the constraint drop is a destructive schema change. **Reversible:** it is a test procedure; no schema, no application code and no published customer string changes. **Two cross-file corrections follow from it** — `P-HLD-13`'s acceptance criterion and exception 4 in `E2_seat_hold.md`, and `P-PAY-11`'s worked example in `E3_checkout_payment.md` — **named, not edited.** |
+| **`[JUDGMENT CALL]` — how the seed is run against a deployed environment, and how its password gets there** | `P-XCT-32`, deciding `J-XCT-03`. **Decided:** a fourth entrypoint command, `seed`; a one-off ECS task on **its own task definition family**, not the service's; and `SEED_DEFAULT_PASSWORD` as an SSM `SecureString` referenced by `valueFrom` **from that family alone**. **Why:** both this row and `P-XCT-30` assigned the deployed run to the client and neither said how, while `S7.9` makes the variable seed-only so it cannot ride in on the service's `secrets` block — leaving the only route to a first password with no route into the environment. **Phase 2 had no admin who could sign in and Phase 4 had no fifty customers.** **Why a separate family rather than a command override:** overriding a command is ECS's ordinary mechanism and the migration run uses it, but a secret must be *in* a family to be resolved from it, and putting it in the shared family is exactly what the seed-only rule forbids. **Two families, one image**, so the code and the seed stay the same build. **All of it is Zone C and the build session builds none of it** — what is owed is the command, the variable, the parameter path, the execution-role grant and the acceptance criterion. **A prep-queue row with a needed-by of Phase 2 is owed and is named in the return, not written** (`S7.16`). **Reversible:** one entrypoint branch and one task definition. |
+| **`[JUDGMENT CALL]` — four rules that say who scrolls the seat map and to where** | `P-XCT-25`, deciding `J-XCT-06`. **Decided:** the container is scrolled to its leading edge on first paint; to the minimum position that brings a keyboard-focused seat **fully** into view; to the first restored seat of a restored selection; and to the first seat an error names. Plus `scroll-padding-inline-start: var(--fr-seat-gutter)`, so no focused cell can come to rest under the pinned row gutter. **Why:** every row in the document said the map *scrolls* and **nothing anywhere moved it**, so arrow-key focus routinely landed on a seat outside the visible strip and the pinned gutter overlaid the leftmost cells. The second of those is **WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum)**, new at AA in 2.2 and inside the target `P-XCT-24` adopts. **It is fixed rather than recorded as a deviation**, because `P-XCT-24` carries exactly one deviation — the unextendable hold — and a second one would be a real regression dressed as bookkeeping. **The hall size behind the ten-of-twenty split is `ASSUMED`** under `OPEN-SCALE-02` and does not harden; the rule does not depend on it. **Reversible:** four scroll calls and one CSS property. |
+| **`[JUDGMENT CALL]` — the seed writes no `audit_log` row, and the absence is specified** | `P-XCT-30`, deciding `J-ADM-13`. **Decided:** `scripts/seed.py` writes no audit row for anything it creates, and every seeded row is identified instead by its `DEMO` prefix and the reserved `.invalid` domain. **Why:** `P-ADM-19` makes `actor_user_id` non-null and forbids **both** a role name and a service account, and the seed creates the first admin itself — so at its earliest writes no user row exists for an actor column to point at. All three ways out are worse: a null actor breaks the rule in the one table whose value is that its rows are true; a `seed` service account is forbidden in terms; attributing 720 showtimes to `admin-01` is a false statement about who did it. **The scope this rests on:** a privileged write is an admin action arriving through the API, and the seed is provisioning by a script. **It is the only exemption from `P-XCT-03` in the product and no application code path inherits it.** **The gap is recorded, not closed:** the Phase 8 change log shows nothing before the first real admin action, and a reader will assume the catalogue was made by hand. **Reversible:** it is an absence; adding rows later needs an actor the product does not yet have. |
+
 ### Where I would have had to guess and did not
 
 1. **What a customer is told when the receipt definitively fails after payment is captured.**
@@ -5211,7 +5629,30 @@ deliberately **not** raised as rows:
    itself** — `900 seconds`, which is the sign-in *window* — which is why the fix was to tabulate the
    derivation for all thirteen buckets in **S7.20** rather than to correct four strings. **The three
    are named there and not edited**; each is copy its own lane's row publishes.
-6. **"This repository is public" appears in several `APPROVED` records, and the repository is now
+6. **`P-XCT-05` gave `404` where `P-RPT-09` and the error registry give `405`.** A `POST` on the
+   reports router addresses a path that exists and serves `GET`, so `405` is correct and `404` denies
+   that the address exists. **The negative test for the read-only router is transcribed from one of
+   the two rows**, so a suite built from the old line passed against a wrong implementation while one
+   built from the registry failed against a correct one. **This section's line was the wrong one and
+   is corrected here**; the `newerrorcode` block in `S6` is widened in the same pass, because it
+   described only the `DELETE` case and **the machine-readable copy is the one that reaches the
+   artifact.** `P-RPT-09` row 3 additionally calls the response *"the framework's method-not-allowed
+   response"*, which contradicts `FR-ADR-052` and `P-XCT-11` — **that half is lane E7's and is named
+   here, not edited.**
+7. **`P-XCT-05` and `P-RPT-01`/`P-RPT-02`/`P-RPT-08` publish different sentences for the same four
+   refusals.** No session, wrong role, an out-of-scope hall, an empty scope — and two of the four
+   pairs are different sentences rather than paraphrases. **Both are rank-2 rows, so `S1.2` does not
+   settle it and `S1.2.1` case 1 makes an unresolved rank-2 tie a defect rather than the implementer's
+   choice.** Resolved the way `SCR-XCT-01` resolves `FORBIDDEN` and `AUTH_REQUIRED`: **the row that
+   knows what the caller could not reach owns the words**, and this section's four are the generic
+   floor for any router whose own P-row publishes nothing. **Nothing in `E7_dashboard.md` was
+   touched.**
+8. **`S7.18` puts `P-XCT-08` and `P-XCT-09` in Phase 3 while `AWS_PREP_QUEUE.md` row 8 gives
+   ElastiCache Redis a needed-by of Phase 4.** Phase 3's seat-map read is rate-limited and the limiter
+   fails closed, so without Redis **Phase 3's own acceptance cannot be demonstrated in AWS at all.**
+   The phase table is right and the queue row is one phase late. **This lane writes nothing to that
+   file** (`S7.16`); the correction is named in the return.
+9. **"This repository is public" appears in several `APPROVED` records, and the repository is now
    private.** Adjudicated in `FR-ADR-071`: no rule changes, one rationale does, and the records are not
    edited. **This section asserts neither**, and states the no-credentials floor as a constitutional
    floor rather than as a consequence of visibility — which is the stronger ground `FR-ADR-071`

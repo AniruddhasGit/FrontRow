@@ -63,7 +63,7 @@ authentication dependency, never inside the handler (`SRC-001 §7.4`).
 | 1 | No JWT, or an expired one | `401` `AUTH_REQUIRED` | "Sign in to complete this booking." |
 | 2 | The hold token is unknown, or its Redis keys are gone | `409` `HOLD_EXPIRED` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 3 | The hold token exists but was issued to a different user | `403` `HOLD_NOT_OWNED` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
-| 4 | The simulated capture returns `failed` | `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **This row owns both strings.** They are **not** `P-HLD-14`'s: that row's message set carries no `PAYMENT_FAILED` entry at all, so the earlier attribution pointed at a row that does not have it. `P-PAY-01`'s own note below already says E3 keeps its own copy for the codes E2 does not publish, and this is one of them. |
+| 4 | The simulated capture returns `failed` | `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. You can try again while the countdown is still running. If it has reached zero your hold has ended and you will need to choose your seats again." **One string, unconditional. This row owns it.** It is **not** `P-HLD-14`'s: that row's message set carries no `PAYMENT_FAILED` entry at all, so the earlier attribution pointed at a row that does not have it. `P-PAY-01`'s own note below already says E3 keeps its own copy for the codes E2 does not publish, and this is one of them. |
 | 5 | A seat was already sold — the unique constraint fires | `409` `SEAT_UNAVAILABLE` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 6 | Redis is unreachable | `503` `DEPENDENCY_UNAVAILABLE` | **Specified once in `P-HLD-14` (lane E2), at its *at confirm* row. Not restated here.** |
 | 7 | Over the rate limit | `429` `RATE_LIMITED`, with `Retry-After` | "Too many attempts. Try again in 6 seconds." — the span is computed from the emptied bucket's refill rate, never from its capacity, and is rendered by **S7.20**. The arithmetic is under **Worked example — the `Retry-After` span**, below |
@@ -81,6 +81,22 @@ and nowhere else.** E3 keeps its own copy only for the codes E2 does not publish
 `IDEMPOTENCY_IN_FLIGHT`, `IDEMPOTENCY_KEY_REUSED`, `REQUEST_INVALID`, and the generic
 `AUTH_REQUIRED`, `RATE_LIMITED` and `INTERNAL_ERROR` lines. `SALES_CLOSED` is not an error of this
 endpoint at all (`P-PAY-10` step 4).
+
+**Why `PAYMENT_FAILED` is one sentence and not two, and what the earlier pair claimed that the server
+cannot know.** Exception 4 published two strings and chose between them on whether the hold had
+survived the capture, attributing that knowledge to *"the confirm re-validates the hold"*. **The
+confirm re-validates the hold at step 2 and the capture is step 6** (`P-PAY-10`), and lane E2's seat
+lifecycle machine states that Redis is not read again between re-validation and commit. **So at the
+moment the `402` is composed the server has no fact about the hold's current state**, and a hold that
+expired during the artificial delay makes the first string false while a hold that survived makes the
+second one false. The two available repairs were to add a Redis read after the failed capture, or to
+stop claiming. **Stopping claiming is the one this document has already chosen once**: `SCR-SEA-02`'s
+zero state named a cause until it was shown that a TTL, a shutdown drain and a re-acquired key reach
+`0:00` identically, and the copy was generalised rather than given a new source of truth. The same
+argument applies here and produces the same answer, so the single string names the two facts the
+server does know — that nothing was charged, and that the customer may press again — and points at the
+countdown for the one it does not. **Adding a Redis read would also have to specify what the sentence
+says when that read is the thing that fails**, which is a third case bought to remove a second.
 
 **Every instant this endpoint returns that a customer reads as a wall-clock time carries the cinema's
 UTC offset, and the client converts nothing.** `EP-PAY-01`'s `201` serialises `starts_at` and
@@ -511,6 +527,32 @@ must carry.
 rate would make tests flaky and a demonstration unpredictable. The trigger is a header prefix rather
 than a request-body field so that no failure-control field ever enters the public request contract.
 
+**`fail -> retry -> succeed` is reachable, and two rules are what make it reachable.** The trigger
+reads the key, so a retry that carries the same key fails identically; and if the key were minted once
+per hold, every retry for the life of that hold would carry it, and the sequence this simulator exists
+to demonstrate could not be performed at all. Both halves are closed here:
+
+1. **`P-PAY-09` mints the key per confirm attempt, not per hold, and discards it on a `402`.** A
+   `402` is the only response whose specification states that the attempt committed nothing and rolled
+   its idempotency record back, so a fresh key on the next press cannot produce a second booking or a
+   second capture. The next press therefore carries a key that does not begin with the prefix, the
+   capture succeeds, and the customer the copy invited to try again does.
+2. **A key the browser mints can never begin with the prefix by accident.**
+   `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` is validated at boot to contain **at least one character
+   outside the canonical UUID alphabet `[0-9a-f-]`**, which is the whole alphabet
+   `crypto.randomUUID()` can produce (`P-PAY-09`). Without that check a prefix of `a` would fail one
+   confirm in sixteen, at random, in every environment it was set in — which is the flakiness this
+   row's first paragraph exists to prevent, arriving through the configuration instead of through the
+   provider.
+
+**Who can then produce a failing key.** A caller that sets the header itself: `scripts/`, a `curl`
+invocation, or any API client. That is where `fail -> retry -> succeed` is driven, and it satisfies
+this row's requirement that the delay, the double-tap guard and the idempotency retry path be
+**exercised by hand** — a person driving the endpoint directly is exercising it by hand. **No control
+is added to the product to reach it.** A demonstration toggle on the checkout screen would be a new
+control on the one screen `P-PAY-08` forbids to grow anything payment-shaped, and it would be a scope
+change nobody asked for.
+
 **The failed attempt is recorded and the booking transaction rolls back.** The `payment` row for a
 failed capture is written in its own committed transaction so that the failure is observable; the
 booking transaction that contained the attempt rolls back in full, including its idempotency record.
@@ -537,12 +579,14 @@ bound, `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` set. All three validated at boot.
 | 1 | `PAYMENT_PROVIDER` unset | Process exits non-zero at boot, before binding a port | Nothing. There is no running application. |
 | 2 | `PAYMENT_PROVIDER` set to anything other than `simulated` | Process exits non-zero at boot with a message stating that no other provider exists | Nothing. |
 | 3 | `PAYMENT_SIMULATED_DELAY_MS` >= `SEAT_HOLD_TTL_SECONDS * 1000 / 10` — at a 180-second hold, `>= 18000` | Process exits non-zero at boot, with a message naming the variable, the configured value and the computed bound | Nothing. |
-| 4 | The idempotency key starts with `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` | The payment row is committed as `failed`; the booking transaction rolls back; `402` `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **Published once by `P-PAY-01` exception 4, which owns both strings. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
+| 4 | The idempotency key starts with `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` | The payment row is committed as `failed`; the booking transaction rolls back, taking its idempotency record with it; `402` `PAYMENT_FAILED`. **The client then discards the key and mints a fresh one, so the next press is not refused by this trigger** (`P-PAY-09`) | **One string, published once by `P-PAY-01` exception 4, which owns it. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
 | 5 | A capture is attempted against a payment already in `captured` | Rejected by the state machine. The confirm path never reaches this — the idempotency record catches the retry first (`P-PAY-09`) | Nothing. The replayed response is returned instead. |
+| 6 | `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` is set to a value drawn entirely from `[0-9a-f-]` | Process exits non-zero at boot, with a message naming the variable, the configured value and the reason: a browser-minted `Idempotency-Key` could begin with it by chance, which would fail real confirms at random | Nothing. There is no running application. |
 
 **Server-side validation.** `PAYMENT_PROVIDER`: string, must equal `simulated`.
 `PAYMENT_SIMULATED_DELAY_MS`: integer, `> 0`, `< SEAT_HOLD_TTL_SECONDS * 1000 / 10`.
-`PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`: string, 1–32 characters.
+`PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`: string, 1–32 characters, **containing at least one character
+outside `[0-9a-f-]`**.
 
 **Worked example.** With `SEAT_HOLD_TTL_SECONDS=180` the hold is `180 * 1000 = 180000` ms and the
 startup bound is a tenth of it: `PAYMENT_SIMULATED_DELAY_MS < 18000`. `1500` boots. `17999` boots.
@@ -556,6 +600,25 @@ completes inside the hold. A request begun at `14:02:59.500Z` reaches commit at 
 step 2 while it was still live, the seats are already protected by the Redis locks until `14:03:00Z`
 and by the unique constraint thereafter. `FR-ADR-042` states that a customer already holding seats may
 finish checking out.
+
+**Worked example — the prefix alphabet check, and the figure that makes it necessary.** A browser key
+is `crypto.randomUUID()`'s canonical form (`P-PAY-09`): 36 characters drawn from `0-9`, `a-f` and `-`.
+A prefix of length `n` drawn entirely from that same alphabet is therefore reachable by chance, and
+the hexadecimal positions carry 16 values each:
+
+```
+prefix "a"          all of [0-9a-f-]   ->  1 confirm in 16              REFUSED at boot
+prefix "deadbeef"   all of [0-9a-f-]   ->  1 confirm in 16^8
+                                        =  1 in 4,294,967,296          REFUSED at boot
+prefix "FAIL_"      'F' and '_' are outside [0-9a-f-]  ->  0            BOOTS
+```
+
+**`deadbeef` is refused even though its own figure is negligible**, because the check is on the
+alphabet and not on the length: a rule that admitted an eight-character all-hex prefix would have to
+name the shortest acceptable length, and every such number is one an operator can undercut by typing a
+shorter value. **The configured value is `FAIL_`** (**`ASSUMED`** — no source names one). It is 5
+characters, inside the 1–32 bound, and contains two characters outside the alphabet, either of which
+alone would satisfy the check.
 
 ---
 
@@ -634,6 +697,39 @@ expires is a key whose retry after the window creates a second booking.
 **Scope is per user.** Two customers can generate the same key — a weak client generator, or a copied
 request — and a global scope would hand one of them the other's booking.
 
+**Who generates the key, when, with what entropy, and when a new one is minted.** This paragraph is
+the authority for all four. Nothing else in the document specifies them, and the only statement that
+existed before was a sentence in lane E2's cross-lane notes, which under `S1.2` carry no authority
+over another lane's endpoint.
+
+| | |
+|---|---|
+| **Who** | **The client, never the server.** A server-minted key would be minted per request and would guard nothing: the whole point is that the *same intent* re-sent carries the *same* key. |
+| **What** | `crypto.randomUUID()` — the browser's CSPRNG — in its canonical 36-character form, e.g. `9f2c1d4e-7b83-4a16-9c05-2e6f8a31b7d0`. **122 random bits.** 36 is inside the header's 1–255 bound with room to spare, and the value needs no encoding to travel in a header. `Math.random()` is forbidden: it is not a CSPRNG, and two tabs seeded alike produce the same key. |
+| **When** | **Once per confirm attempt**, minted at the moment the pay action is pressed and **written to `sessionStorage` as `fr.confirm_idempotency_key` before the request is sent**, beside the hold token (`P-HLD-09`). The stored value carries **the `hold_token` it was minted against.** Writing it first is what makes it survivable: a tab that dies between the write and the response still has the key that identifies the attempt. |
+| **Re-sent unchanged** | When the pay action is pressed and a stored key exists **whose `hold_token` equals the current one** and whose attempt has not ended in a `402`. This is the refresh-mid-flight case, and it is the case lane E2's seat lifecycle machine depends on for `TAB_REFRESHED` in `held_by_me_paying`. |
+| **Freshly minted** | When there is no stored key; when the stored key was minted against a **different** `hold_token`; or when the previous attempt returned **`402` `PAYMENT_FAILED`**. |
+| **Cleared** | On a `201` — the attempt is over. On a `402`. On sign-out, with every other `fr.*` value (`SCR-PAY-01`, `P-ACC-13`). On tab close, by `sessionStorage`'s own lifetime. |
+
+**Why `402` is the only outcome that earns a fresh key, and why every other outcome keeps the old one.**
+A fresh key is safe exactly when the previous attempt is **known** to have committed nothing. `402` is
+the only response in this endpoint's set that the document guarantees that of: the booking transaction
+rolls back in full, **taking its own idempotency record with it** (`P-PAY-07` exception 4, `P-PAY-10`),
+so no booking, no capture and no key row survive it. **Every other ending keeps the stored key,
+including the endings the client never learns** — a dropped connection, a killed tab, a request that
+timed out. In those the outcome is *unknown*, and the only instrument that can tell "the first attempt
+committed" from "the first attempt did nothing" is re-sending **the same key** and reading which of
+the three duplicate behaviours above comes back. **Minting a fresh key for an attempt of unknown
+outcome is the one manoeuvre in this product that can produce two bookings and two captures for one
+intent, and it is forbidden here rather than left to a client author's judgement.**
+
+**Binding the stored key to the hold token is what keeps a retry from turning into a `422`.** A
+customer who meets `409` `HOLD_EXPIRED` or `409` `SEAT_UNAVAILABLE` returns to the seat map and takes a
+new hold, which issues a new token (`P-HLD-01`). The fingerprint is a hash of `hold_token` and
+`showtime_id`, so re-sending the old key against the new hold would differ in fingerprint and be
+refused `422` `IDEMPOTENCY_KEY_REUSED` — a permanent refusal, because the record is never deleted.
+The token comparison makes that unreachable: a new hold token mints a new key.
+
 **Who may do it.** Any authenticated account, as `P-PAY-01`.
 
 **Preconditions.** The `Idempotency-Key` header is present, 1–255 characters.
@@ -652,10 +748,12 @@ request — and a global scope would hand one of them the other's booking.
 | 1 | The header is absent | `400` `REQUEST_INVALID`. No transaction is opened | "This request could not be processed. Return to the seat map and choose your seats again." |
 | 2 | The header is present but empty, or longer than 255 characters | `400` `REQUEST_INVALID` | "This request could not be processed. Return to the seat map and choose your seats again." |
 | 3 | The key exists for this user, `status = completed`, fingerprint matches | The stored `response_body` and the original status code, byte for byte | The confirmation, exactly as the first time. No banner, no second charge, no second booking. |
-| 4 | The key exists for this user, `status = in_progress`, fingerprint matches | `409` `IDEMPOTENCY_IN_FLIGHT` with `Retry-After` | "This booking is still being processed." |
+| 4 | The key exists for this user, `status = in_progress`, fingerprint matches | `409` `IDEMPOTENCY_IN_FLIGHT` with `Retry-After`. **The client re-sends the identical request automatically after `Retry-After` seconds, at most three times** — see the paragraph and the arithmetic below | "This booking is still being processed." |
 | 5 | The key exists for this user, fingerprint differs | `422` `IDEMPOTENCY_KEY_REUSED` | "This checkout is out of date. Return to the seat map and choose your seats again." |
 | 6 | The same key sent by a different user | Treated as a fresh key. The unique constraint is on `(user_id, idempotency_key)`, so there is no collision | Nothing unusual. |
-| 7 | A retry after the attempt rolled back — a failed payment, or a lost seat | The key row was rolled back with the transaction, so the retry inserts it again and proceeds normally | Nothing unusual. |
+| 7 | A retry carrying the **same** key after the attempt rolled back — a failed payment, or a lost seat | The key row was rolled back with the transaction, so the retry inserts it again and proceeds normally. **The server accepts this from any caller**; it is what makes a script's retry work | Nothing unusual. |
+| 7b | A retry from `SCR-PAY-01` after `402` `PAYMENT_FAILED` | **A different key**, freshly minted by the client under the rule above. It inserts cleanly, is not caught by `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX`, and the capture succeeds. Nothing is charged twice: the first attempt captured nothing and left no key row | The confirmation. |
+| 7c | A retry from `SCR-PAY-01` after `409` `SEAT_UNAVAILABLE` or `409` `HOLD_EXPIRED` | The customer returns to the seat map and takes a **new** hold, which carries a new `hold_token`, so the next press mints a fresh key rather than re-sending one whose fingerprint no longer matches | Nothing unusual. |
 
 **Server-side validation.** `Idempotency-Key`: string, 1–255 characters, required. Compared as an
 exact byte sequence; it is not trimmed, lowercased or otherwise normalised, because silently
@@ -670,6 +768,36 @@ Retry-After = ceil(PAYMENT_SIMULATED_DELAY_MS / 1000) + 1
 With `PAYMENT_SIMULATED_DELAY_MS = 1500` this is `ceil(1.5) + 1 = 2 + 1 = 3` seconds. The formula is
 tied to the only bounded wait in the transaction, so raising the artificial delay raises the advice
 automatically. `[JUDGMENT CALL]` — the formula is the build session's under Art III.9.
+
+**What the client does with that header, which is the half a `Retry-After` alone does not specify.**
+A header naming a span says when a retry would be sensible and says nothing about who performs it, and
+`SCR-PAY-01`'s banners carry no control, so a customer meeting this response had no specified next
+move at all. **The screen re-sends the identical request — same key, same body — automatically after
+`Retry-After` seconds, at most three times.** While it does, the pay action keeps its busy state and
+stays disabled, and the banner renders exception 4's string. If the third automatic re-send still
+answers `409` `IDEMPOTENCY_IN_FLIGHT`, the re-sends stop, the banner stays, and the pay action
+re-enables so the customer may press it themselves. **The banner still carries no control** — the
+retrying is the screen's own behaviour and needs nothing to press.
+
+**Why three, and why a bounded count rather than a poll.** A replay spends a rate-limit token whether
+or not it creates anything (`P-XCT-07` exception 4, `EP-PAY-01`'s `rate_limit`), so an unbounded poll
+would empty the customer's own bucket while waiting for a booking that has already been made:
+
+```
+Retry-After                          =  ceil(1500 / 1000) + 1  =  3 s          the formula above
+automatic re-sends                   =  3
+elapsed before the screen gives up   =  3 * 3                  =  9 s
+tokens spent                         =  1 press + 3 re-sends   =  4
+per-user bucket                      =  10 per minute                          S7.4, EP-PAY-01
+tokens left for the customer's own presses  =  10 - 4          =  6
+```
+
+The winner's own transaction takes about **1.56 seconds** end to end (`P-PAY-10`'s worked example), of
+which 1.50 is the artificial delay, so **the first automatic re-send at 3 seconds normally finds the
+winner `completed` and replays the stored `201`** — the customer sees the confirmation and never reads
+the banner for long. Nine seconds is six times the expected transaction, and four tokens leaves the
+larger half of the bucket for a genuine retry. `[JUDGMENT CALL]` — the count of three is the build
+session's; it is one integer and it moves with the bucket if the bucket is reconfigured.
 
 **Worked example — `R-PAY-02`'s three cases, which must all return the original booking.** A customer
 confirms at `14:02:40Z` with `Idempotency-Key: 9f2c…`, and the booking commits at `14:02:41.6Z` as
@@ -738,13 +866,26 @@ already exists at the moment it is composed.
 |---|---|---|
 | 13 | Release this hold's Redis locks with the Lua compare-and-delete script, **then delete the hold record and remove its token from `holds:user:{user_id}:showtime:{showtime_id}`**. The hold is consumed and the seats are sold; leaving the index entry would keep `P-HLD-04`'s cap counting seats this customer no longer holds but owns, and refuse them a further booking on the same showtime for the remainder of the 180 seconds | `FR-ADR-025`, `FR-ADR-029`, `P-HLD-04` |
 | 14 | `DEL cache:seatmap:{showtime_id}` | `FR-ADR-030` |
-| 15 | Send the outbox message to the queue and mark **the `outbox_message` row** `sent` | `FR-ADR-031` |
+| 15 | Send the outbox message to the queue, **bounded by `QUEUE_SEND_TIMEOUT_MS`**, and mark **the `outbox_message` row** `sent`. **The confirm response is emitted after this step returns — whether it succeeded, failed or timed out** | `FR-ADR-031`, `P-TKT-04` |
 
 **Step 15 marks the outbox row and not the dispatch row.** The `receipt_dispatch` row stays `pending`
 until the worker claims it and transitions it (`P-TKT-05`); this path never writes it again after step
 9. Two rows with a `sent` state are two different facts — that the job was handed to the queue, and
 that an email reached SES — and collapsing them would let a queue hand-off be read as a delivered
 receipt.
+
+**Step 15 is inside the request, it is bounded, and its outcome never reaches the customer.** It runs
+in this request's own thread and **the confirm response is emitted after it returns**, so the
+customer's wait includes it: worst case, `P-PAY-10`'s ~1.56-second transaction plus
+`QUEUE_SEND_TIMEOUT_MS` (2000 ms, `S7.9`) ≈ **3.56 seconds**, and then an ordinary `201`. A failure or
+a timeout at step 15 changes nothing the customer sees and nothing about the booking, which is already
+committed: the `outbox_message` row stays `pending` and the worker's relay sends it (`P-TKT-04`
+exception 2, crash row 15). **Nothing is emitted before step 15 and nothing is handed to a background
+task** — a background task is process-local state that a SIGTERM or a SIGKILL loses (`P-XCT-18`,
+`P-XCT-17`), which is the failure the outbox exists to make impossible. **Without the bound the
+response is unbounded**: an unreachable queue would hold it open until the load balancer's idle
+timeout, and the customer who has paid would see a failed request against a booking that exists, seats
+that are sold and a receipt already on its way.
 
 **Why the payment is captured before the booking insert, and what that leaves behind.**
 `SRC-001 §5.3.1` requires payment before confirmation, so the order is not free. Capturing after the
@@ -845,7 +986,7 @@ is reserved to the client (`CONSTITUTION.md` Art III.8), and this is the check.
 | 1 | **Exactly one** of the requested seats already has a `booking_seat` row for this showtime | `409` `SEAT_UNAVAILABLE`, `details.unavailable_seats` naming it, whole transaction rolled back | **`P-HLD-14` row 4, the *at confirm* singular. Not restated here** (`P-PAY-01`). |
 | 1b | **Two or more** of the requested seats already have `booking_seat` rows for this showtime | as row 1, with `details.unavailable_seats` naming **every** one of them, in the order they appear in the hold | **`P-HLD-14` row 4b, the *at confirm* plural. Not restated here.** The server renders the plural sentence itself; this endpoint never returns a singular naming one seat while rejecting several |
 | 2 | The same violation, and the client re-sends the identical request with the same key | The idempotency row was rolled back too, so this is a fresh attempt. It reaches step 7 and violates again | The same message as row 1. The customer must change the selection; the server does not loop. |
-| 3 | The constraint has been dropped — the red-proof drill (`FR-ADR-034`) | Two winners appear. **This is the drill, and the constraint is restored and the restore verified** | Not a customer-facing case. It runs against a local environment. |
+| 3 | The constraint has been dropped — **`P-XCT-01`'s Stage B**, in which two customers hold one seat and both confirm (`FR-ADR-034`) | Two winners appear and two `booking_seat` rows commit for one `(showtime_id, seat_id)`. **This is the red proof; the constraint is then restored and the restore verified** | Not a customer-facing case. It runs against a local environment. **Stage A — the fifty-request hold gate — produces one winner with the constraint dropped and is not this row's case** |
 
 **Server-side validation.** None beyond `P-PAY-01`; this specification is about a database response,
 not a request field.
@@ -856,10 +997,14 @@ and this section restates it rather than redefining it). **It is the hold, not t
 confirm-based variant could not work, because forty-nine of the fifty would hold no lock and would
 fail re-validation with `HOLD_EXPIRED` rather than meeting the unique constraint. The expected result is one
 `201` and **49** responses of `409`, each carrying `code = "SEAT_UNAVAILABLE"` and each naming that
-one seat in `details.unavailable_seats`. Some of the 49 lose at the Redis lock and some lose at the
-unique constraint; the response shape is identical either way, which is deliberate — the customer does
-not need to know which layer refused them, and the operator reads the split from the counters, not
-from the response.
+one seat in `details.unavailable_seats`. **All 49 lose at the Redis lock, and the unique constraint
+fires zero times in a passing run of that gate** — it guards `booking_seat`, which is written only at
+step 7 of `P-PAY-10`, and only the one winner ever gets there. The response shape would be identical
+either way, which is deliberate: the customer does not need to know which layer refused them, and the
+operator reads the split from the counters rather than from the response. **Because that split is
+49-to-0, the gate proves the lock layer and proves nothing about the constraint** — which is why
+`P-XCT-01` adds a second stage that puts two live holders on one seat and drops the constraint under
+*that* run instead. **Dropping it under this one changes nothing observable.**
 
 ---
 
@@ -874,6 +1019,25 @@ configuration. Those are the parts that require a money decision, and a money de
 made is worse than a missing column.
 
 **There is no customer-initiated cancellation.** No endpoint, no button, no flow.
+
+**The absence is stated to the customer in words, on the one surface where they would look for it.**
+Every customer surface renders no cancellation control and no refund control, and before this
+paragraph **no surface anywhere said that a booking cannot be cancelled or refunded** — so a customer
+who cannot attend met silence rather than a refusal, and silence does not distinguish a ruled absence
+from a feature that is broken or that they have failed to find. There is no About page, no Contact
+page, no footer link and no support desk to ask instead: the client is the sole operator
+(`SRC-002 §1`). **`SCR-TKT-01` — the one booking page in this product, reached from the confirm
+response, from the bookings list `SCR-ACC-04` and from a typed URL — carries the line
+`This booking cannot be changed, cancelled or refunded.` beneath its entry line.** That page declares
+itself the single source for everything it says, so it owns the string; this row states that the
+string must be there, and why.
+
+**Publishing the ruling is not deciding it, and nothing else is added.** The policy is already ruled
+(`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`) and this paragraph writes it down rather than choosing
+it; no money question is answered here and none is opened. **No new surface is created** — an About
+page, a Contact page, a footer link or a support address would each be a scope change nobody asked for
+(`SRC-001 §6`), and the sentence is placed on a page that already exists and that the customer is
+already holding when the question occurs to them.
 
 **`booking.status` and `booking.cancelled_at` exist in the schema and no v1 endpoint exposes either.**
 `status` is written once, at confirmation, to the confirmed value. `cancelled_at` stays null for every
@@ -961,9 +1125,23 @@ The screen decides from **one stored value and no request**:
 |---|---|
 | **What is stored** | `fr.last_booking_reference` in `sessionStorage`: the `booking_reference` from a `201` response, and the `showtime_id` it belongs to. Nothing else — no seat list, no total, no idempotency key |
 | **When it is written** | On a successful confirm, from `EP-PAY-01`'s `201` body, **before** the navigation to the confirmation screen, so a customer who navigates back finds it already there |
-| **When it is cleared** | **On sign-out**, together with every other `fr.*` value; when a hold is acquired for a **different** showtime; and when the tab closes — `sessionStorage` has exactly the right lifetime and needs no expiry of its own (`P-HLD-09`) |
+| **When it is cleared** | **On sign-out**, together with every other `fr.*` value; **whenever a hold is acquired — for any showtime, including the one the stored reference belongs to** — written at the moment the hold response arrives and before any navigation to this route; and when the tab closes — `sessionStorage` has exactly the right lifetime and needs no expiry of its own (`P-HLD-09`) |
 | **Present, and its `showtime_id` matches this route** | **Already confirmed.** Redirect to the confirmation screen for that reference |
 | **Absent, or its `showtime_id` names another showtime** | **Expired.** The hold ended without producing a booking; return to the seat map per the row above |
+
+**The clear fires on *any* hold, and the same-showtime case is the one it exists for.** An earlier
+draft cleared the value only when a hold was acquired for a **different** showtime, which made a
+second booking of the **same** showtime unreachable in the same tab: the customer books, the reference
+is stored against that `showtime_id`, they return to the seat map, hold seats on that same showtime
+again, press `Continue to payment`, and the arrival rule below finds a stored reference whose
+`showtime_id` matches the route. **They are redirected to their first booking's confirmation page and
+can never reach checkout for the hold they are currently holding**, which then expires unpaid, 180
+seconds later, having never rendered a pay action. Booking two showings of the same film, or two
+separate sets of seats for one showtime, is ordinary customer behaviour and the product refused it. A
+live hold means the customer is buying, and a stored reference from a booking they have already
+completed is not evidence about the booking they are in the middle of — so the clear is unconditional
+on the showtime, and the asymmetry that produced this is removed rather than patched with a second
+comparison.
 
 **The screen does not re-send the confirm to find out.** A replay of `EP-PAY-01` spends a rate-limit
 token whether or not it creates anything — `P-XCT-07` exception 4 is explicit that a retry carrying an
@@ -975,7 +1153,7 @@ real retry.
 
 **Sign-out clears it, and that is the clause that matters most on a shared device.** Signing out
 clears **every** `fr.*` value in `sessionStorage` — the pending selection (`P-ACC-13`), the hold token
-and its `Idempotency-Key` (`P-HLD-09`), and `fr.last_booking_reference`. The hold itself is released
+and `fr.confirm_idempotency_key` (`P-HLD-09`, `P-PAY-09`), and `fr.last_booking_reference`. The hold itself is released
 at the same moment; lane E2 carries that as the `SIGN_OUT` input of the seat lifecycle machine.
 
 **The consequence of omitting it is sharper than a stranded hold, and it is why this is stated rather
@@ -1004,12 +1182,52 @@ job. The reference exists only if a booking exists.
 | **Ready** | Notice slab, heading, showtime line, seat lines with prices, perforation, total, countdown, pay action enabled. |
 | **In flight** (payment running) | The pay action shows a busy state and is disabled. **The countdown keeps running. Nothing else on the panel moves.** The panel does not blank and the seat lines do not reflow. |
 | **Success** | The screen writes `fr.last_booking_reference` to `sessionStorage` from the `201` body, then navigates to the confirmation screen for the new booking (lane E4, `FR-ADR-048`). The write happens before the navigation, so a customer who comes straight back finds it. This screen writes no confirmation copy of its own. |
-| **Error** | The banner renders above the panel with the copy in the table below, and the panel stays exactly as it was so the customer can see what they were buying. The pay action re-enables unless the state below says otherwise. |
+| **Error** | The banner renders above the panel with the copy in the table below, and the panel stays exactly as it was so the customer can see what they were buying. The pay action re-enables unless the state below says otherwise. **`409` `IDEMPOTENCY_IN_FLIGHT` is the one exception**: the banner renders but the pay action keeps its busy state and stays disabled while the screen re-sends the identical request automatically, after `Retry-After` seconds, at most three times (`P-PAY-09`). It re-enables only when those re-sends are exhausted. |
 | **Partial** | Some seat prices known, some not: the seat lines that are known render, the total is absent, and the pay action is disabled. A partial total is a wrong number. |
 | **Last 60 seconds** | The countdown digits and bar switch to `--fr-countdown-urgent` and the warning line appears. The change is announced once through a live region. Nothing else changes. |
-| **Expired** (`0:00`) | The countdown stops at `0:00`. The pay action is disabled. The component states that the hold has expired and **does not claim the seats are free** — the server owns that. The customer is returned to the seat map with their previous selection re-applied and the map refreshed (`FR-ADR-047`). |
+| **Expired** (`0:00`), **no confirm in flight** | The countdown stops at `0:00` and `SCR-SEA-02`'s zero state renders. The pay action is disabled and its label becomes `Hold expired`. The component states that the hold has ended and **does not claim the seats are free** — the server owns that. **The screen then stays exactly as it is for `CHECKOUT_EXPIRY_RETURN_DELAY_MS` and only after that returns the customer to the seat map** with their previous selection re-applied and the map refreshed (`FR-ADR-047`). |
+| **Expired** (`0:00`), **a confirm in flight** | **Nothing navigates, and the return timer does not start.** `SCR-SEA-02`'s in-flight zero state renders instead: the busy state is kept, the request is not cancelled — a request already sent cannot be un-sent — and the customer is told an answer is still coming. The response is then handled exactly as it would have been before `0:00`: a `201` writes `fr.last_booking_reference` and navigates to the confirmation screen; any other outcome renders its banner and **the row above begins from that moment**, timer and all. |
+| **Sales cut-off passes while this screen is open** | **Nothing renders and nothing changes**, deliberately. This screen publishes no sales-closed state and no banner for one — see the paragraph below the table. |
 | **Already confirmed** (the customer navigates back to this route after succeeding) | `fr.last_booking_reference` is present in `sessionStorage` for this showtime. The screen redirects to the confirmation screen for that reference and **issues no request**. It does not re-present a pay action for a booking that already exists. |
 | **Receipt state** | Nothing renders here about the receipt. The email is asynchronous and this screen makes no claim about it (`FR-ADR-048`, lane E4). |
+
+**Why the expired state waits before it navigates, and what the delay is.** The two halves of the old
+single **Expired** row could not both be observed. It disabled the pay action, relabelled it
+`Hold expired` and rendered a zero-state sentence, **and** returned the customer to the seat map, with
+no ordering and no delay between them — so on an immediate navigation the label and the sentence were
+specified for a state nobody could ever read, and a screen reader's single polite announcement of the
+zero state was cut off by the route change. The delay is what makes both true:
+
+```
+CHECKOUT_EXPIRY_RETURN_DELAY_MS = 5000          ASSUMED - no source names a value
+
+zero-state sentence, SCR-SEA-02   "Your hold has ended and your seats have been
+                                   released. You have not been charged."      13 words
+a default screen-reader rate      ~180 words per minute  ->  3 words per second
+announcement                      13 / 3                 =  4.3 s
+smallest whole second above it    ceil(4.3)              =  5 s
+```
+
+**The 180-words-per-minute figure is reasoned from a common default rate, not measured** — no
+accessibility testing has been performed on this product and none is claimed. Measure it in Phase 3
+and replace the figure; the constant exists so that replacing it is one value and not an edit to this
+paragraph. It is client-side, it is named rather than a literal, and **it is never the thing that
+protects the seats**: the hold is already gone at `0:00` and the server decides every outcome from
+Redis, so a customer who presses nothing during those five seconds and a customer whose browser
+navigates instantly reach the same server answer.
+
+**There is no sales-closed state on this screen, and the silence is deliberate rather than an
+omission.** `SCR-SEA-01` publishes a banner when the cut-off passes and `P-BRW-07` exception 1
+specifies that the seat map's 3-second poll is what surfaces it. **Neither applies here, for two
+reasons that are worth separating.** First, the cut-off changes nothing this screen renders or permits:
+it is enforced once, at hold acquisition (`P-HLD-06`), `P-PAY-10` step 4 reads the showtime and does
+not gate on it, and `SALES_CLOSED` is not in `EP-PAY-01`'s `errors` and cannot be raised by it — a
+customer already holding seats may finish checking out (`SRC-003 OPEN-BOOK-03`), so a banner here
+would announce a restriction that does not apply to the person reading it. Second, this screen **runs
+no poll at all** — the seat map's stopped when this route unmounted it — so surfacing the event would
+mean adding a request whose only purpose is to learn a fact that changes nothing. **The next reader is
+therefore told which of the two answers this is**, because a screen that is silent for a good reason
+and a screen that forgot look identical.
 
 **Copy.** Every string a customer reads on this screen.
 
@@ -1030,8 +1248,8 @@ job. The reference exists only if a booking exists.
 | `HOLD_EXPIRED` | **Rendered from `P-HLD-14` (lane E2), its *at confirm* row. Not restated here** — see the note below the table |
 | `HOLD_NOT_OWNED` | **Rendered from `P-HLD-14` (lane E2), its *at confirm* row. Not restated here** |
 | `SEAT_UNAVAILABLE` | **Rendered from `P-HLD-14`, its *at confirm* rows 4 and 4b — the singular at one lost seat, the plural at two or more. Not restated here.** **The screen substitutes nothing**: the server renders the complete sentence with every seat already named in it (`SCR-XCT-01`), and this screen displays `message` as received. `details.unavailable_seats` is read only to mark those seats on the map behind the panel, never to compose the words |
-| `PAYMENT_FAILED` | "The payment did not go through and you have not been charged. Your seats are still held - the time left is shown above. You can try again." **when the hold survived**, and "The payment did not go through and you have not been charged. The hold on your seats has also ended and they have been released. Choose them again if they are still free." **when it did not** — the server knows which, because the confirm re-validates the hold, and one unconditional sentence would be false in the second case. **Published once by `P-PAY-01` exception 4, which owns both strings. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. |
-| `IDEMPOTENCY_IN_FLIGHT` | "This booking is still being processed." |
+| `PAYMENT_FAILED` | **One string, published once by `P-PAY-01` exception 4, which owns it. Not restated here** — and not `P-HLD-14`'s, which carries no `PAYMENT_FAILED` row. The banner carries no control; the customer presses the pay action again, and that press carries a **freshly minted** `Idempotency-Key` (`P-PAY-09`), which is what makes the retry the string invites capable of succeeding |
+| `IDEMPOTENCY_IN_FLIGHT` | "This booking is still being processed." **The screen re-sends the identical request automatically after `Retry-After` seconds, at most three times, keeping the busy state while it does** (`P-PAY-09`). The banner carries no control, and the customer is not asked to do anything |
 | `IDEMPOTENCY_KEY_REUSED` | "This checkout is out of date. Return to the seat map and choose your seats again." |
 | `REQUEST_INVALID` | "This request could not be processed. Return to the seat map and choose your seats again." |
 | `RATE_LIMITED` | "Too many attempts. Try again in 6 seconds." — the number comes from `Retry-After` and is rendered by **S7.20**; the screen formats nothing itself. `P-PAY-01` exception 7 owns the sentence and carries the arithmetic |
@@ -1118,14 +1336,14 @@ never held or a price it was never quoted.
   "request": {
     "path_params": {},
     "query": {},
-    "headers": {"Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID"},
+    "headers": {"Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID. GENERATED BY THE CLIENT, never by the server: crypto.randomUUID()'s canonical 36-character form, 122 random bits from a CSPRNG, one per CONFIRM ATTEMPT (not one per hold). It is written to sessionStorage before the request is sent and re-sent unchanged on any repeat of the same attempt, including one whose outcome the client never learned. A fresh key is minted only when there is no stored key, when the stored key was minted against a different hold_token, or when the previous attempt returned 402 PAYMENT_FAILED — the one outcome specified to have committed nothing (P-PAY-09)"},
     "body": {"hold_token": "string, opaque, exactly 43 characters from the URL-safe base64 alphabet, required", "showtime_id": "integer, positive, required, must match the showtime the hold was taken on"}
   },
   "responses": {
     "201": {"description": "The booking was created. The simulated payment reached captured before the booking row was inserted.", "body": {"booking_id": "integer", "booking_reference": "string, the PRESENTATION FORM FR-XXXX-XXXX including its hyphens - the same shape EP-TKT-01 and every other endpoint returning a reference carries. It is re-formatted at serialisation from the 8 characters stored on the booking row; the 8-character stored form is never what crosses the wire (P-TKT-01)", "showtime_id": "integer", "movie_title": "string", "screen_name": "string", "starts_at": "string, ISO-8601 instant serialised WITH THE CINEMA'S UTC OFFSET taken from the cinema row, e.g. 2026-08-20T14:00:00+05:30 - never UTC, never a hardcoded offset. The client renders the wall-clock part as given and CONVERTS NOTHING (P-BRW-06, FR-ADR-018, P-ADM-26)", "seats": "array of objects: {seat_id, seat_label, seat_category_name, price_paise, base_price_paise_applied, uplift_basis_points_applied}", "total_paise": "integer, the sum of the already-rounded per-seat prices, never itself rounded", "currency_code": "string, INR", "payment_status": "string, captured", "created_at": "string, ISO-8601 instant serialised with the cinema's UTC offset, exactly as starts_at - it is shown to the customer as the time they booked, so it is a wall-clock instant and the client converts nothing"}},
     "400": {"description": "The Idempotency-Key header is missing or malformed, a required body field is missing, or the body carries a property this endpoint does not define."},
     "401": {"description": "No valid token. A guest cannot reach this endpoint."},
-    "402": {"description": "The simulated provider returned failed. The transaction rolled back; the hold survives if it has not expired."},
+    "402": {"description": "The simulated provider returned failed. The transaction rolled back in full, taking its idempotency record with it, so nothing was booked and nothing was captured. The hold is untouched by this endpoint and survives if it has not expired. The published message makes no claim about which, because the confirm re-validates the hold at step 2 and the capture is step 6 and Redis is not read again before commit — it names what the server knows and points the customer at the countdown for the rest (P-PAY-01 exception 4). This is the only response after which the client mints a fresh Idempotency-Key."},
     "403": {"description": "The hold token exists but was issued to a different user."},
     "409": {"description": "The hold has expired, one or more seats were taken by another customer, or the same idempotency key is still in flight."},
     "422": {"description": "The same idempotency key was sent with a different request fingerprint."},
@@ -1135,7 +1353,7 @@ never held or a price it was never quoted.
   },
   "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "HOLD_EXPIRED", "HOLD_NOT_OWNED", "SEAT_UNAVAILABLE", "IDEMPOTENCY_IN_FLIGHT", "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "errors_deliberately_absent": "SALES_CLOSED is NOT in the array above and cannot be raised by this endpoint. The sales cut-off is enforced once, at hold acquisition (P-HLD-06), and never re-checked at confirm - SRC-003 OPEN-BOOK-03 rules that anyone already holding seats may finish checking out, and a client ruling outranks FR-ADR-029 step 4, which reads otherwise (see this lane's contradiction 1). A customer whose cut-off passes mid-checkout completes normally: P-PAY-10 step 4 reads the showtime and does not gate on it. The absence is therefore a decision, not an omission, and it is recorded here because four sections discuss the cut-off at confirm and a reader who finds none of them conclusive would otherwise add the code.",
-  "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted.",
+  "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted. On 409 IDEMPOTENCY_IN_FLIGHT the client re-sends the identical request automatically after Retry-After seconds, at most three times, and keeps its busy state while it does; every one of those re-sends spends a rate-limit token, which is why the count is bounded rather than a poll (P-PAY-09).",
   "rate_limit": "Redis token bucket, two independent buckets and both must have a token: 10 per minute per user id, 30 per minute per real client IP. The real IP is the rightmost-but-one X-Forwarded-For entry with exactly one trusted proxy. The limiter fails closed with 503 when Redis is unreachable. A retry carrying an already-seen Idempotency-Key still consumes a token.",
   "authorisation_rule": "The router requires a valid JWT for an existing user row and nothing more; the booking is always written against that user id, which is taken from the token and never from the request body. There is no role check beyond authentication, because no source restricts owning a booking by role and a guest is already stopped one step earlier at the hold.",
   "satisfies": ["P-PAY-01", "P-PAY-04", "P-PAY-05", "P-PAY-06", "P-PAY-07", "P-PAY-08", "P-PAY-09", "P-PAY-10", "P-PAY-11", "P-PAY-12"],
@@ -1173,6 +1391,8 @@ invented inline:
 |---|---|---|
 | `ASSUMED` | Seat category names **Standard, Premium, Recliner** (`SRC-003 OPEN-SEAT-01`, "you pick") | Every worked example in `P-PAY-03` and `P-PAY-04` names them. **The arithmetic does not depend on the names**, only on the uplift integers, so a rename changes the examples and nothing else. The categories are a table, not an enum, so a fourth costs no migration. |
 | `ASSUMED` | Category uplifts `0` / `1250` / `3333` basis points, and the base price `27500` paise, used in the worked examples | These are illustrative inputs, not configured values. A test written from the worked examples must supply them explicitly rather than read them from seed data. |
+| `ASSUMED` | `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX = FAIL_` | No source names a value. The *bound* is not assumed: `P-PAY-07` requires at least one character outside `[0-9a-f-]`, so a browser-minted key cannot carry it by chance, and `FAIL_` satisfies it twice over. Any other value satisfying the check works identically. |
+| `ASSUMED` | `CHECKOUT_EXPIRY_RETURN_DELAY_MS = 5000` | `SCR-PAY-01`'s expired state. Derived from a 13-word zero-state sentence at a **reasoned, not measured** default screen-reader rate of 180 words per minute. **No accessibility testing was performed.** Measure it in Phase 3 and replace the figure. Nothing about correctness depends on it — the hold is already gone at `0:00` and every outcome is decided by the server from Redis. |
 | `ASSUMED` | `PAYMENT_SIMULATED_DELAY_MS = 1500` | `FR-ADR-041` says "a small number of seconds" and names no figure. The value drives the `Retry-After` formula in `P-PAY-09` and the transaction-duration example in `P-PAY-10`. **Measure it in Phase 4 and replace the figure.** The *bound* is not assumed: `FR-ADR-041` requires the delay "well below" the hold, and `P-PAY-07` fixes that as **strictly less than a tenth of `SEAT_HOLD_TTL_SECONDS * 1000`** — 18,000 ms at the ruled 180-second hold. `1500` is a twelfth of that bound and has ample room. |
 | `PROVISIONAL` | Sales close **15 minutes after** the advertised start (`SRC-003 OPEN-BOOK-03`, `FR-ADR-042`) | It bites this lane only through `P-PAY-10` step 4, which does **not** enforce the cut-off. Reversing the sign changes when a hold can be taken, and changes nothing in this epic. |
 | `PROVISIONAL` | Base price is per showtime rather than global (`SRC-003 OPEN-PRICE-01`, `FR-ADR-037`) | `P-PAY-03` reads `showtime.base_price_paise`. If the client reverses this to one global price, the read moves to a configuration value and the formula, the rounding and every worked example are unchanged. |
@@ -1213,6 +1433,41 @@ invented inline:
   request contract, which matters because `P-PAY-06` and `P-PAY-08` both forbid additional properties
   on the body. Rejected alternative: a `simulate_failure` boolean in the body, which would have to be
   accepted by the schema and would then exist in the contract forever.
+- **`[JUDGMENT CALL]` The `Idempotency-Key` is minted per confirm attempt, not per hold, and is
+  discarded on exactly one response.** No source states who generates the key, when, with what entropy
+  or whether it is reissued; the only sentence on the subject anywhere was in lane E2's cross-lane
+  notes, which under `S1.2` carry no authority over this lane's endpoint. Per-hold makes the deliberate
+  payment failure inescapable — the trigger reads the key, so every retry for the life of that hold
+  carries the prefix and `fail -> retry -> succeed` cannot be performed at all. Per-press without a
+  rule is worse: a press after an outcome the client never learned would create a second booking and a
+  second capture. **The rule adopted takes the safe half of each** — re-send the stored key on every
+  ending whose effect is unknown, mint a fresh one only after `402` `PAYMENT_FAILED`, the one response
+  specified to have rolled everything back including its own key row. **Reversible** — it is one stored
+  value, one comparison against the hold token and one clear-on-`402`, and it adds nothing to the wire
+  contract. **It contradicts lane E2's cross-lane note**, which says the key is generated once per
+  hold; that note is named in *Seams this lane depends on* below.
+- **`[JUDGMENT CALL]` `PAYMENT_SIMULATOR_FAIL_KEY_PREFIX` must contain a character outside
+  `[0-9a-f-]`.** `FR-ADR-041` bounds the prefix's length and not its alphabet. With the client minting
+  `crypto.randomUUID()`, an all-hex prefix is reachable by chance — `a` fails one confirm in sixteen —
+  which is exactly the randomness `P-PAY-07`'s first paragraph forbids, arriving through configuration
+  rather than through the provider. Rejected alternative: a minimum prefix length, which only names a
+  number an operator can undercut. **Reversible** — one boot-time check.
+- **`[JUDGMENT CALL]` `PAYMENT_FAILED` publishes one string, not two chosen by the hold's state.** The
+  pair claimed a fact the server does not hold at the moment it composes the `402`; the argument is at
+  `P-PAY-01`. Rejected alternative: a Redis read after the failed capture, which buys a true sentence
+  and owes a specification for what the sentence says when *that* read fails. **Reversible** — one
+  string in one owning row and two deferrals.
+- **`[JUDGMENT CALL]` `SCR-PAY-01` re-sends automatically at most three times on
+  `IDEMPOTENCY_IN_FLIGHT`.** `FR-ADR-020` requires the header and specifies nobody's behaviour on
+  receiving it, and this screen's banners carry no control, so the customer had no specified next move.
+  Three is derived at `P-PAY-09` against the per-user bucket and against `P-PAY-10`'s worked
+  transaction duration, which is **reasoned from the configured delay, not measured**. **Reversible**
+  — one integer. 
+- **`[JUDGMENT CALL]` `SCR-PAY-01` waits `CHECKOUT_EXPIRY_RETURN_DELAY_MS` before returning to the seat
+  map at `0:00`, and does not return at all while a confirm is in flight.** Nothing specified an
+  ordering between the disabled label, the zero-state sentence and the navigation, and the in-flight
+  case was not excluded from the navigation at all — which would have abandoned a request the product
+  had just told the customer not to leave. **Reversible** — one named constant and one condition.
 - **`[JUDGMENT CALL]` A failed capture commits its `payment` row in a separate transaction** while the
   booking transaction rolls back. `FR-ADR-041` gives the payment record a `failed` state, and
   `FR-ADR-029` puts the capture inside a transaction that rolls back on failure — so a `failed` row
@@ -1317,9 +1572,20 @@ Named here rather than resolved silently. Both sides are stated.
   render those strings and none of them restates one. **If `P-HLD-14` ever stops publishing an *at
   confirm* row for one of the four, this lane has no copy for it and that is a gap to escalate, not a
   gap to fill.**
+  **Lane E2's cross-lane note says the `Idempotency-Key` is "generated once per hold". This lane now
+  specifies otherwise** — once per confirm attempt, bound to the hold token, re-sent unchanged on any
+  ending whose effect is unknown (`P-PAY-09`). **The behaviour E2's note was protecting is preserved**:
+  `TAB_REFRESHED` in `held_by_me_paying` still finds the key in `sessionStorage` and re-sends it,
+  because the key is cleared only on a `201`, on a `402`, on sign-out, or when the hold token changes —
+  none of which a mid-flight refresh is. **The key is E3's, because it is a property of E3's endpoint**
+  (`S1.2`), and E2's note should be amended to point here rather than to state the rule.
 - **Lane E4** owns the booking reference format and generation, the receipt job, and the confirmation
   screen. `EP-PAY-01` returns `booking_reference` in its `201` body because it is this endpoint's
-  response; the value's shape is `FR-ADR-015`'s and its rendering is `COMPONENTS.md §9`.
+  response; the value's shape is `FR-ADR-015`'s and its rendering is `COMPONENTS.md §9`. **It also owns
+  `SCR-TKT-01`, which `P-PAY-12` requires to carry the line
+  `This booking cannot be changed, cancelled or refunded.`** — that page declares itself the single
+  source for everything it says, so the string lives there; this lane states the requirement and the
+  ruling behind it and writes no copy on that route.
 - **Lane E5** owns the admin writes that set `showtime.base_price_paise` and
   `seat_category.uplift_basis_points`. This lane consumes both and never writes either.
 - **Lane E8** owns `/health/ready`, which `P-PAY-07` requires to report the configured payment

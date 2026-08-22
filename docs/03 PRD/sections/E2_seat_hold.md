@@ -163,8 +163,10 @@ map from a customer looking at one. Scarcity is consumed only at the hold.
 **Happy path.**
 1. Tap an `available` seat — it enters the local selection.
 2. Tap it again — it leaves the local selection.
-3. The selection is written to `sessionStorage` on every change, so it survives a reload and the
-   sign-in round trip (`FR-ADR-046`).
+3. The selection is written to `sessionStorage` under the key **`fr.selection`** on every change, so
+   it survives a reload of this screen (`FR-ADR-046`). **This is not the key that carries a selection
+   through sign-in** — that is `fr.pending_selection`, which `P-ACC-13` (lane E5) owns. The two keys
+   and the reason there are two are in the table below.
 4. The primary action is enabled once the selection is non-empty.
 
 **Exception paths.**
@@ -189,10 +191,42 @@ not signing in, and telling them so is a false statement about their own last th
 variant existed across the document and is deleted; **each of these two rows names the other**, so a
 reader who lands on either can tell the pair is a deliberate two rather than an accidental three.
 
-**"Still selected", never "still held".** Nothing is held before a hold request is made, and a hold is
-all-or-nothing, so a message on this path can never truthfully say seats are still held. Every string
-on both sides of the split says *selected* — `P-HLD-07`'s `Your other choices are still selected`,
-and `P-ACC-13`'s `Your other seats are still selected.`
+**"Still selected", never "still held".** Nothing is held before a hold request is made, so a message
+on *this* path can never truthfully say seats are still held. Every string on both sides of the split
+says *selected* — `P-HLD-07`'s `Your other choices are still selected`, and `P-ACC-13`'s
+`Your other seats are still selected.` **This rule is about the selection path and not about the hold
+endpoint**: a request that extends a live hold can fail while seats genuinely are still held, and
+`P-HLD-14` rows 2b and 3b publish the sentence for that.
+
+**Two `sessionStorage` keys, two jobs, and a reader must not collapse them into one.**
+
+| | `fr.selection` | `fr.pending_selection` |
+|---|---|---|
+| Owned by | **this row** | **`P-ACC-13`** (lane E5) |
+| What it carries | the live local selection on this screen: the chosen-but-not-yet-held seat ids | a one-shot snapshot handed to the authentication round trip, with a `stored_at` instant |
+| Written | **on every change** — every tap that adds or removes a seat | **once**, when a visitor who is not authenticated leaves this seat map for the authentication screen with a non-empty selection, before that step opens — **by either route out**, the primary action or the header's `Sign in` link (`E8 SCR-XCT-05`), because which control was pressed may not decide whether the selection survives (`P-ACC-13`) |
+| Read | on load of `/showtimes/{showtime_id}`, to restore what was chosen and re-check it against the fresh map; and by `P-SEA-02` step 2 to draw chosen cells | once, on return from the authentication step |
+| Deleted | when the selection empties, when those seats become a hold, and on sign-out | **immediately after that restore** (`P-ACC-13` step 8), and on sign-out |
+| Staleness rule | none — it is discarded with the tab, which is the only lifetime it needs | discarded on restore if `stored_at` is more than 30 minutes old (`P-ACC-13`) |
+
+**Both are inside the `fr.` namespace `P-ACC-13` sweeps on sign-out**, so neither needs its own
+sign-out clause and neither is enumerated in that row's table — the sweep is by prefix, not by list.
+
+**Why not one key, stated because one key is the obvious simplification.** `P-ACC-13` deletes its key
+**immediately after the restore**, and this row's key is written **on every change** and must survive
+a reload at any moment. Made one key, the return from sign-in would delete the only durable copy of a
+selection that is still on screen and still chosen, so a customer who reloaded the page one second
+after signing in would lose seats they can see are selected — the restore erasing the selection it
+had just re-applied. The two write policies are incompatible in one key, which is why there are two.
+
+**Where this row's exception-3 notice renders, and how a screen reader is told about it.** The string
+`C12 is no longer available. It has been removed from your choices.` is **not** an error response and
+carries **no error `code`** — nothing was requested, so nothing answered. It renders in `SCR-SEA-03`,
+the seat-map banner, as that screen's one **client-originated** notice: same container, same live
+region, no in-banner action, and dismissible because nothing is left to do. `SCR-SEA-03` names the
+state and `SCR-SEA-01` names it in its states table. **Without that, the only announced surface on
+this screen branched on a `code` this event does not carry**, and a screen-reader user was never told
+a seat had left their selection.
 
 **Server-side validation.** None applies, because nothing is sent. The interface limit in exception 1
 is a convenience; the enforcement point is the hold endpoint (`P-HLD-04`).
@@ -358,6 +392,16 @@ scarcity on behalf of somebody who has left. This is the one session event that 
 release from a closing page can arrive after the key has expired and been re-acquired. **Sign-out is a
 request the customer made, answered synchronously, with a session to end either way**, so it has none
 of those properties.
+
+**Every `No seats were held.` string in the machine is the *first-hold* form.** The machine describes
+one seat, so it cannot see whether the request that failed was this customer's first hold on the
+showtime or an extend of a live one — and the two are told different sentences, because on an extend
+the seats already held are not in this request's rollback set (`P-HLD-01`) and survive. **The
+substitution rule is `P-HLD-14`'s**, which owns this lane's message set: the closing clause reads
+`No seats were held.` on a first hold and `Your hold is unchanged.` on an extend, and rows 2b and 3b
+publish the two `SEAT_UNAVAILABLE` extend forms verbatim. Every `user_sees` value in the block below
+that ends `No seats were held.` is therefore the rendering when the customer held nothing on this
+showtime at the moment the request arrived — the ordinary case, and not the only one.
 
 **Server-side validation.** Every guard marked *server* in the table is enforced server-side. No guard
 is enforced only in the interface.
@@ -751,8 +795,8 @@ blank cell meant.
      "guard": "closing the tab abandons the response, not the request. The server completes the confirm and the booking may be made without the customer ever seeing the confirmation screen. The reference is in the customer's bookings list and on the emailed receipt independently of this screen",
      "user_sees": "(nothing - the customer has left)"},
     {"from": "held_by_me_paying", "input": "TAB_REFRESHED", "to": "held_by_me_paying",
-     "guard": "the restored page reads the hold token and the Idempotency-Key back from sessionStorage and re-sends the same confirm. The same key returns the original result once it exists, and is refused with 409 IDEMPOTENCY_IN_FLIGHT while it is still running. The wording is P-PAY-09's and is reproduced verbatim, not authored here",
-     "user_sees": "This booking is still being processed."},
+     "guard": "the restored page does NOT re-send the confirm. SCR-PAY-01 owns the checkout screen's behaviour and states in terms that it never replays EP-PAY-01 to find out what happened: a replay spends a rate-limit token whether or not it creates anything, and it can answer three different ways, to settle a question the client can answer from fr.last_booking_reference with no request at all. A refresh therefore abandons the RESPONSE and not the REQUEST, mechanically the same as TAB_CLOSED from this state, and the confirm in flight runs to its own answer with this seat unaffected. The restored page reads the hold token back from sessionStorage, the keys are still live because release is post-commit, so it re-renders the ordinary checkout panel with its countdown; the in-flight state itself died with the page and is not restorable. If the customer then presses the pay action, that is CONFIRM_START from this state - a second confirm carrying the same Idempotency-Key - and it is refused 409 IDEMPOTENCY_IN_FLIGHT, which is the path that keeps that branch reachable from the product",
+     "user_sees": "(nothing - the restored page renders the ordinary checkout panel and its countdown; the confirm in flight is invisible to it)"},
     {"from": "held_by_me_paying", "input": "SIGN_OUT", "to": "held_by_me_paying",
      "guard": "server: the release runs and the confirm is NOT cancelled - a request already sent cannot be un-sent, and there is no in-flight flag to consult (FR-ADR-025). This is mechanically identical to DESELECT from this state: the confirm passed its Redis re-validation at FR-ADR-029 step 2 and does not read Redis again before commit, so the outcome is settled by the database guard and both orderings are safe. A release landing BEFORE re-validation leaves no key and the confirm fails 409 HOLD_EXPIRED with nothing charged; a release landing AFTER the seats are booked finds a token that no longer matches and deletes nothing. The booking, if it commits, belongs to the account that was signed in when the request was sent",
      "user_sees": "(nothing from the release - the customer has left the session and the confirm's own answer is written to their bookings list and their emailed receipt)"},
@@ -927,7 +971,7 @@ blank cell meant.
      "guard": "ignored: the booking is committed and independent of any browser. The reference is in the customer's bookings list and on the emailed receipt",
      "user_sees": "(nothing - the customer has left)"},
     {"from": "sold", "input": "TAB_REFRESHED", "to": "sold",
-     "guard": "the restored selection is re-checked against the fresh map and this seat is dropped from it. For the buyer, re-sending the confirm with the same Idempotency-Key returns the original booking",
+     "guard": "the restored selection is re-checked against the fresh map and this seat is dropped from it. For the buyer, the restored checkout page finds fr.last_booking_reference in sessionStorage for this showtime and redirects to the confirmation screen for it WITH NO REQUEST - SCR-PAY-01 owns that rule and does not replay EP-PAY-01. Were the confirm re-sent, the same Idempotency-Key would return the original booking, so no second booking exists on either route; the route that runs is the one that spends no rate-limit token",
      "user_sees": "FR-2K7M-9QXD"},
     {"from": "sold", "input": "SIGN_OUT", "to": "sold",
      "guard": "ignored: the booking is committed and durable, and no session event can un-sell a booking_seat row (P-SEA-05). A residual key from the buyer's own hold is released if it is still present, which is harmless",
@@ -1062,8 +1106,9 @@ remainder of the 180 seconds and then free themselves. No cleanup job is needed 
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | One or more seats are already locked or sold | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats` lists them | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
-| 2 | A single named seat is unavailable and it was the only one chosen | 409 `SEAT_UNAVAILABLE` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1 | One or more seats are already locked or sold, **on a first hold for this showtime** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats` lists them | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | A single named seat is unavailable and it was the only one chosen, **on a first hold for this showtime** | 409 `SEAT_UNAVAILABLE` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1b / 2b | The same two triggers, but this request **extends a live hold** (step 4 found one) | 409 `SEAT_UNAVAILABLE`, unchanged; **the existing hold is untouched and its `expires_at` does not move** | **`P-HLD-14` rows 3b and 2b.** The closing clause is `Your hold is unchanged.`, never `No seats were held.` — those seats were never in this request's rollback set and are still held |
 | 3 | The same seat id appears twice in the body | 422 `VALIDATION_FAILED` | `Seat C12 was listed twice. Each seat can only be chosen once. No seats were held.` |
 | 4 | A seat id is not in this showtime's seat set — including a seat added to the hall after this showtime was created (`P-ADM-14`) | 422 `VALIDATION_FAILED` | `Seat C12 is not part of this hall. No seats were held.` |
 | 5 | The body names zero seats | 422 `VALIDATION_FAILED` | `Choose at least one seat.` |
@@ -1247,14 +1292,35 @@ it (Art IX.5, `FR-ADR-018`).
 
 ---
 
-### `P-HLD-04` · Cap a customer at ten seats per showtime, counted across every live hold · `RULED`
+### `P-HLD-04` · Cap a customer at ten seats held **at once** on one showtime · `RULED`
 `[SRC: SRC-003 OPEN-BOOK-01 · FR-ADR-026]`
 `[BRD: R-HOLD-04]`
 
-**Behaviour.** A customer may hold at most **ten** seats for one showtime, from the configuration value
-`MAX_SEATS_PER_BOOKING`. The count includes everything they are already holding for that showtime, not
-only the seats in this request. Two requests for six seats each on the same showtime is eleven seats
-held by one customer, and the second is refused **before any lock is taken**.
+**Behaviour.** A customer may hold at most **ten** seats **at any one moment** for one showtime, from
+the configuration value `MAX_SEATS_PER_BOOKING`. The count includes everything they are already
+holding for that showtime, not only the seats in this request. Two requests for six seats each on the
+same showtime is eleven seats held by one customer, and the second is refused **before any lock is
+taken**.
+
+**What this cap bounds, and what it does not, stated because the row's own name used to imply the
+other one.** It bounds **concurrent holds**, and through them the size of one booking. It does **not**
+bound how many seats one customer may buy on one showtime over time. `P-PAY-10` step 13 removes the
+hold's token from `holds:user:{user_id}:showtime:{showtime_id}` at commit **deliberately**, so the cap
+stops counting seats the customer now owns — for the same reason `P-HLD-08` step 8 removes it on a
+release: leaving it there would keep the cap consumed by a hold that no longer exists, and a customer
+who had just bought ten seats could buy nothing else on that showtime for the remainder of the 180
+seconds. **The consequence is that a customer may buy ten seats, then immediately hold and buy ten
+more, and repeat.** That is the specified behaviour, not a defect, and a test transcribed from an
+earlier reading of this row's title would assert a per-showtime lifetime limit the server does not
+enforce and never did.
+
+**No source states a lifetime limit.** `SRC-003 OPEN-BOOK-01` reads `"10 maxx"` against a question
+asking the maximum number of seats **in one booking**; `FR-ADR-026` decides only that the cap is ten,
+that it is enforced at the hold rather than only at confirmation, and that it counts the customer's
+live holds on that showtime. Neither reaches successive bookings, so this document adds no rule about
+them — **inventing one would be a scope change and scope is reserved.** Recorded as
+`PROPOSED-BULKBUY-01` in the lane notes: whether one customer should be able to buy out a hall in
+successive ten-seat bookings is a product question nobody has asked, and it is the client's.
 
 **The cap is per showtime.** One customer may hold seats on more than one showtime at a time — two
 films in one evening is a legitimate purchase pattern and nothing rules against it. There is no
@@ -1282,10 +1348,14 @@ seat count stored under each token — a lookup of at most ten known keys, never
 | 2 | The request plus existing holds exceeds ten | 422 `SEAT_LIMIT_EXCEEDED`, no lock touched | `You can hold up to 10 seats for one showtime. You are holding 6 and chose 5 more.` |
 | 3 | The customer selects an eleventh seat in the interface | no request is sent | `Up to 10 seats.` — the note under the total; the tap does not add the seat |
 | 4 | The customer holds ten on showtime A and requests four on showtime B | 201 — the cap is per showtime | `4 seats held by you`, and `1 seat held by you` had it been one — the count is interpolated and both forms are published (`SCR-SEA-01`) |
+| 5 | The customer **buys** ten seats on this showtime and immediately requests ten more on the same showtime | **201** — at commit `P-PAY-10` step 13 removed the token from `holds:user:{user_id}:showtime:{showtime_id}`, so the cap counts nothing and this request starts a fresh hold | `10 seats held by you` |
 
 **Server-side validation.** `len(seat_ids) <= MAX_SEATS_PER_BOOKING`, and
-`existing_held + len(seat_ids) <= MAX_SEATS_PER_BOOKING`. Enforced in the domain layer, so the
-interface limit is not the control.
+`existing_held + len(seat_ids) <= MAX_SEATS_PER_BOOKING`, where `existing_held` is read from the
+**live holds** index and therefore counts no seat the customer has already bought. Enforced in the
+domain layer, so the interface limit is not the control. **A test asserting that a customer who has
+bought ten seats is refused an eleventh on that showtime asserts a rule this document does not state
+and the server does not enforce**; the assertion that belongs here is exception row 5's `201`.
 
 **Every string in this lane that shows the number ten renders `MAX_SEATS_PER_BOOKING`. A literal `10`
 in any of them is a defect.** The rule is the document's, stated in `S7` and binding on every lane;
@@ -1453,10 +1523,20 @@ fourteen minutes. **Only the configured value and these three assertions change.
 map immediately, and **leaves the rest of the selection exactly as it was**, so the customer changes
 only what went.
 
-**The message never says any seats are still held after a lost multi-seat hold**, because none are —
-the hold is all-or-nothing and the won keys were released. This corrects the example copy in
+**After a lost *first* hold the message never says any seats are still held**, because none are — the
+hold is all-or-nothing and the won keys were released. This corrects the example copy in
 `COMPONENTS.md §6`, which reads *"Your other seats are still held"* while citing `FR-ADR-026`. It is
 reported in the lane notes.
+
+**A request that *extends* a live hold is the one case where seats genuinely are still held, and it is
+told so.** All-or-nothing is **over the seats the request names**, not over the hold: `P-HLD-01`
+step 4 acquires the new seats under the existing token, and the "distinguishing the two nils"
+rule keeps seats the customer already owned **out of this request's rollback set**, so a failure here
+cannot release them. Their `expires_at` does not move either. The closing clause is therefore
+`Your hold is unchanged.` and not `No seats were held.` — `P-HLD-14` rows 2b and 3b publish both
+sentences, and `SCR-SEA-01`'s **Hold live, further seats chosen** state renders them. **This is the
+only path in the lane on which "still held" is a true statement**, and it is why the flat rule above
+is stated with its scope rather than as an absolute.
 
 **The lost seats are marked unavailable, not sold.** A seat lost to another customer's hold is
 `held_by_other`; it becomes `sold` only when their booking commits. `COMPONENTS.md §6`'s instruction to
@@ -1475,8 +1555,10 @@ exclamation, no figure of speech.
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | Two of five seats lost at hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]` | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
-| 2 | One of one seat lost at hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 1 | Two of five seats lost at a **first** hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]` | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | One of one seat lost at a **first** hold acquisition | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 2b | Two of the further seats lost on a request **extending a live hold** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]`; the existing hold and its `expires_at` are untouched | `C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.` (`P-HLD-14` row 3b) |
+| 2c | One of the further seats lost on a request **extending a live hold** | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]`; the existing hold and its `expires_at` are untouched | `C12 was taken by another customer. Your hold is unchanged. Choose a different seat and try again.` (`P-HLD-14` row 2b) |
 | 3 | A seat lost at the database guard during confirm | 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12"]` | `C12 was taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 4 | A seat found already sold during the hold's post-acquisition check | 409 `SEAT_UNAVAILABLE` | as row 2 |
 
@@ -1496,7 +1578,8 @@ compare-and-delete Lua script against that seat's key, using the hold's token, s
 release a lock it owns. **The rest of the hold survives, with the same `expires_at`** — giving a seat
 back does not buy more time on the others. If the released seat was the last one, the hold ends and the
 countdown disappears. Releasing the whole hold in one action is the secondary control on the price
-summary.
+summary, `Give up these seats`, and it is `EP-HLD-04`. **It has its own numbered procedure below**, and
+it is not the per-seat procedure run in a loop.
 
 **Who may do it.** The hold's owner. Enforced on the router as an authenticated dependency, plus an
 ownership check: the hold record's `user_id` must equal the caller's. **The token alone is not
@@ -1526,7 +1609,7 @@ the same rule.
 
 **Preconditions.** A live hold whose token the caller presents, containing the named seat.
 
-**Happy path.**
+**Happy path — the per-seat release (`EP-HLD-03`).**
 1. Look up the hold record by token. Assert its `user_id` matches the caller.
 2. Assert the named seat is in the hold's seat set.
 3. Run the compare-and-delete script against `lock:seat:{showtime_id}:{seat_id}` with the hold's token.
@@ -1542,6 +1625,53 @@ the same rule.
    that set would keep the customer's cap consumed by a hold that no longer exists** — `P-HLD-04`
    counts from that set, so a customer who gave back all ten seats could not take ten again until the
    TTL elapsed.
+
+**Happy path — the whole-hold release (`EP-HLD-04`), which is a second procedure and not the first one
+in a loop.** It reaches the same end state the per-seat path reaches on its last seat — every key
+released, the hold record gone, the cap index entry gone, the seat-map cache invalidated — but it
+performs the record, index and cache work **once** rather than testing for it after each seat:
+
+1. Look up the hold record by token. Assert its `user_id` matches the caller. **A token of the wrong
+   shape never reaches this step** — it is 400 `REQUEST_INVALID` before Redis is touched (`P-HLD-03`).
+2. For **every** seat in the hold, in ascending `seat_id` order, run the compare-and-delete script
+   against `lock:seat:{showtime_id}:{seat_id}` with the hold's token.
+3. Remove every one of those keys from `instance:{instance_id}:holds`.
+4. Delete the hold record.
+5. **Remove the token from `holds:user:{user_id}:showtime:{showtime_id}`.** Without this the customer
+   who just gave back all ten seats is capped by a hold that no longer exists for the remainder of the
+   180 seconds, and is told the seats were taken by another customer when the other customer is
+   themselves — **the exact failure step 8 above exists to prevent, on the other endpoint.**
+6. **`DEL cache:seatmap:{showtime_id}`** — `P-BRW-12` owns seat-map invalidation and requires the
+   delete after a release exactly as after a hold. It runs **after** step 2, never before: a `DEL`
+   issued first lets a rebuild land while the keys still exist and re-cache the seats as held. Without
+   it the seats show held to everyone else for up to the cache's TTL rather than about three seconds.
+7. Return **204** with no body. The hold is gone, so there is no remaining hold to describe.
+
+**Steps 2 to 6 are best-effort, and it is safe that they are.** Every structure they touch carries the
+hold's TTL, so an instance that dies part-way through costs the seats time and never correctness: the
+keys expire, the hold record expires, the index entry expires, and the cache entry expires. **Nothing
+here is a cleanup job and none is needed.**
+
+**Three cases the one-sentence version of this path left open, answered here.**
+
+- **A partial release.** There is no such thing on this endpoint — it names no seats, so it always
+  addresses the whole hold. What can be *partial* is the **effect**: a compare-and-delete returning 0
+  for one seat, because that key already expired or already carries another customer's token, is
+  **not an error and does not stop the loop.** The remaining seats are still released and the answer
+  is still 204. Refusing the whole request because one key had already gone would leave nine seats
+  locked for no reason.
+- **Releasing a seat another customer is waiting for.** Nothing is notified and nothing is queued.
+  That customer learns at their next 3-second poll, which step 6 is what makes about three seconds
+  rather than up to thirteen, and the seat repaints `available` with the changed-seat outline
+  (`SCR-SEA-01`). There is no reservation queue and no first-in-line claim on a released seat; the
+  next `SET NX` wins, exactly as at any other moment.
+- **Releasing a hold that already expired on its own.** 409 `HOLD_EXPIRED`, and **steps 2 to 6 do not
+  run.** There is nothing to release, and the hold record and the index entry carried the same TTL as
+  the keys and are gone with them. In particular **no `DEL cache:seatmap` runs on this path**: an
+  expiry frees seats without telling the cache anywhere in this document, which is why an expired
+  hold's seats can read held for up to the cache TTL and `P-HLD-02` exception 3 tells the customer the
+  next poll reports them. That is existing accepted behaviour, restated here because a reader adding
+  step 6 to the 409 branch would be inventing an invalidation the expiry path has never had.
 
 **Exception paths.**
 
@@ -1874,8 +2004,17 @@ gone. A unit test proves the function; only the signal proves the wiring.
 
 **Behaviour.** `scripts/stress_seats.py` fires 50 simultaneous hold requests for one seat and asserts
 exactly one succeeds. It runs against local Docker and against the deployed environment by changing a
-base URL. Then the unique constraint is dropped on purpose, the script is watched producing more than
-one winner, the constraint is restored, and the restore is verified.
+base URL. **That is Stage A of the proof, and it exercises the Redis lock layer.** The red-proof drill
+— drop the unique constraint, watch the guard fail, restore it, verify the restore — is **Stage B**,
+and it is a different run: it puts **two live holders on one seat** so that two confirms both reach
+`P-PAY-10` step 7, because that is the only state in which the constraint is reached at all.
+**`P-XCT-01` and `S7.1` own both stages and this row does not restate the procedure.**
+
+**Why the drop does not belong to this row's run, stated because it used to.** Every one of the
+forty-nine losers here is refused by Redis at `SET … NX`. **The unique constraint fires zero times in
+a passing run of this gate**, so dropping it leaves one winner and one `booking_seat` row exactly as
+before — and reading that as a red proof proves nothing, while reading it as a failure blocks a story
+for a defect that is not there.
 
 **Who may do it.** The build session locally; the client in their own environment. **The constraint
 drop is local only** — dropping a correctness constraint in a deployed environment is a destructive
@@ -1903,11 +2042,16 @@ restated here.**
 > 409 responses whose `error.code` is `SEAT_UNAVAILABLE`**, and a direct `SELECT count(*)` against
 > `booking_seat` for that pair returns **exactly 1**.
 >
-> With the same constraint dropped, the same run produces **more than one** committed `booking_seat`
-> row for that pair. With the constraint restored, the run again produces exactly one, and the
-> constraint is read back from `pg_constraint` and found present.
->
 > **Any other outcome fails, including zero winners.**
+>
+> **The constraint drop is not part of this criterion and may not be tested against this run.** With
+> the constraint dropped, this same run still produces exactly one winner and exactly one
+> `booking_seat` row, because every loser was refused by the Redis lock and the constraint was never
+> reached. **The red proof is `P-XCT-01`'s Stage B**, which produces two live holders on one seat and
+> then observes **two** committed `booking_seat` rows for one pair with the constraint dropped, one
+> row with it restored, and the constraint read back from `pg_constraint`. **A drill run against this
+> criterion instead reports failure against a correct implementation**, on the one gate that is never
+> waivable.
 
 **Why 201 and not 200, stated because the number is the assertion.** `CONSTITUTION.md` Art IX.3
 illustrates a binary criterion with "one 200 and 49 409s". **That is an example of the *shape* a binary
@@ -1927,7 +2071,8 @@ be changed together or not at all.**
 | 1 | The start-instant spread exceeds the threshold | the script fails with `not concurrent` | it does **not** report a pass; a proof that cannot distinguish a working system from a serialised client is not a proof |
 | 2 | Zero requests succeed | fail | the assertion is not "at most one"; zero winners means the endpoint is broken |
 | 3 | Any loser returns 500 rather than 409 `SEAT_UNAVAILABLE` | fail | a unique-constraint violation translated into a 500 misleads the customer and pollutes the error rate the operator watches |
-| 4 | Step 3 of the drill still produces one winner with the constraint dropped | **stop the line** | the test is not exercising the constraint and the whole proof is void. That is a finding, not a pleasant surprise |
+| 4 | **`P-XCT-01`'s Stage B** still produces one `booking_seat` row for the pair with the constraint dropped | **stop the line** | the run is not exercising the constraint and the whole proof is void. That is a finding, not a pleasant surprise |
+| 4a | **This row's own run** — Stage A — produces one winner with the constraint dropped | **expected, and not a finding** | the gate fires at the hold, where Redis decides the winner and the constraint is never reached. Reading it as a red proof proves nothing; reading it as a failure blocks a story for a defect that is not there |
 | 5 | Someone proposes disabling the rate limiter for the run | refused | disabling a control to make a test pass is the shape of a fake green, and waiving a quality check is reserved to the client |
 
 **Server-side validation.** The unique constraint is **total**, with no `WHERE status <> 'cancelled'`
@@ -2000,8 +2145,10 @@ countdown has no room for and the banner does.
 | # | Code · HTTP | What the user sees, verbatim |
 |---|---|---|
 | 1 | `AUTH_REQUIRED` 401 | `Sign in to hold seats. Your selection has been kept.` |
-| 2 | `SEAT_UNAVAILABLE` 409, one seat, at hold | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
-| 3 | `SEAT_UNAVAILABLE` 409, several seats, at hold | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 2 | `SEAT_UNAVAILABLE` 409, one seat, at a **first** hold | `C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again.` |
+| 2b | `SEAT_UNAVAILABLE` 409, one seat, at a hold that **extends a live hold** | `C12 was taken by another customer. Your hold is unchanged. Choose a different seat and try again.` |
+| 3 | `SEAT_UNAVAILABLE` 409, several seats, at a **first** hold | `C12 and C13 were taken by another customer. No seats were held. Your other choices are still selected — change these two and press Hold these seats again.` |
+| 3b | `SEAT_UNAVAILABLE` 409, several seats, at a hold that **extends a live hold** | `C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.` |
 | 4 | `SEAT_UNAVAILABLE` 409, at confirm, **one** seat lost | `C12 was taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 4b | `SEAT_UNAVAILABLE` 409, at confirm, **two or more** seats lost | `C12 and C13 were taken by another customer before your payment finished. Your booking was not made and you have not been charged.` |
 | 5 | `HOLD_EXPIRED` 409 | `The hold on your seats has ended and they have been released. You have not been charged. Choose them again if they are still free.` |
@@ -2025,6 +2172,64 @@ countdown has no room for and the banner does.
 | 23 | `VALIDATION_FAILED` 422, seats that are out of service, **two or more** offending seats | `Seats C12 and C13 are out of service. No seats were held.` |
 | 24 | `REQUEST_INVALID` 400, a malformed hold token on `EP-HLD-02`, `EP-HLD-03` or `EP-HLD-04` | `This request could not be processed. Return to the seat map and choose your seats again.` — the string `P-PAY-01` publishes for the same code, reproduced verbatim rather than reworded, because one code with two sentences is the drift this table exists to prevent |
 
+**First hold or extend, for every refusal at the hold endpoint: one substitution, applied
+identically.** Every sentence in this table that a hold request can produce ends with a clause saying
+what the request left behind, and **that clause has two forms**:
+
+| The request that failed | The closing clause |
+|---|---|
+| The customer held **nothing** on this showtime when it arrived — a first hold | `No seats were held.` |
+| The customer already held seats on this showtime — `P-HLD-01` step 4 found a live hold and this request was an **extend** | `Your hold is unchanged.` |
+
+**The server picks, and the client composes nothing** (`SCR-XCT-01`). The fact the server branches on
+is the same one step 4 already reads to decide whether to mint a token, so no new lookup is added.
+
+**Why `No seats were held.` cannot simply be left to cover both.** On an extend it is a **false
+statement about seats the customer is looking at**: their held cells are still drawn `held_by_me`, the
+countdown is still running from the unchanged `expires_at`, the heading still reads `3 seats held by
+you`, and `P-HLD-04` is still counting those three against their ten. The sentence would contradict
+four things on the same screen. All-or-nothing is over **the seats the request names**, never over the
+hold — `P-HLD-01`'s rollback set deliberately excludes keys the customer already owned, so a failed
+extend cannot release them (`P-HLD-07`).
+
+**Where the advice half also changes, and why.** Rows 2 and 3 end `press Hold these seats again`,
+which is the primary action's label on a first hold. **In the extend state that control reads
+`Hold 2 more seats` or `Hold 1 more seat`** (`SCR-SEA-01`), a label carrying an interpolated count, so
+rows 2b and 3b say `try again` instead: a server-rendered sentence may not name a button label that
+depends on how many seats the customer happens to have tapped.
+
+**The substitution applies to the other seat-level rows on the hold endpoint too** — rows 11, 12, 20,
+21, 22 and 23, the six `VALIDATION_FAILED` strings. A duplicate seat id or an out-of-service seat in a
+request that extends a live hold is rejected before any lock is touched, so the existing hold is
+untouched there for the same reason, and the clause reads `Your hold is unchanged.` Only rows 2 and 3
+get their own published pair, because only those two also change their advice half; the six take the
+clause substitution and nothing else. **Seventeen rows are unaffected** — 1, 4, 4b, 5, 6, 7, 8, 9,
+10, 13, 14, 15, 16, 17, 18, 19 and 24. Rows 4 and 4b are at confirm, where the whole hold is being
+bought and there is no extend to distinguish; **the other fifteen end with no such clause at all**, so
+there is nothing to substitute. Rows 2b and 3b are the extend forms themselves and are not a further
+case. **Eight affected, seventeen not, and both lists are written out rather than inferred**, because
+the phrase "every seat-level message" is what produced the last gap in this table.
+
+**Worked example — one extend, two seats lost.** A customer holds `J1`, `J2` and `J3` under token `T`
+with `expires_at = 19:35:37`, and presses `Hold 2 more seats` for `C12` and `C13`. Both are taken
+between the map render and the request:
+
+```
+step 4 finds a live hold on this showtime  ->  this is an EXTEND, not a first hold
+seats named by this request                ->  C12, C13        (J1, J2, J3 are not named)
+both SET NX return nil, neither key carries T
+rollback set                               ->  {}              (nothing was won)
+J1, J2, J3                                 ->  untouched; expires_at still 19:35:37
+offending seats, in submission order       ->  C12, C13
+count = 2, which is >= 2                   ->  the plural row (3b)
+closing clause                             ->  "Your hold is unchanged."
+message  ->  C12 and C13 were taken by another customer. Your hold is unchanged. Your other choices are still selected — change these two and try again.
+```
+
+**Expected answer: 409 `SEAT_UNAVAILABLE`, `details.unavailable_seats = ["C12","C13"]`, and a hold
+still carrying exactly three seats.** Had the customer held nothing, the same run would take row 3 and
+end `No seats were held.` instead — the only difference is the clause.
+
 **Singular and plural, for every seat-level message: a rule, not a judgement.** `SEAT_UNAVAILABLE`
 **at hold** always had an explicit pair (rows 2 and 3). Nothing else did. The three seat-level
 `VALIDATION_FAILED` strings had only a singular, and so did **`SEAT_UNAVAILABLE` at confirm** — a row
@@ -2032,7 +2237,9 @@ whose own rule pointed at a partner that did not exist. **`SCR-XCT-01` rules tha
 `message` and the client never composes it**, so with two offending seats the server had no sentence
 to send and would have had to emit a singular naming one seat while rejecting several, or a template
 the client was forbidden to fill. **Rows 4b, 21, 22 and 23 close that, and every seat-level message
-in this lane now has both forms.** The rule below governs all four pairs identically:
+in this lane now has both forms.** The rule below governs all four pairs identically — **and it
+governs rows 2b and 3b on the same terms**, which are the extend forms of rows 2 and 3 and are
+themselves a singular and a plural:
 
 - **Exactly one offending seat → the singular row.** Two or more → the plural row. The count is the
   number of *offending* seats, never the number of seats in the request: a five-seat request with one
@@ -2046,7 +2253,8 @@ in this lane now has both forms.** The rule below governs all four pairs identic
   internal ids, exactly as `P-HLD-07` requires.
 
 **Worked example — two offending seats.** A request names `[C12, C13, C14, C12, C13]` on a showtime
-whose hall has all three seats. `C12` and `C13` are each listed twice, so **two** seats offend and the
+whose hall has all three seats, **from a customer holding nothing on it** — so the closing clause is
+the first-hold form. `C12` and `C13` are each listed twice, so **two** seats offend and the
 plural is rendered in submission order:
 
 ```
@@ -2057,7 +2265,10 @@ message  ->  Seats C12 and C13 were listed more than once. Each seat can only be
 ```
 
 **With three**, the join is `C12, C13 and C14` and the sentence is otherwise identical. **With one** —
-`[C12, C13, C12]` — the count is 1 and row 11's singular is rendered verbatim. **The status and the
+`[C12, C13, C12]` — the count is 1 and row 11's singular is rendered verbatim. **Had the same request
+come from a customer already holding seats on this showtime**, everything above is unchanged except
+the final clause, which reads `Your hold is unchanged.` — the two rules compose and neither
+overrides the other. **The status and the
 code do not change between singular and plural**; only the sentence does, and the interface branches
 on `code` in both cases (`P-HLD-14`'s opening rule).
 
@@ -2214,12 +2425,13 @@ have.
 | **Error, first load** | The map is replaced by `The seat map could not be loaded.` in `--fr-ink` on `--fr-surface-inset`, with a control reading `Try again`. No partial grid. |
 | **Error, a poll fails** | The last good map stays on screen. A one-line strip appears at the top of the field in `--fr-ink-muted` on `--fr-surface-inset` reading `The seat map is not updating. The seats shown may be out of date.` Polling keeps retrying. |
 | **Success** (a hold is granted) | Every held cell repaints to `held_by_me`, the heading changes to `3 seats held by you`, the countdown (`SCR-SEA-02`) appears, the secondary action appears, and the primary action becomes `Continue to payment`. Pressing it navigates to `/showtimes/{showtime_id}/checkout` and sends no request of its own. |
-| **Hold live, further seats chosen** | A hold is live **and** the customer has tapped one or more additional `available` seats. The held cells stay `held_by_me`; the newly chosen cells render `held_by_me` too (`P-SEA-02` — there is no fifth rendering) and are listed under their own subheading in the summary. The countdown keeps running from the **unchanged** `expires_at` and does not restart. **The primary action changes from `Continue to payment` to `Hold 2 more seats`**; pressing it re-sends `EP-HLD-01` naming only the new seats, which join the existing hold under its existing token (`P-HLD-01` step 4). On success the newly chosen seats become held, the subheading disappears, and the primary action returns to `Continue to payment`. On `409 SEAT_UNAVAILABLE` the existing hold is untouched — the request is all-or-nothing over **the seats it names**, not over the whole hold (`P-HLD-07`). |
+| **Hold live, further seats chosen** | A hold is live **and** the customer has tapped one or more additional `available` seats. The held cells stay `held_by_me`; the newly chosen cells render `held_by_me` too (`P-SEA-02` — there is no fifth rendering) and are listed under their own subheading in the summary. The countdown keeps running from the **unchanged** `expires_at` and does not restart. **The primary action changes from `Continue to payment` to `Hold 2 more seats`**; pressing it re-sends `EP-HLD-01` naming only the new seats, which join the existing hold under its existing token (`P-HLD-01` step 4). On success the newly chosen seats become held, the subheading disappears, and the primary action returns to `Continue to payment`. On `409 SEAT_UNAVAILABLE` the existing hold is untouched — the request is all-or-nothing over **the seats it names**, not over the whole hold (`P-HLD-07`) — and the banner renders `P-HLD-14` row **2b** or **3b**, whose closing clause is `Your hold is unchanged.` and never `No seats were held.`, because on this screen in this state the countdown, the held cells and the heading all say otherwise. |
+| **A chosen seat leaves the selection with no request sent** | The local selection has been re-checked against a freshly fetched map — after a reload, a poll, or a return to the tab, **with no sign-in involved** — and a seat that was chosen is no longer `available`. The cell repaints to whatever the map now reports and fires the changed-seat outline; the seat leaves the selection, its line leaves the summary and the total drops. **`SCR-SEA-03` renders `P-SEA-03`'s string and announces it**, and this is the one notice on that banner that carries no error `code`, because nothing was requested. Nothing is disabled and no action is offered: the customer chooses another seat or presses the primary action with what is left. The return-from-sign-in case is `P-ACC-13`'s and renders that row's string in the same banner. |
 | **Partial** | The map and the price summary load independently. The map is usable before the prices arrive; the total is not rendered at all and the primary action stays disabled until every selected seat has a price. |
 | **Sold out** | The full map renders, every cell `sold`, plus a banner reading `Every seat for this showtime is sold.` Not an empty state — the customer wants to see that it is genuinely full. |
 | **Sales closed** | The full map renders with every cell unselectable, plus a banner. For a customer with no hold it reads `Sales for this showtime have closed.` For a customer holding seats it reads `Sales for this showtime have closed. You can still pay for the seats you are holding.` |
 | **Hold expired** | Each `held_by_me` cell reverts to whatever the next poll reports — usually `available`, sometimes `held_by_other` or `sold`. Each reverting cell fires the changed-seat outline, so the customer watches the seats leave. The cells are **not** pre-emptively repainted at `0:00`; `SCR-SEA-02` is what says the hold ended. |
-| **A seat changes between two polls** | The cell keeps a 2px `--fr-focus-ring` outline for `--fr-motion-change`; the fill transitions over `--fr-motion-base` with `--fr-ease-out`. Under `prefers-reduced-motion` the outline is static rather than pulsing and is held for the same duration. If the seat that changed was one of the customer's own, `SCR-SEA-03` fires and names it. |
+| **A seat changes between two polls** | The cell keeps a 2px `--fr-focus-ring` outline for `--fr-motion-change`; the fill transitions over `--fr-motion-base` with `--fr-ease-out`. Under `prefers-reduced-motion` the outline is static rather than pulsing and is held for the same duration. **`SCR-SEA-03` fires and names the seat only when the change took a seat away from this customer** — a seat in their local selection, which is the state above, or a seat they were holding. A seat changing anywhere else on a 220-seat map repaints silently and is never announced. |
 
 **Copy.**
 
@@ -2339,20 +2551,47 @@ not focusable and is not a control.
 ---
 
 ### `SCR-SEA-03` · The seat-lost and hold-failure banner
-**Route.** rendered inside `/showtimes/{showtime_id}`, in the scroll container's sticky header
-area · **Who reaches it.** anyone who hits a failure on this lane · **Component basis.**
+**Route.** rendered inside `/showtimes/{showtime_id}`, **pinned to the top of the viewport for as long
+as it is live** — *not* inside the map's scroll container · **Who reaches it.** anyone who hits a
+failure on this lane, and anyone who loses a chosen seat with no request sent · **Component basis.**
 `COMPONENTS.md §6`
 
-**What the user arrives with / leaves with.** It arrives with one error envelope. It leaves the
-customer knowing exactly which seats went and what to press next.
+**What the user arrives with / leaves with.** It arrives with one error envelope, **or with one
+client-originated seat-lost event that has no envelope at all**. It leaves the customer knowing
+exactly which seats went and what to press next.
+
+**Where this banner sits, and why it is not where `COMPONENTS.md §6` puts it.** `COMPONENTS.md §6`
+places it *"inside the scroll container's sticky header area, so it is visible without scrolling"*.
+**On this screen that placement cannot deliver what it promises**, for a reason `COMPONENTS.md §1.3`
+states two sections earlier: the map container scrolls **horizontally and deliberately not
+vertically** — *"rows grow the container and the page scrolls normally"* — so a header sticky inside
+it is sticky against the one axis nobody is scrolling. On the design target `P-XCT-25` is written
+about, a 220-seat hall on a 375-pixel phone, the customer reading the far rows has scrolled the
+**page** past the banner's anchor, and the message naming the seat they just lost is off-screen.
+
+**It cannot ride on the application header either.** `SCR-XCT-05` marks that header **`Not sticky`**
+and gives the reason by name: a sticky header steals vertical space from exactly this map. That
+ruling is not disturbed here and this banner is not an exception to it, **because a banner is not a
+header**: it exists only while a message is live, is removed with it, and therefore costs the map no
+vertical space in the state `P-XCT-25` is about. **The asymmetry — permanent chrome may not pin,
+a transient message may — is the whole of the difference**, and it is written down so the next reader
+does not read this row as overturning `SCR-XCT-05`.
+
+**So: the banner renders in the page flow directly above the map field, and pins to the top of the
+viewport while it is live**, below where the application header sits in the flow. It **reserves its
+own height rather than overlaying the map**, so it can never obscure a focused seat cell
+(WCAG 2.2 SC 2.4.11). When it is dismissed or replaced, the space is released and the map returns to
+full height. **The `SCR-XCT-01` registry's generic "the sticky header area of the surface it belongs
+to" does not govern this surface** — `S1.2.1` case 6, the screen that owns the surface wins and the
+registry defers to it by name.
 
 **Fields and controls.**
 
 | Element | Token(s) | Behaviour | Validation |
 |---|---|---|---|
-| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | slides in over `--fr-motion-base` with `--fr-ease-out`; sits directly above the map, visible without scrolling | none |
+| Container | `--fr-surface-danger`, `--fr-radius-md`, padding `--fr-space-3`, 1px `--fr-control-edge` | slides in over `--fr-motion-base` with `--fr-ease-out`; **pinned to the top of the viewport while live, in the page's own scroll context and not the map container's**, so it stays visible at any page scroll position. It reserves height rather than overlaying | none |
 | Leading rule | 3px `--fr-danger-ink` down the leading edge | none | none |
-| Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | the verbatim string for the `code` | none |
+| Message | `--fr-ink-on-danger`, `--fr-text-sm`, `--fr-leading-body` | the verbatim string for the `code` — **or, for the one codeless event below, `P-SEA-03`'s or `P-ACC-13`'s verbatim string** | none |
 | Seat names inside the message | `--fr-font-mono`, `--fr-weight-bold` | taken from `details.unavailable_seats` | none |
 | Action inside the banner | `--fr-accent-ink`, underlined | present only where there is something to press | none |
 | Request id line | `--fr-text-xs`, `--fr-ink-muted`, `--fr-font-mono` | **5xx only** | none |
@@ -2362,14 +2601,17 @@ customer knowing exactly which seats went and what to press next.
 | State | What renders |
 |---|---|
 | **Empty** | Nothing. The banner is absent, not collapsed to zero height. |
-| **Loading** | Not applicable — a banner is the answer to a request that has already returned. |
+| **Loading** | Not applicable — a banner is the answer to a request that has already returned, or to an event that needed none. |
 | **Error** | One banner, carrying the message for the `code`. |
+| **Seat lost with no request sent** | One banner, carrying `P-SEA-03`'s verbatim string `C12 is no longer available. It has been removed from your choices.` **This state carries no error `code`**, because nothing was requested and nothing answered — a poll, a reload or a return to the tab re-checked the local selection against a fresh map and a chosen seat had gone. Announced through the live region exactly as an error is. **No in-banner action, and dismissible**, because the seat has already left the selection and the total has already dropped: there is nothing to press. The return-from-sign-in variant renders `P-ACC-13`'s string in this same banner on the same terms. |
 | **Success** | Not applicable — the banner never reports success. |
 | **Partial** | Not applicable. |
-| **Several errors at once** | **One banner.** The newest message replaces the previous one; errors never stack into a wall. |
-| **Dismiss** | Only errors with nothing left to do are dismissible. `SEAT_UNAVAILABLE` is not; it clears when the customer changes the selection. |
+| **Several errors at once** | **One banner.** The newest message replaces the previous one; errors never stack into a wall. A codeless seat-lost notice and an error compete on the same terms: newest wins. |
+| **Dismiss** | Only messages with nothing left to do are dismissible. `SEAT_UNAVAILABLE` is not; it clears when the customer changes the selection. |
 
 **Copy.** The message text for every code is `P-HLD-14`'s table and this screen restates none of it.
+**The one message this banner carries that is not in that table is the codeless seat-lost notice**,
+whose two strings are `P-SEA-03`'s and `P-ACC-13`'s and are likewise not restated here.
 **The banner's own two controls are this screen's to publish, and it publishes them here** — a screen
 that names a control owes that control's words, and this screen named both and published neither
 until now:
@@ -2422,10 +2664,16 @@ the selection changes. `DEPENDENCY_UNAVAILABLE` is not, because it carries an ac
 | `DEPENDENCY_UNAVAILABLE` | States that seat holds are unavailable and that browsing still works. It never silently degrades. **Carries the `Try again` action; not dismissible** |
 | `NOT_FOUND` | States that the showtime could not be found. **No action; dismissible** |
 | `INTERNAL_ERROR` | The message plus the request id line. **No action; dismissible** |
+| **(no code — a chosen seat left the selection)** | Names the seat and states it has been removed from the customer's choices. The cell has already repainted to whatever the map now reports. **No action; dismissible.** This is the only row here not keyed by an error code, and it is listed in this table so a developer reading it top to bottom finds the event rather than concluding the banner has no trigger for it |
 
 **Accessibility.** The banner is announced through a live region — **an error that is only red has not
-been reported.** It receives focus when it carries an action. The seat names inside the message are
-plain text in `--fr-font-mono`, not links. The request id is selectable text so it can be copied.
+been reported**, and **neither has a seat that silently left a selection.** The live region carries
+the codeless notice on exactly the same terms as an error, which is the whole reason that state is
+specified: the announcement route on this screen branched on an error `code`, and the one event a
+screen-reader user most needs to hear about does not carry one. It receives focus when it carries an
+action. The seat names inside the message are plain text in `--fr-font-mono`, not links. The request
+id is selectable text so it can be copied. Because the banner is pinned to the viewport and reserves
+its own height, a seat cell that has keyboard focus is never covered by it.
 
 ---
 
@@ -2522,7 +2770,7 @@ same expiry instant, so giving a seat back never buys more time on the others.
     "body": {}
   },
   "responses": {
-    "200": {"description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended.", "body": {"hold_token": "string", "showtime_id": "integer", "expires_at": "string, ISO-8601 instant in UTC, unchanged", "seats": "array of {seat_id: integer, label: string, category: string, price_paise: integer}", "total_paise": "integer"}},
+    "200": {"description": "The seat was released. The remaining hold is returned with its unchanged expires_at. An empty seats array means the hold has ended. P-HLD-08's eight numbered steps are the procedure and the block does not repeat them; two are easy to miss and neither is optional - step 6 DEL cache:seatmap:{showtime_id} AFTER the lock release, and step 8, which on the LAST seat also removes the token from holds:user:{user_id}:showtime:{showtime_id} so P-HLD-04's cap stops counting a hold that has ended.", "body": {"hold_token": "string", "showtime_id": "integer", "expires_at": "string, ISO-8601 instant in UTC, unchanged", "seats": "array of {seat_id: integer, label: string, category: string, price_paise: integer}", "total_paise": "integer"}},
     "401": {"description": "No authenticated customer."},
     "403": {"description": "The token belongs to another user."},
     "409": {"description": "The hold has already expired. A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
@@ -2559,11 +2807,11 @@ than a confirm.
     "body": {}
   },
   "responses": {
-    "204": {"description": "Every key in the hold was released with the compare-and-delete script and the hold record was deleted."},
+    "204": {"description": "The whole hold was released. P-HLD-08 carries the numbered procedure and it is SEVEN steps, not one: assert the caller owns the hold; compare-and-delete every key in ascending seat_id order; remove those keys from instance:{instance_id}:holds; delete the hold record; REMOVE THE TOKEN FROM holds:user:{user_id}:showtime:{showtime_id}, without which P-HLD-04's cap keeps counting a hold that no longer exists and the customer cannot re-take the seats they just gave back; DEL cache:seatmap:{showtime_id} AFTER the releases and never before, without which the seats read held to everyone else for up to the cache TTL instead of about three seconds; then answer 204 with no body. Steps 2 to 6 are best-effort - every structure carries the hold's TTL - and a compare-and-delete returning 0 for one seat is not an error and does not stop the loop."},
     "400": {"description": "The hold token is malformed - not exactly 43 characters, or carrying a character outside the URL-safe base64 alphabet. Checked before Redis is touched. REQUEST_INVALID, never HOLD_EXPIRED, for the reason given on EP-HLD-02."},
     "401": {"description": "No authenticated customer."},
     "403": {"description": "The token belongs to another user."},
-    "409": {"description": "The hold has already expired. A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
+    "409": {"description": "The hold has already expired. None of the release steps run: there are no keys to release, and the hold record and the index entry carried the same TTL and are gone with them. In particular NO cache:seatmap DEL runs on this branch - an expiry frees seats without telling the cache anywhere in this document, and adding one here would invent an invalidation the expiry path has never had (P-HLD-02 exception 3). A confirm in flight for the same hold does not refuse the release: the ordering settles it, per P-HLD-08."},
     "429": {"description": "The per-user or per-IP token bucket is empty."},
     "503": {"description": "Redis is unreachable."}
   },
@@ -2632,6 +2880,16 @@ writing down, because the change that would resurface it looks unrelated to it.
 map carries exists only in the thing that is down. That observation stands, and it is the reason this
 row exists.
 
+**`PROPOSED-BULKBUY-01` — nothing limits how many seats one customer may *buy* on one showtime.**
+`P-HLD-04`'s cap is ten seats **held at once**. `P-PAY-10` step 13 removes the hold's token from
+`holds:user:{user_id}:showtime:{showtime_id}` at commit, deliberately, so seats the customer now owns
+stop counting against it — without which a customer who bought ten could buy nothing else on that
+showtime for the remainder of the 180 seconds. **The consequence is that ten-seat bookings can be
+repeated until the hall is gone.** `SRC-003 OPEN-BOOK-01` answers a question about the maximum seats
+in **one booking** and `FR-ADR-026` decides only where the cap is enforced; **neither reaches
+successive bookings.** This lane therefore states no lifetime limit, because inventing one is a scope
+change and scope is reserved. Recorded rather than decided, and it is the client's to answer.
+
 **No other Article X candidate.** Everything else this lane needed was either ruled, or a
 non-reserved technical question the build session may decide, and each of those is listed below rather
 than escalated.
@@ -2655,6 +2913,9 @@ than escalated.
 | judgment call | **A customer may hold on two showtimes at once, and may take a second hold on one showtime** subject to the cap | `FR-ADR-026` rules out a cross-showtime cap explicitly. Two tokens on one showtime is not addressed anywhere; permitting it and counting both against the ten is the reading that keeps the cap meaningful. |
 | `[JUDGMENT CALL]` | **The seat map's post-hold primary action reads `Continue to payment`, not `Pay ₹1,562.49`** (`SCR-SEA-01`) | `SCR-PAY-01` states it is the only screen in the product with a pay action, and a button on this screen labelled `Pay …` contradicted it. No P-row publishes this label, so the screen owns it (`S1.2` rank 3). `Continue to payment` names what the control does — it navigates and sends no request. The amount is not lost: it is on the `TOTAL` line directly above. **Reversible** — one copy-table cell and two prose sentences, here and on `SCR-PAY-01`. |
 | `[JUDGMENT CALL]` | **`RATE_LIMITED`'s published span is 3 seconds, not 20** (`P-HLD-14` row 16, `P-HLD-01` exception 11) | The two rows published *"Try again in 20 seconds"* while this lane's own worked example computed 3. 20 is the seat-hold bucket's **capacity**; the sentence wants its **refill interval**, which at 20 per minute per user is one token every 3 seconds. The copy was made to agree with the arithmetic its owning row already carried, not the other way round. **Reversible** — it is one computed value in two cells and one worked example. |
+| `[JUDGMENT CALL]` | **`SCR-SEA-03` pins to the viewport rather than to the map container's "sticky header area"** | `COMPONENTS.md §6` puts the banner inside the scroll container's sticky header area; `COMPONENTS.md §1.3` says that container scrolls horizontally and **deliberately not vertically**, so a header sticky inside it is sticky against an axis nobody scrolls and the banner is off-screen for a customer reading the far rows of a 220-seat map on a 375px phone. It cannot ride the application header either — `SCR-XCT-05` marks that **`Not sticky`** citing `P-XCT-25`. A banner is not a header: it exists only while a message is live, so it steals no permanent vertical space. **Reversible** — one route line, one container row and one paragraph. |
+| `[JUDGMENT CALL]` | **The closing clause of a hold refusal is `Your hold is unchanged.` on an extend, and `No seats were held.` only on a first hold** (`P-HLD-14`, rows 2b and 3b) | Once `SCR-SEA-01` published a state in which a customer chooses further seats while holding some, `No seats were held.` became a false statement on that path — contradicted by the countdown, the held cells, the heading and the cap, all on the same screen. The behaviour was already settled: `P-HLD-01`'s rollback set excludes keys the customer already owned, so a failed extend cannot release them. **Only the sentence was missing.** **Reversible** — one substitution rule, two published rows and one worked example. |
+| judgment call | **`fr.selection` is the key for the live local selection** (`P-SEA-03`) | No row named a key for a value `P-SEA-03` writes on every change, while `P-ACC-13` named `fr.pending_selection` for a value written once and deleted after restore. One key cannot carry both policies — the restore would delete the only durable copy of a selection still on screen. Two keys, both inside the `fr.` namespace `P-ACC-13` sweeps on sign-out, so neither needs its own clause. |
 | reasoned, not observed | **The ECS stop-timeout relationship** in `P-HLD-12` | This session has never observed this application running in AWS. The ordering requirement is reasoned from `FR-ADR-033` and is owed to `docs/30 Deployment/` as a Zone C specification. |
 
 ### Corrections applied in iteration 6, none of which was a decision
@@ -2686,6 +2947,22 @@ settled elsewhere. None of them chose anything, so none is a judgment call.
 | `B5` | Three variants existed for what are **two** situations: a local refresh, and a return from sign-in | `P-SEA-03` owns the local-refresh string and names `P-ACC-13` for the other; `P-HLD-05` exception 4 and `SCR-SEA-01` now defer the sign-in case to `P-ACC-13` rather than publishing a copy. Both rows say "still selected", never "still held" |
 | `F4` | `P-HLD-01` happy-path step 4 said *"generate one hold token"*, contradicting the paragraph directly beneath it and `EP-HLD-01`'s `idempotency` field | Step 4 is now a lookup before a generation: an existing live hold on this showtime supplies its token **and** its unchanged `expires_at`, and a token is minted only when none exists |
 | `D3` | Seven statements of the hold's seat-membership test, plus two fenced blocks, refused a seat that "does not belong to this showtime's **screen**" | **Membership of this showtime's seat set** (`P-ADM-14`), which is materialised at showtime creation and never changes. **This was a correctness defect, not a wording one:** screen membership and seat-set membership are different sets, and a seat added to a hall after a showtime existed passes the screen test while being absent from that showtime's `seat_count_at_creation` — holdable and sellable on a showtime it is not part of, which is the oversell the materialised set exists to prevent. **The published copy is unchanged**: `Seat C12 is not part of this hall. No seats were held.` is still true from where the customer is standing, and `P-ADM-14` defers that string to `P-HLD-01` |
+
+### Corrections applied in the journey fix wave
+
+Seven defects were raised against this section by the six independent journey lanes
+(`docs/11 Journeys/DEFECTS_FOUND.tsv`). None of these was a decision about what the product does;
+each made this file state a behaviour that was already settled, or state one it had left unsaid.
+
+| # | What was wrong | What it now says |
+|---|---|---|
+| `J-CUS-03` | The state machine's `held_by_me_paying` + `TAB_REFRESHED` guard said the restored page **re-sends the same confirm**, while `SCR-PAY-01` says in terms that it **never** re-sends and decides from `fr.last_booking_reference` with no request. One of them put a payment request on every `F5` | The guard now says the refresh abandons the **response** and not the **request** — mechanically the same as `TAB_CLOSED` from this state — and that pressing pay again is `CONFIRM_START`, which is what keeps `IDEMPOTENCY_IN_FLIGHT` reachable. `SCR-PAY-01` owns the checkout screen's behaviour; this file was the restatement and therefore the defect. The `sold` + `TAB_REFRESHED` guard is corrected on the same ground |
+| `J-CUS-05` | `P-HLD-14` rows 2 and 3 ended `No seats were held.` on **every** hold refusal, while `SCR-SEA-01` publishes a state in which a hold is live and further seats are chosen — where the sentence is contradicted by the countdown, the held cells, the heading and the cap, all on the same screen | The closing clause has two forms and the server picks: `No seats were held.` on a first hold, **`Your hold is unchanged.`** on an extend. Rows **2b** and **3b** publish the two `SEAT_UNAVAILABLE` extend sentences, with `try again` in place of a button label that interpolates a count. `P-HLD-07`'s flat "never says any seats are still held" is given its scope, and `P-HLD-01` gains exceptions `2b` and `2c` |
+| `J-GST-05` | `P-SEA-03` wrote the selection to `sessionStorage` **on every change** and named no key; `P-ACC-13` writes `fr.pending_selection` **once** and deletes it after the restore. One key means the restore erases a live selection; two means nobody named the second | **`fr.selection`** is named, with a two-column table setting it against `fr.pending_selection` on write policy, read point, deletion and staleness, and a paragraph on why one key cannot carry both. Both sit inside the `fr.` namespace `P-ACC-13` sweeps on sign-out, so neither needs its own clause |
+| `J-XCT-04` | `P-HLD-08` gave the per-seat release eight steps and the **whole-hold** release one sentence; `EP-HLD-04`'s block named neither the cache `DEL` nor the removal from `holds:user:…`. Built from the block, a customer who gave every seat back left them showing held for the cache TTL and could not take ten again until the hold TTL elapsed | A **seven-step** procedure for `EP-HLD-04`, plus answers for the three cases the one-sentence version left open: a compare-and-delete returning 0 is not an error and does not stop the loop; a released seat is claimed by the next `SET NX` and there is no queue; and on an **already-expired** hold none of the steps run and **no cache `DEL` runs**, because the expiry path has never had one. Both `EP-HLD-03` and `EP-HLD-04` now name the two writes in their own blocks |
+| `J-XCT-07` | `SCR-SEA-03` placed the banner *"in the scroll container's sticky header area"*, copying `COMPONENTS.md §6`, while `COMPONENTS.md §1.3` says that container scrolls **horizontally only** — so it was sticky against an axis nobody scrolls — and `SCR-XCT-05` marks the application header `Not sticky` | The banner **pins to the viewport** while it is live, in the page's scroll context, reserving its own height so it can never obscure a focused seat cell. The paragraph states why this does not overturn `SCR-XCT-05`: a banner is not a header, because it is gone when there is nothing to say. Recorded as contradiction 9 against the design system, which is not this lane's to edit |
+| `J-XCT-08` | `P-SEA-03` exception 3 owned the string `C12 is no longer available…` and **no screen named a state that rendered it**; `SCR-SEA-03` rendered "the verbatim string for the `code`" and this event has no code, because nothing was requested. A screen-reader user was never told a seat had left their selection | `SCR-SEA-03` gains a **Seat lost with no request sent** state, a behaviour row, a copy pointer and an accessibility clause putting the codeless notice through the same live region as an error. `SCR-SEA-01` gains the matching state, and its "a seat changes between two polls" row now says which changes are announced and which repaint silently |
+| `J-CUS-10` | `P-HLD-04` was titled *"ten seats per showtime"* and read as a per-showtime limit, while it counts only **live holds** and `P-PAY-10` step 13 deliberately stops counting seats the customer has bought. A test transcribed from the title would assert a rule the server does not enforce | Retitled **"ten seats held at once on one showtime"**, with a paragraph on what the cap bounds and what it does not, exception row 5 (`201` for a second ten-seat hold after a purchase), and a validation note naming the assertion that does **not** belong. No limit is invented: `SRC-003 OPEN-BOOK-01` and `FR-ADR-026` reach one booking and the hold, not successive bookings, so the question is filed as `PROPOSED-BULKBUY-01` |
 
 ### Where I would have had to guess and did not
 
@@ -2732,6 +3009,7 @@ this section now reads 201.
 | 6 | The lane brief names the configuration value `SALES_CUTOFF_MINUTES` | `FR-ADR-042` and `FR-ADR-053` both name it **`SALES_CUTOFF_MINUTES`** | Used `SALES_CUTOFF_MINUTES`, because an `APPROVED` ADR outranks a brief |
 | 7 | `FR-ADR-045`: the running total is "computed from the per-seat prices in the map payload **using the same rounding rule as the server**" | If the payload carries already-rounded per-seat prices, the client applies **no** rounding at all — it sums integers | Read it as the payload carrying rounded integers and the client summing them (`P-SEA-04`). This is the strictest reading and removes the two-implementations risk entirely, which is what `FR-ADR-038` is protecting |
 | 8 | `SRC-002 §8.1.1`: a lock TTL of **7 minutes** | `SRC-002 §E E-1` and `SRC-003 OPEN-HOLD-01`: **3 minutes** | Used 180 seconds from `SEAT_HOLD_TTL_SECONDS`. Recorded here because the withdrawn clause still reads as live text where it stands, and a future reader who opens `§8.1.1` without reading `§E` will get the wrong number |
+| 9 | `COMPONENTS.md §6`: the error banner sits *"inside the scroll container's sticky header area, so it is visible without scrolling"* | `COMPONENTS.md §1.3`, two sections earlier: that container scrolls **horizontally** and *"vertically the map does not scroll inside its own box — rows grow the container and the page scrolls normally"*. A header sticky inside it is sticky against an axis nobody scrolls, so on `P-XCT-25`'s 375px design target the banner naming the lost seat is off-screen | `SCR-SEA-03` pins the banner to the **viewport** while it is live, in the page's scroll context, reserving its own height. **The design system contradicts itself here, two sections apart, and §1.3 is the half that is right** — the horizontal-only scroll is a deliberate decision with its own reasoning. `SCR-XCT-05`'s `Not sticky` application header is not disturbed: a transient banner is not permanent chrome. **`docs/05 B DesignSystem/` is not this lane's to edit; reported, not changed.** |
 
 ### Cross-lane dependencies this lane assumes but does not own
 
@@ -2743,9 +3021,20 @@ this section now reads 201.
   it costs. This dependency is met, not outstanding.
 - **The confirm endpoint and the idempotency record** (lane E3). This lane specifies only the seat's
   view of confirm — the ordering it depends on, and what each outcome does to the seat. It specifies no
-  payment provider, no capture semantics and no idempotency record shape. It does require that the
-  `Idempotency-Key` be generated once per hold and stored in `sessionStorage` beside the hold token, so
-  that `TAB_REFRESHED` in `held_by_me_paying` behaves as the state machine says.
+  payment provider, no capture semantics and no idempotency record shape, **and it does not specify
+  how the `Idempotency-Key` is generated: `P-PAY-09` owns that, because the key is part of
+  `EP-PAY-01`'s wire contract (`S1.2`).** What this lane requires of it is one behaviour and not a
+  generation rule: the key must live in `sessionStorage` beside the hold token and must still be
+  there, unchanged, when a page is refreshed while a confirm is in flight — **so that one confirm can
+  be sent at all and a second press cannot become a second booking**, which is the reason, and **not**
+  so that a refreshed page can replay it. **An earlier version of this note said the key was
+  "generated once per hold".** That would have bound the deliberate payment failure, which fires on a
+  prefix of the key (`P-PAY-07`), to the whole life of a hold — making every retry fail identically
+  and putting `fail -> retry -> succeed` out of reach of the product, which is `J-CUS-04`. `SCR-PAY-01` owns the checkout
+  screen's refresh behaviour and states that it **never** re-sends the confirm; the state machine's
+  `held_by_me_paying` + `TAB_REFRESHED` transition now says the same thing from the seat's side. An
+  earlier version of that guard said the restored page re-sends, which contradicted `SCR-PAY-01`
+  outright and would have put a payment request on every `F5`.
 - **The authentication screen** (lane E6). `P-HLD-05` specifies the stopping point and the
   `sessionStorage` round trip; it does not specify the register-or-sign-in screen itself.
 - **The showtime's materialised seat set** (lane E6, `P-ADM-14`). Every seat-membership test on this

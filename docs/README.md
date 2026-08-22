@@ -35,7 +35,7 @@ misses. `goals/README.md` carries the real execution order.
 | 08 | **SIT** | Positive cases — exactly one per acceptance criterion, each citing the story it proves. | empty |
 | 09 | **NegativeTesting** | The cases that try to break it. Weighted hard at one thing: **two customers and one seat.** | empty |
 | 10 | **EngineeringLedger** | Derived from the Bible — one row per unit of work, with `Milestone` and `Status`. **`/ss` reads this to report the frontier.** | empty |
-| 11 | **Journeys** | Persona journeys, each walk naming the seam it crosses. `JOURNEY_INDEX.md` · five walks · `DEFECTS_FOUND.tsv`. | written |
+| 11 | **Journeys** | Persona journeys, each walk naming the seam it crosses. `JOURNEY_INDEX.md` · five walks · `DEFECTS_FOUND.tsv` · `DEFECTS_RESOLUTION.tsv`. | written |
 | 12 | **DesignReview** | The pre-code audit: fresh agents attack every document above before a line is written. | empty |
 | 13 | **Fixes for Design Review** | What the audit found, and its repair. | empty |
 | 14 | **Project_Plan** | Milestones and the cutover plan. | empty |

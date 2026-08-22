@@ -11,7 +11,8 @@ developer who implements one of them has written a defect that does not fail any
 movie is shown only when the admin has published it **and** the evaluation instant falls inside its
 display window (`R-BRW-06`, `FR-ADR-021`). Publication answers "is this finished"; the window answers
 "is this the period we are showing it in". They are different questions, they are stored in different
-columns, and both must pass on every customer-facing query. The second most likely error is the
+columns, and both must pass on every **movie-addressed** customer-facing query — `P-BRW-01` tabulates
+which endpoints those are and names the three that apply no gate. The second most likely error is the
 timezone: every window boundary, every date filter and every sales cut-off is evaluated in
 **Asia/Kolkata** against an **injected** clock, never against the container's clock, which in AWS is
 UTC and rolls the date over at 05:30 local (`FR-ADR-018`).
@@ -24,13 +25,44 @@ UTC and rolls the date over at 05:30 local (`FR-ADR-018`).
 `[SRC: SRC-003 OPEN-ROLE-01 · SRC-003 OPEN-TMDB-01 · SRC-003 OPEN-TMDB-03 · SRC-003 OPEN-LOCALE-01 · FR-ADR-021 · FR-ADR-018]`
 `[BRD: R-BRW-06]`
 
-**Behaviour.** A movie appears on any customer-facing surface only when both gates pass:
+**Behaviour.** A movie appears on any **movie-addressed** customer-facing surface only when both gates
+pass:
 
 1. `published_at IS NOT NULL` — the admin published it deliberately.
 2. `display_from <= T < display_until` — the evaluation instant `T` falls inside the display window.
 
-A movie failing either gate is invisible to guests and customers alike. It is never deleted and never
-hidden from the admin (`FR-ADR-012`, `FR-ADR-021`).
+A movie failing either gate is invisible on every movie-addressed customer-facing surface: the
+listing, the film detail and the showtime list. It is never deleted and never hidden from the admin
+(`FR-ADR-012`, `FR-ADR-021`).
+
+**Three endpoints in this epic apply no gate, and this row is where that is stated rather than left to
+be found.**
+
+| Endpoint | Gates applied | Why, and what decides it |
+|---|---|---|
+| `EP-BRW-01` the listing · `EP-BRW-02` the film · `EP-BRW-04` the showtime list | **yes** | movie-addressed. A film failing a gate is absent from the array, or 404 with the same body a film that never existed returns |
+| `EP-BRW-03` the poster redirect | **no** | stated and accepted, not overlooked: a poster id discloses that a draft exists, on the same ground showtime ids are public (`FR-ADR-017`, `P-BRW-15`) |
+| `EP-BRW-05` the showtime header · `EP-BRW-06` the seat map | **no, today** | showtime-addressed. **Whether they should is `OPEN-BRWVIS-01`, which is `OPEN` and reserved, and this row does not answer it** |
+
+> **This overturns what this row said before, and the earlier text was the defect.** It said without
+> qualification that a movie failing either gate is *"invisible to guests and customers alike"* and
+> that the predicate is *"called from every such query"*, while `EP-BRW-05`'s own authorisation rule
+> states in terms that **it does not apply the movie visibility gates** and `EP-BRW-03` and
+> `EP-BRW-06` apply none either. **One of those sentences was wrong today and no ruling makes both
+> right.** A developer reading only this row would have gated the seat-map header; a developer reading
+> only the block would not; and the two choices differ by whether a withdrawn film's title, hall and
+> price are publicly displayed. **The row is corrected to the endpoints that actually filter**, which
+> is what the document specifies.
+
+**What is corrected here is the contradiction, not the policy, and the difference matters.** A film
+may leave its window while its showtimes still hold unsold seats. `FR-ADR-021` settles that the window
+governs the **browse surface** and not the **booking record**; it settles nothing about whether those
+showtimes may still be **sold**. Gating `EP-BRW-05` and `EP-BRW-06` would settle that in one direction
+and leaving them open settles it in the other, so **neither is decided here** — that is
+`OPEN-BRWVIS-01`, it is reserved, and inventing an answer is the cardinal sin of this project.
+**Until it is ruled, the specification of record is what the two endpoint blocks carry: no movie gate.**
+`SCR-BRW-03` correspondingly publishes no state for a film that has left its window; that gap is filed
+against the same open row and is not filled in here.
 
 **How the gates are evaluated, exactly.**
 
@@ -88,9 +120,11 @@ router applies no auth dependency to these routes (`SRC-001 §7.4`, `FR-ADR-014`
 (`FR-ADR-018`). A clock is injected into the domain layer.
 
 **Happy path.**
-1. A request arrives at any customer-facing movie, showtime or seat-map surface.
+1. A request arrives at a movie-addressed customer-facing surface — the listing, the film detail or the
+   showtime list.
 2. The service reads `T` from the injected clock.
-3. The visibility predicate — **one function, called from every such query** — is applied.
+3. The visibility predicate — **one function, called from every query the table above marks `yes`** —
+   is applied.
 4. Rows failing either gate are absent from the result. They are not returned with a flag.
 
 **Exception paths.**
@@ -285,7 +319,29 @@ last day  = the DAY BEFORE max(display_until) over the movies EP-BRW-01 returned
 **The day before, because `display_until` is exclusive.** A film with
 `display_until = 2026-08-21T00:00:00+05:30` shows through the **20th** and is invisible at the 21st
 (`P-BRW-01`). Rendering the 21st would put a day button on screen whose only possible result is the
-empty state — the state this row elsewhere says the strip must never be able to reach.
+empty state.
+
+**The strip bounds the range; it does not promise that every day inside the range has a showtime, and
+the two claims are not the same claim.** A day **past** the bound can only ever be empty, which is why
+it is not offered. A day **inside** the bound may still be empty — a film runs for a fortnight and the
+cinema schedules nothing on the Tuesday — and pressing it renders
+`Nothing is showing for the chosen filters.`, which is the ordinary filtered-empty state this screen
+already publishes and not a fault.
+
+> **This row previously justified the day-before rule on the ground that the strip "must never be able
+> to reach the empty state", and that justification was false of the strip this row specifies.** The
+> strip is computed on the **client**, from `display_until` and the injected clock and nothing else
+> (see below), and **`EP-BRW-01` carries no per-day showtime information at all** — so no test of
+> "does any film have a showtime on this day" is possible on that response, and none is specified. The
+> bound itself is correct and is unchanged; **only the reason given for it was overstated, and an
+> overstated reason is what a later reader implements.** Compare `P-BRW-06`'s
+> `next_date_with_showtimes`, which *does* test for a still-open showtime — it can, because it is
+> computed on the **server** for **one** film.
+>
+> **The accepted weakness, stated rather than absorbed:** a guest can press a day the product offered
+> and reach the empty state. It costs one re-request, the remedy is already on screen, and closing it
+> would need either a per-day aggregate on `EP-BRW-01` or one request per day — neither of which is
+> specified here, and neither of which is invented here.
 
 > **This row previously stated its own subject two ways, one day apart**, and that is a defect in the
 > row rather than something a reader may resolve. It said the strip runs "through the latest
@@ -303,8 +359,9 @@ that array. The strip needs no second request and no aggregate field.
 > maximum is taken "across the films currently visible to this caller (`P-BRW-01`)" — and `P-BRW-01`
 > is the **visibility gate**, which is explicitly filter-independent — while four paragraphs later it
 > said the client takes the maximum across `EP-BRW-01`'s array, **which is filtered**. The filtered
-> set wins: a strip offering days on which the current filters return nothing is the same defect
-> condition 3 of `next_date_with_showtimes` exists to prevent (`P-BRW-06`), and a client cannot
+> set wins: an unfiltered bound offers days on which nothing matching the current filters can be
+> showing **at all**, which is a stronger form of the emptiness condition 3 of
+> `next_date_with_showtimes` exists to reduce (`P-BRW-06`), and a client cannot
 > compute the unfiltered maximum from a filtered response without a second request nobody specified.
 
 **So the strip moves when the filters move, and that is the point rather than a side effect.** Three
@@ -343,6 +400,9 @@ cannot repair it.
 - **No fixed horizon anywhere.** `P-BRW-06` refuses one as "a number no source supports", and "the day
   before the last day anything in this listing is showing" is derived from the same column the
   visibility gate reads.
+- **The bound assumes every showtime falls inside its film's window, and nothing enforces that today**
+  (`P-BRW-06`). A showtime scheduled outside it is offered by no day button on this strip, by no other
+  browse surface either, and the missing check is `P-ADM-07`'s.
 
 > **Where the field comes from.** `EP-BRW-01` carried no `display_until` and no aggregate until this
 > pass, so the strip on the product's **entry page** could not be built at all — a rank-2 row requiring
@@ -555,8 +615,9 @@ did not ask about it, and the remedy — clear or change a filter — is identic
 
 **Who may do it.** guest · customer · manager · admin. Public.
 
-**Preconditions.** The reference data endpoint is reachable so the interface knows which controls to
-render.
+**Preconditions.** None that can fail silently. The reference data endpoint tells the interface which
+controls to render; **when it is unreachable the screen still renders and says so** — exception 5
+below, which exists because this precondition previously had no failure path at all.
 
 **Happy path.**
 1. The customer changes a control.
@@ -572,6 +633,35 @@ render.
 | 2 | `date` is not an ISO-8601 date | 422 `VALIDATION_FAILED` | "That date is not valid." |
 | 3 | `language_id`, `format_id` or `cinema_id` is not a positive integer | 422 `VALIDATION_FAILED` | "That filter is not valid." |
 | 4 | An id is well-formed but matches no row | 200, empty list | as row 1. An id for a deleted row cannot occur — nothing is deleted (`FR-ADR-012`) |
+| 5 | `EP-BRW-07` fails while the listing query succeeds | the listing returns 200 unaffected; `EP-BRW-07` returns 503 `DEPENDENCY_UNAVAILABLE` | the listing renders **in full**, **no reference-backed filter control renders**, and one line reads "Filters are unavailable right now." The date strip and `Clear filters` are unaffected |
+
+**A reference outage and an empty vocabulary render the same controls, so they may not render the same
+screen.** Day one and a 503 from `EP-BRW-07` both produce a listing with no language, format or cinema
+control — and this row says in terms that the day-one rendering is **correct** and carries **no
+message**. With no difference between them a guest cannot tell a working product from a degraded one,
+and neither can an operator holding a screenshot. **One published line is the entire difference**:
+`Filters are unavailable right now.` It states the fact and claims no cause, in the form
+`P-BRW-08`'s banner already uses. **`SCR-BRW-01` owns the string** (`S1.2.1` case 3) and publishes it
+in its copy table; no other section may publish a variant, and nothing else about the screen changes.
+
+**Three things are deliberately unaffected**, because none of them reads the reference data:
+
+- **The listing itself.** `EP-BRW-01` reads no vocabulary, and a filter already in the URL is still
+  applied in SQL — a guest arriving on a shared link carrying `language_id` gets the filtered listing
+  they asked for, whatever the reference endpoint is doing.
+- **The date strip.** It is computed from the injected clock and the `display_until` values the listing
+  response already carries. It is the one filter that is not reference-backed, which this row states
+  above, and an outage does not reach it.
+- **`Clear filters`.** It renders whenever at least one filter is set and needs no vocabulary to unset
+  one. Without it a guest whose URL carried a filter would hold a filter they can neither see nor
+  remove — the failure this row already names when a selected day leaves the strip: **a control that
+  vanishes along with the thing it repairs cannot repair it.**
+
+**`[JUDGMENT CALL]` — the line, not the behaviour.** That the controls are absent is `FR-ADR-046`
+applied to a vocabulary the client could not read, and it follows. **Whether the screen says so is
+what is decided here**, because no source addresses it and the alternative is two states that are
+byte-identical on screen and mean opposite things. It is recorded in the lane notes. Reversible: one
+string and one condition.
 
 **Server-side validation.** `date` is an ISO-8601 calendar date, `YYYY-MM-DD`, parsed strictly; a
 datetime, an offset or a zone name in that field is rejected rather than coerced. The three id
@@ -676,6 +766,29 @@ of the movie's display window** — that is, the day before `display_until` (`P-
 constant exists, because inventing "the next 14 days" would be a number no source supports, and a
 movie outside its window is not visible anyway. **This is `SCR-BRW-02`'s strip, where a movie has been
 chosen.** The listing screen has no movie and takes its strip from `P-BRW-04`.
+
+**Both browse paths to a date are bounded by the film's display window, so both assume every showtime
+falls inside it — and no row in this document makes that true.** This strip ends at the last day of
+the window, `P-BRW-04`'s listing strip ends at the last day of `max(display_until)`, and condition 2
+below never searches past `display_until`. A showtime whose `starts_at` falls **outside** its film's
+window is therefore reachable from **no guest browse surface at all**: not this strip, not the listing
+strip, not the next-date button, and not the listing's `date` filter, because no control anywhere
+offers the day. The showtime exists, it has a seat set, its sales are not closed, and only a
+hand-typed URL finds it.
+
+**The bound is not the defect and is not widened here.** Ranging a strip over `max(starts_at)` instead
+would offer days on which the film has left its window — the button `P-BRW-04` refuses to draw, for
+the reason stated there — and it would need a field no endpoint returns. **The condition belongs on
+the write path**: a showtime outside the window is the admin having said two different things about
+when the film runs, and `P-ADM-07` owns showtime creation. **This row states the dependency it has on
+that check and does not restate the check**, which does not exist today and is raised against
+`P-ADM-07`.
+
+**This is not `OPEN-BRWVIS-01`, and conflating the two would park a fixable defect behind a reserved
+row.** That row asks whether a showtime may still be sold **after** its film leaves the window — a
+boundary the clock crosses, with a customer possibly mid-checkout. This is a showtime scheduled
+outside the window in the first place: it is unreachable from the instant it is created, no clock
+moves, and no policy has to be chosen to see that it is wrong.
 
 **`next_date_with_showtimes` names the earliest date the customer can actually buy on, and this row
 owns its definition.** It is **the earliest local date in Asia/Kolkata satisfying all three of the
@@ -1236,7 +1349,18 @@ someone sees, never what they get.
 | 1 | A poll fails (network or 5xx) | — | **the last good map stays on screen.** A one-line strip appears at the top of the field: "The seat map is not updating. The seats shown may be out of date." Polling continues |
 | 2 | Polls keep failing | — | the strip stays. The map is never blanked mid-selection; a few-seconds-old map beats no map |
 | 3 | A poll returns 429 `RATE_LIMITED` | 429 with `Retry-After` | the strip appears and the client waits `Retry-After` seconds before the next poll rather than continuing at 3 seconds |
-| 4 | The first load fails | 4xx/5xx | the map is replaced by "The seat map could not be loaded." and a control reading "Try again". No partial grid |
+| 4 | The first load fails, **429 included** | 4xx/5xx | the map is replaced by "The seat map could not be loaded." and a control reading "Try again". No partial grid. **The rate-limited string is not rendered here** — see below |
+
+**A 429 on a poll and a 429 on the first load are two situations, they take two different strings, and
+this is where they are separated.** Exception 3 is a refused **poll**: a map is already on screen, the
+loop is already running, and the next request goes out on its own — so `SCR-BRW-03`'s
+`Too many requests. The seat map will update again shortly.` is a true sentence, and it is why
+`SCR-XCT-03` publishes no variant for that surface and points here instead. Exception 4 is a refused
+**first load**: there is no map on screen and **no poll loop exists yet**, so nothing will deliver the
+update that sentence promises. It takes the first-load error and its `Try again`, which is the only
+control that can produce the map at all. **A published string promising an action that nothing
+performs is the defect this split closes**, and it was reachable — `SCR-XCT-03` sent every 429 on this
+endpoint, first load and poll alike, to the polling sentence.
 
 **Server-side validation.** **`SEATMAP_POLL_INTERVAL_SECONDS` is server configuration, validated at
 boot, and returned to the client in the seat-map response.** The client polls at the interval it was
@@ -1254,11 +1378,27 @@ given and holds no constant of its own. Default **3**, from `SRC-002 §8.6.1`.
 - **Enforcement stays where it was: nowhere.** The server *publishes* the interval; it does not police
   it. A client polling faster is handled by the rate limiter and by nothing else — an interval the
   server tried to enforce per-caller would be a second limiter with a different bucket.
-- The per-IP rate limit of 120 requests a minute on this endpoint (`FR-ADR-058`) is far above what a
-  legitimate poller uses — one viewer at the default uses 20. **The two numbers are related and the
-  relation is checked at boot**, not asserted here: `S7.9` cross-check 10 owns it, along with
+- **The per-IP rate limit of 120 requests a minute on this endpoint (`FR-ADR-058`) is well above what
+  one legitimate poller uses and is not above what six of them use. The worse number goes first**
+  (Art VII.2): one viewer at the default uses `60 / 3 = 20` requests a minute, so the bucket holds
+  `120 / 20 = 6` concurrent viewers from one address — of any showtime, since the bucket is keyed on
+  the address and not on the showtime. **The two numbers are related and the relation is checked at
+  boot**, not asserted here: `S7.9` cross-check 10 owns it, along with
   `SEATMAP_CACHE_TTL_SECONDS + SEATMAP_POLL_INTERVAL_SECONDS <= 15`, which is the staleness bound this
   row states above.
+- **There is no per-user bucket on this endpoint, so guests sharing one public address share one
+  bucket — and the seventh is refused the central screen of the product.** The endpoint is
+  unauthenticated (`P-BRW-05`), so there is no user to key a second bucket on (`EP-BRW-06`,
+  `P-XCT-07`), and an office, a household, a campus or a mobile carrier NAT presents one address for
+  everybody behind it. What the seventh viewer sees is already specified and is not a new state:
+  exception 3 if their map is up — the last good map stays and the client waits `Retry-After` — and
+  exception 4 if they are still loading, which is the first-load error with a `Try again` that will
+  keep being refused for as long as the address stays at its limit.
+- **This document does not change the number, and says so rather than working around it.** `120` per
+  minute per IP is `FR-ADR-058`, an `APPROVED` record; lengthening the poll interval to fit more
+  viewers per address trades directly against the staleness bound above and `SRC-001 §3.3`. **Six is
+  derived from two configured numbers, not measured** — nothing in this project has run in AWS — and
+  it is what the Phase 3 measurement (`P-BRW-14`) should be read against.
 
 **Worked example — worst-case staleness, derived.**
 
@@ -1778,6 +1918,14 @@ vocabulary empty this screen renders the date strip and no filter control of any
 correct rather than broken (`P-BRW-04`). **Nothing is drawn in their place** — no disabled control, no
 explanatory line, no reserved gap that collapses later.
 
+**One other state renders those same three absences, and it is the reason a line exists at all.** When
+`EP-BRW-07` fails, the listing still renders and the three controls are still absent — a screen
+identical to day one, meaning the opposite thing (`P-BRW-04` exception 5). **That state, and only that
+state, carries the line `Filters are unavailable right now.`** above the card grid, in `--fr-ink` at
+`--fr-text-sm`, and announced through the same polite live region as the result count. The date strip
+and `Clear filters` render exactly as they otherwise would. **The empty-vocabulary state keeps its
+silence** — it is correct, and an interface apologising for being correct is what `FR-ADR-046` refuses.
+
 **States.**
 
 | State | What renders |
@@ -1785,7 +1933,8 @@ explanatory line, no reserved gap that collapses later.
 | **Loading** | Poster boxes and three text blocks per card draw as `--fr-surface-inset` at their final dimensions. The card count is the last known count, or three on a first visit. No spinner. |
 | **Empty — no filters set** | One line of `--fr-ink` at `--fr-text-md`: "Nothing is showing right now." No illustration. **The date strip is absent too** — with no visible film there is no day on which anything shows, so there is nothing for it to range over (`P-BRW-04`). |
 | **Empty — filters set** | One line: "Nothing is showing for the chosen filters.", with a "Clear filters" button below it. |
-| **Error** | The listing is replaced by the message and a "Try again" control. Filters stay on screen and stay usable. |
+| **Error** | The listing is replaced by the message and a "Try again" control. Filters stay on screen and stay usable. **This state is the listing query failing, and nothing else.** |
+| **Filters unavailable** | `EP-BRW-07` failed while the listing succeeded. **The listing renders in full** — this is not the Error state. The three reference-backed controls are absent, the date strip and `Clear filters` render as normal, and one line above the grid reads "Filters are unavailable right now." (`P-BRW-04` exception 5). It is the only thing distinguishing this screen from the correct day-one rendering. |
 | **Success** | Cards in `published_at DESC, id DESC` order (`P-BRW-03`). |
 | **Partial** | A card whose data failed does not render; the listing renders the cards it has. A card whose poster failed renders with the perforation motif. |
 
@@ -1797,6 +1946,7 @@ explanatory line, no reserved gap that collapses later.
 | Empty, with filters | `Nothing is showing for the chosen filters.` |
 | Clear-filters button | `Clear filters` |
 | Error | `The listing could not be loaded.` |
+| Reference data unreachable, listing fine | `Filters are unavailable right now.` — **owned by this screen** (`S1.2.1` case 3; no P-row publishes it). It states the fact and claims no cause. **New in this pass**, because without it a reference outage and an empty vocabulary render byte-identical screens (`P-BRW-04` exception 5) |
 | Retry control | `Try again` |
 | Runtime, in the metadata row | `128 min` — `min` is a unit abbreviation and does not inflect, so this form is the same at every value |
 | Runtime, in the card accessible name | `128 minutes`, and `1 minute` at exactly one — the count is interpolated, so both forms are published even though a one-minute film is not a thing this cinema will show (`S7.21`). A string published with only the plural is how `1 minutes` ships |
@@ -1971,7 +2121,7 @@ legend gains a fifth swatch for it, because anything drawn differently has to be
 |---|---|
 | **Loading** | The field, screen bar and row gutters draw immediately at full size; seat cells are `--fr-surface-inset` blocks at 60% opacity. The frame never resizes when data lands. No spinner. |
 | **Empty** | **Cannot happen.** A showtime always has a hall and a hall always has seats. An empty seat list is `INTERNAL_ERROR` (`P-BRW-08`), not an empty state. |
-| **Error, first load** | The map is replaced by the message on `--fr-surface-inset` plus a "Try again" control. **No partial grid.** |
+| **Error, first load** | The map is replaced by the message on `--fr-surface-inset` plus a "Try again" control. **No partial grid.** Any 4xx or 5xx reaches this state, **429 included** — with no map and no poll loop, the rate-limited sentence would promise an update nothing delivers (`P-BRW-11` exception 4). |
 | **Error, a poll failed** | **The last good map stays.** The one-line strip appears at the top of the field; polling keeps retrying. |
 | **Success** | The full grid, the legend, and the running poll. |
 | **Partial** | The map and the price summary load independently. The map is usable before the summary arrives; the primary action stays disabled until it does (the action itself is E2's). |
@@ -1991,7 +2141,7 @@ legend gains a fifth swatch for it, because anything drawn differently has to be
 | Poll-failure strip | `The seat map is not updating. The seats shown may be out of date.` |
 | First-load error | `The seat map could not be loaded.` |
 | Retry control | `Try again` |
-| Rate limited | `Too many requests. The seat map will update again shortly.` |
+| Rate limited **on a poll** — the map is on screen and the loop is running | `Too many requests. The seat map will update again shortly.` — **this sentence is true only while a poll loop exists to make it true.** A 429 on the **first load** renders the first-load error and its `Try again` instead (`P-BRW-11` exceptions 3 and 4); `SCR-XCT-03` publishes no variant for either |
 | Redis unavailable | `The seat map is unavailable right now. You can still browse showtimes. Try again in a few minutes.` — **owned by `P-BRW-12`, rendered here, not decided here.** This screen publishes no variant of it |
 | Server fault | `The seat map could not be loaded.` followed by `If you need help, quote a1b2c3d4.` |
 | Showtime not found | `That showtime could not be found.` |
@@ -2260,7 +2410,7 @@ immediately.
   "errors": ["NOT_FOUND", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
   "rate_limit": "none",
-  "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record.",
+  "authorisation_rule": "Public. This endpoint does not apply the movie visibility gates: it is the booking surface, and FR-ADR-021 rules that the display window governs the browse surface, not the booking record. P-BRW-01 tabulates this endpoint as one of the three in the epic that apply no gate, so the row and this block agree; WHETHER it should apply them is OPEN-BRWVIS-01, which is OPEN and reserved, and neither the row nor this block answers it. Until it is ruled, no movie gate is applied here.",
   "satisfies": ["P-BRW-05","P-BRW-06","P-BRW-07"],
   "brd": ["R-BRW-01","R-BRW-04"]
 }
@@ -2306,8 +2456,8 @@ client — which is what keeps one cached entry serving every viewer.
   },
   "errors": ["NOT_FOUND", "VALIDATION_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
-  "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated. The limit exists to stop scraping, not browsing: one legitimate poller uses 20.",
-  "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server.",
+  "rate_limit": "per IP, 120 per minute, token bucket in Redis (FR-ADR-058). No per-user bucket, because the endpoint is unauthenticated and there is no user to key one on. The limit exists to stop scraping, not browsing: one legitimate poller uses 20 — so the bucket admits SIX concurrent viewers from one address and refuses the seventh, and guests behind one office, household or carrier NAT address share that single bucket (P-BRW-11). A refused poll takes P-BRW-11 exception 3 and a refused first load takes exception 4; the first load never renders the 'will update again shortly' string, because no poll loop exists yet to deliver that update.",
+  "authorisation_rule": "Public, and identical for every caller. The response must never vary by who is reading it — a per-viewer seat map destroys the shared cache and reintroduces held_by_me on the server. It applies no movie visibility gate either, exactly as EP-BRW-05 does not: P-BRW-01 tabulates both, and whether either should is OPEN-BRWVIS-01, which is OPEN and reserved.",
   "satisfies": ["P-BRW-05","P-BRW-08","P-BRW-09","P-BRW-10","P-BRW-11","P-BRW-12","P-BRW-13","P-BRW-14","P-BRW-16"],
   "brd": ["R-BRW-01","R-SEAT-01","R-SEAT-03","R-SEAT-06","R-SEAT-07","R-QLY-04"]
 }
@@ -2343,7 +2493,7 @@ returns and renders accordingly, so a second cinema makes the cinema filter appe
         "certifications": "array of {id, name} — name, never code (P-ADM-23 owns the table and it has no code column). In use as languages. Returned for completeness; no certification filter control exists in v1, because SRC-001 §5.1.3 names four filters and certification is not one."
       }
     },
-    "503": {"description": "PostgreSQL unreachable"}
+    "503": {"description": "PostgreSQL unreachable. The listing endpoint is independent and is unaffected: SCR-BRW-01 still renders in full, with no reference-backed filter control, with its date strip and Clear filters intact, and with one line reading 'Filters are unavailable right now.' That line is the only thing distinguishing this outage from the correct day-one rendering, which produces the same three absences and carries no message (P-BRW-04 exception 5, SCR-BRW-01)."}
   },
   "errors": ["DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "idempotency": "safe method — no state change",
@@ -2414,6 +2564,12 @@ booking and payment paths.
 | `P-BRW-02`, `EP-BRW-01`, `EP-BRW-02`, `EP-BRW-05`, `EP-BRW-07` | **wire correction, not a judgment call** — `certification` is `{id, name}`, never `{id, code}` | Five wire sites and the certification chip. `P-ADM-23` fixes the table at `id`, `name`, `is_active`, `created_at` and says there is no code; `EP-ADM-26` accepts only `name`. **Nothing could ever have populated `code`**, so the wire was wrong and the wire changed. **No `code` column was added** — that would be a data-model change made from a display field, and the table is `P-ADM-23`'s. |
 | `P-BRW-04`, `SCR-BRW-01` | **contradiction closed inside one row** — the two-or-more rule reaches **every** reference-backed filter, language included | Which controls render. The table's fourth column said language was "Rendered in v1: yes" unconditionally, two lines under a rule that admits no exception; the column meant *exists in v1 at all*. Column split and reworded, `date` marked as the one row the rule does not count (there is no vocabulary of dates), and language given its absence condition in `SCR-BRW-01` beside format's and cinema's. **No rule changed** — the table stopped contradicting it. |
 | `P-BRW-04` | **`[JUDGMENT CALL]`** — "rows in use" on `EP-BRW-07` means *referenced by something the caller can currently see*, and `is_active` is not a filter here | Which filter controls render at all, and whether `P-ADM-24`'s promise holds. **`is_active` is excluded because including it would break `P-ADM-24`'s worked example**, in which a customer filtering by a withdrawn language still finds the film that carries it. **The `cinema` row of the definition table is the build session's, by symmetry with `format`** — the adjudicated table covers the four lookup vocabularies and this endpoint also returns cinemas, and any looser test would render a control for a venue with nothing showing. Reversible: one predicate per `{kind}`. |
+| `P-BRW-01`, `EP-BRW-05`, `EP-BRW-06` | **contradiction closed, and the reserved half deliberately left open** (`J-GST-02`) — this row now tabulates which endpoints apply the visibility gates and which do not | The seat-map header and the seat map. This row claimed the predicate ran on *every* customer-facing query while `EP-BRW-05` stated the opposite for itself and `EP-BRW-03` and `EP-BRW-06` applied none either; **one of the two sentences was wrong today and no ruling on `OPEN-BRWVIS-01` makes both right.** The row is corrected to the endpoints that actually filter, so a developer has one instruction. **Whether the showtime-addressed endpoints *should* gate is `OPEN-BRWVIS-01` — `OPEN`, reserved, and not decided here**, because gating them settles the selling question in one direction and not gating them settles it in the other. Both blocks now carry the flag so the generated contract does too. |
+| `P-BRW-04` | **justification corrected; the rule is unchanged** (`J-GST-01`) — the listing date strip **bounds** the range and does not promise a showtime on every day inside it | `SCR-BRW-01`'s date strip. The row justified the day-before rule on the ground that the strip "must never be able to reach the empty state", which was **false of the strip the same row specifies**: it is computed on the client from `display_until` alone, and `EP-BRW-01` carries no per-day showtime information, so no such test is possible without a request nobody specified. **The bound stands; the reason for it was overstated**, and an overstated reason is what a later reader implements. The accepted weakness — a day button inside the range can reach the ordinary filtered-empty state — is now stated. |
+| `P-BRW-06`, `P-BRW-04` | **gap stated, and the missing check named rather than invented** (`J-GST-04`) — a showtime whose `starts_at` falls outside its film's display window is reachable from **no** guest browse surface | Both date strips and `next_date_with_showtimes` condition 2. All three are bounded by the display window, so all three assume every showtime falls inside it, and **no row in the document makes that true**. The bound is not widened — ranging over `max(starts_at)` would offer days on which the film has left its window, which `P-BRW-04` refuses to draw. **The check belongs on the write path and is raised against `P-ADM-07`**, which owns showtime creation. **Explicitly not `OPEN-BRWVIS-01`**: that row is about a boundary the clock crosses; this showtime is unreachable from the instant it is created. |
+| `P-BRW-11`, `SCR-BRW-03`, `EP-BRW-06` | **contradiction closed** (`J-GST-07`) — a 429 on a **poll** and a 429 on the **first load** take two different strings | The seat map's first load. `SCR-XCT-03` sent every 429 on this endpoint to `SCR-BRW-03`'s `Too many requests. The seat map will update again shortly.`, and on a first load **there is no map and no poll loop**, so the sentence promises an update nothing will deliver. Its own stated reason — the map re-polls on its own — holds for polls only. Exception 4 now names 429 and the copy row is scoped to the poll case. `SCR-XCT-03`'s over-broad sentence is E8's half and is raised there. |
+| `P-BRW-11`, `EP-BRW-06` | **arithmetic stated rather than absorbed** (`J-GST-08`) — 120 per IP per minute admits **six** concurrent viewers from one address and refuses the seventh | Every guest behind an office, household, campus or carrier NAT address. One poller uses `60 / 3 = 20` a minute and `120 / 20 = 6`; the endpoint is unauthenticated so there is **no per-user bucket** to spread the load. The row previously said only that the limit is "far above what a legitimate poller uses", which is true of one viewer and false of six. **The number is not changed** — `120` is `FR-ADR-058`, `APPROVED`, and lengthening the interval trades against the staleness bound. **Six is derived from two configured numbers, not measured; nothing here has run in AWS.** |
+| `P-BRW-04`, `SCR-BRW-01`, `EP-BRW-07` | **`[JUDGMENT CALL]`** (`J-GST-10`) — a reference-endpoint outage renders the listing in full plus one line, `Filters are unavailable right now.` | The listing screen's filter area. This row listed a reachable `EP-BRW-07` as a **precondition with no failure path**, and `SCR-BRW-01`'s Error state covered only the listing failing — so an outage rendered a listing with no filter controls, **which is also the correct day-one rendering**. Two states, byte-identical on screen, meaning opposite things. **The judgment call is the line, not the behaviour**: the controls' absence follows from `FR-ADR-046`, and no source says whether the screen should say so. `SCR-BRW-01` owns the string (`S1.2.1` case 3). The date strip and `Clear filters` are untouched, the latter because a control that vanishes with the thing it repairs cannot repair it. Reversible: one string and one condition. |
 
 ### Where I would have had to guess and did not
 
@@ -2441,9 +2597,13 @@ booking and payment paths.
    likely to be "helpfully" filled in by a later session, and the seven-minute hold is what that looks
    like a document later.
 
-6. **What happens to a showtime whose movie has left its window.** Raised as `PROPOSED-BRWVIS-01`. I
-   specified only the half `FR-ADR-021` actually settles — the browse surface hides it — and marked
-   `EP-BRW-05`'s authorisation rule accordingly, without deciding whether it may still be sold.
+6. **What happens to a showtime whose movie has left its window.** Raised as `PROPOSED-BRWVIS-01`, now
+   `OPEN-BRWVIS-01`. I specified only the half `FR-ADR-021` actually settles — the browse surface hides
+   it — and marked `EP-BRW-05`'s authorisation rule accordingly, without deciding whether it may still
+   be sold. **`P-BRW-01` now tabulates which endpoints gate and which do not**, so the row and the two
+   blocks agree on the *fact* while the *policy* stays with the client. **Nothing was decided to close
+   that contradiction**, and the temptation was real: gating `EP-BRW-05` would have looked like a
+   tidy-up and would have answered a reserved question by side effect.
 
 7. **Whether a draft movie's poster should be reachable.** `EP-BRW-03` is public and `EP-BRW-02` is
    gated, so a poster id discloses that a draft exists. Consistent with `FR-ADR-017` (movie and

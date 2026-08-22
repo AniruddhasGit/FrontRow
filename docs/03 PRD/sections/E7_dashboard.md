@@ -715,7 +715,9 @@ rather than from assignment rows (`FR-ADR-011`).
 
 **What renders, and why it is not a row of zeros.** `SCR-RPT-01` renders the period tabs live, the
 figures as `—`, and one sentence: *"No halls are assigned to this account. Ask an administrator to
-assign one."* Rendering `₹0.00` here would be a claim about the business's performance when it is a
+assign one."* **The scope line and the hall filter are absent**, because `EP-RPT-03` returns
+`screens: []` — there is no hall to name and none to filter to, and `SCR-RPT-01`'s States table owns
+that clause. Rendering `₹0.00` here would be a claim about the business's performance when it is a
 fact about the account — the cinema did take money, this account simply cannot see any of it. That
 distinction is why the response carries `scope_empty` as its own flag rather than leaving the
 interface to infer it from zeros.
@@ -783,7 +785,27 @@ dashboard writes no row. Auditing reads here would produce a table dominated by 
 |---|---|---|---|
 | 1 | A manager sends any request to an administration write endpoint | 403 `FORBIDDEN` | "This action is for administrators." |
 | 2 | A customer or guest sends any request to a reports endpoint | 403 `FORBIDDEN` (401 `AUTH_REQUIRED` if unauthenticated) | "This page is for managers and administrators." |
-| 3 | Any non-`GET` method against a `/api/reports/…` path | **405**, no error code from the registry — the route does not exist for that method | The interface never produces this request; a direct caller receives the framework's method-not-allowed response |
+| 3 | Any non-`GET` method against a `/api/reports/…` path | **405 `METHOD_NOT_ALLOWED`**, rendered by the global handler in the standard envelope (`P-XCT-11` exception 3a) — the path is mounted for `GET` and for no other method | "That action is not available. Nothing was changed." — `P-XCT-11`'s one generic, entity-blind sentence. The interface never produces this request; a direct caller does |
+
+**Row 3 is `P-XCT-11`'s rule applied, not a local one, and the previous revision of it was wrong.**
+It said **405 with no error code from the registry** and the framework's own method-not-allowed body.
+`FR-ADR-052` requires one envelope from every response and requires the client to **branch on `code`**;
+a body carrying no `code` is one the client cannot branch on at all. `P-XCT-11` exception 3a and the
+generated `api/error_codes.md` both fix `METHOD_NOT_ALLOWED` at **405 inside the envelope**, and this
+lane adopts that rather than publishing a second answer to one request.
+
+**It reaches a reports path without this router mounting anything, which is why both statements in
+this row hold at once.** The handler is mounted **on the application and on no router** (`P-XCT-11`),
+so the reports router still mounts no `POST`, `PUT`, `PATCH` or `DELETE` route — there is nothing
+there to make work later — and the response still leaves through the product's one envelope.
+
+**`METHOD_NOT_ALLOWED` appears in no `errors` array on any endpoint in this lane, and that is correct
+rather than an omission.** `P-XCT-11` records that the generator's `VALID_CODES` is derived from two
+hardcoded registry constants and rejects any endpoint block naming a code outside them, so the code is
+granted by the merge owner's registry entry and never by a lane; a lane adding it to `EP-RPT-01`'s
+`errors` array gets a build that raises rather than a warning. It is also raised by **no route**, so
+listing it against an endpoint would be a false claim about that endpoint even if the generator
+allowed it.
 
 **Server-side validation.** Not applicable. There is no writable field on this surface.
 
@@ -864,6 +886,34 @@ record of them. `SRC-001 §7.6` says only that the business must be able to answ
 reader to the administrator is the narrower of the two available choices, and adopting a stricter
 option needs no signature (`CONSTITUTION.md` Art III.10). It is written down here so that widening it
 to managers later is a decision someone makes rather than a default that drifts.
+
+**What a manager is left with, written down rather than left as a silence.** Every figure on
+`SCR-RPT-01` is recomputed from current rows on every request and **nothing is stored to compare
+against** (`P-RPT-12`: no rollup, no materialised view, no cached report). There is no filed copy of
+yesterday's dashboard, so **no surface in this product can state that a figure changed**, and none
+claims to. A manager who reported a number yesterday and reads a different one today therefore cannot
+tell an administrator's correction from a fault in the dashboard — which is precisely the state
+`P-RPT-07` says makes a reader stop trusting the figures, reached here by a different route.
+
+**Two things close the part that is closable, and neither widens access to anything.**
+
+1. **`SCR-RPT-01` states the mechanism once, as ordinary content** — *"These figures are recomputed
+   from current records each time this page loads."* A reader who knows the figures are live has an
+   explanation for a moved figure that does not require them to suspect the page.
+2. **It names the route, which is a person and not a link** — *"If a figure has changed, ask an
+   administrator to check the change log."* **No link is rendered and none may be.** The change-log
+   link is absent from a manager's DOM entirely, and a link to a page that answers 403 teaches the
+   reader that the product is broken.
+
+**What is not closed here, and is not this lane's to close.** *Why* a figure moved is
+`OPEN-RPTIMMUT-01`, which is **`OPEN` and reserved — reporting integrity**: an administrator may edit
+a booked showtime's film or start instant, `P-RPT-05` joins the film live and `P-RPT-01` filters on
+`starts_at` live, so either edit rewrites an already-reported period. **The build session may not
+close that at any confidence.** **Widening the change log to managers is not the remedy either** — who
+may read the record of a privileged change is an access-to-financial-data question, and the paragraph
+above records admin-only as a deliberate stricter adoption that someone must decide to widen rather
+than drift into. The two sentences above tell a manager what the figures are; they do not tell them
+what changed, and they do not pretend to.
 
 **Preconditions.**
 - `audit_log` is append-only and enforced as such: the application role holds `INSERT` and `SELECT` on
@@ -1209,8 +1259,10 @@ listing, and — for an administrator — a link to the change log. They leave w
 | Panel | `--fr-surface-raised`, `--fr-radius-lg`, padding `--fr-space-5`, `--fr-shadow-card` | The single container for the figures. | — |
 | Period tabs — Day / Week / Month | `--fr-text-sm`; selected `--fr-surface-accent` on `--fr-ink-on-accent`; min height `--fr-tap-min` | Changes `period` and refetches. Exactly one is selected at all times, and **`Day` is selected on arrival** — see below. | Server rejects anything else with `VALIDATION_FAILED` (`P-RPT-01`) |
 | Period stepper — previous / next | `--fr-control-edge` 1px, `--fr-radius-md`, min height `--fr-tap-min` | Moves the anchor date by one whole period. Never produces a partial period. **Both controls carry a visible label and an accessible name that names the period type**, so "previous" is never ambiguous between a day and a month | Server validates `date` (`P-RPT-01`) |
-| Period line | `--fr-text-sm`, `--fr-ink-muted` | States the period being read and the zone. Not editable. | — |
-| Hall filter | as `COMPONENTS.md §11` field; `--fr-surface-inset`, `--fr-control-edge`, `--fr-radius-md`, min height `--fr-tap-min` | Narrows within the caller's scope. A manager sees only their own halls; an administrator sees all, **including halls that are out of service** (`P-RPT-02`, `P-ADM-16`). **The first option is always the all-halls option and submits no `screen_id`.** An out-of-service hall renders its name followed by the out-of-service suffix in `--fr-ink-muted`, and stays selectable | Server refuses an out-of-scope hall with `FORBIDDEN` (`P-RPT-02`) |
+| Period line | `--fr-text-sm`, `--fr-ink-muted` | States the period being read and the zone. Not editable. Rendered from the local anchor date the screen holds, never from the boundary instants — see the period line's forms, below the copy table. | — |
+| Scope line | `--fr-text-sm`, `--fr-ink-muted` | States which halls the figures cover. **Names come from `EP-RPT-03`'s `screens[]`**, selected by `EP-RPT-01`'s `screen_ids` and rendered in `screen_id` ascending order. **Absent entirely when `scope_empty` is true** — see States. Not editable | — |
+| Live-figures note | `--fr-text-xs`, `--fr-ink-muted`, under the zone note | Ordinary content, announced once with the panel and carrying no `role="alert"`. **Two sentences for a manager, the first alone for an administrator**, who reaches the change log directly (`P-RPT-11`). Absent when `scope_empty` is true, where there is no figure to describe | — |
+| Hall filter | as `COMPONENTS.md §11` field; `--fr-surface-inset`, `--fr-control-edge`, `--fr-radius-md`, min height `--fr-tap-min` | Narrows within the caller's scope. A manager sees only their own halls; an administrator sees all, **including halls that are out of service** (`P-RPT-02`, `P-ADM-16`). **The first option is always the all-halls option and submits no `screen_id`.** The rest are `EP-RPT-03`'s `screens[]` in `screen_id` ascending order, labelled with `screen_name` — **`EP-RPT-01` carries no hall name and cannot populate this control.** An out-of-service hall renders its name followed by the out-of-service suffix in `--fr-ink-muted`, and stays selectable | Server refuses an out-of-scope hall with `FORBIDDEN` (`P-RPT-02`) |
 | Figure — Takings | `--fr-font-mono`, `--fr-text-2xl`, `--fr-weight-black`, `--fr-ink-strong` | Rendered from integer paise at render time, Indian digit grouping, `tabular-nums`. | — |
 | Figure — Occupancy | as above | One decimal place. `—` when capacity is zero. | — |
 | Figure — Seats sold, Shows | as above | Integers. | — |
@@ -1226,11 +1278,37 @@ listing, and — for an administrator — a link to the change log. They leave w
 **There is no control on this screen that writes anything, and no control that downloads anything.**
 That is `P-RPT-09` and `P-RPT-10`, and it is checkable by reading the component's markup.
 
-**The screen's first request, stated because a screen that cannot issue one is not specified.**
+**The screen's opening load, stated because a screen that cannot issue one is not specified.**
 `EP-RPT-01` makes `period` **required** and deliberately gives it no default, so the screen must name
 its own opening value. **`SCR-RPT-01` opens on `period=day` with `date` omitted**, which the server
-resolves to today in Asia/Kolkata from the injected clock (`P-RPT-01`). It is one request:
-`GET /api/reports/dashboard?period=day`.
+resolves to today in Asia/Kolkata from the injected clock (`P-RPT-01`).
+
+**It is three requests, not one, and which one carries what is the part that may not be guessed.**
+
+| # | Request | Issued | What renders from it |
+|---|---|---|---|
+| 1 | `GET /api/reports/scope` (`EP-RPT-03`) | on mount, alongside 2 — neither waits for the other | the **scope line** and the **hall filter**, from `screens[]`: `screen_name` supplies every name and `is_active` supplies the out-of-service suffix. Also `today`, which becomes the screen's local anchor date |
+| 2 | `GET /api/reports/dashboard?period=day` (`EP-RPT-01`) | on mount, alongside 1 | the four figures, the occupancy bar, the per-film table and its truncation line |
+| 3 | `GET /api/reports/showtimes?period=day&limit=50&offset=0` (`EP-RPT-02`) | after 2 returns, because it repeats 2's period and scope exactly (`P-RPT-06`) | the per-show table's first page and its pagination |
+
+**Hall names come from `EP-RPT-03` and from nowhere else.** `EP-RPT-01`'s `screen_ids` is an array of
+**integers**: it states which halls the figures cover and carries no name and no `is_active` flag.
+`screen_name` exists on `EP-RPT-03`'s `screens[]` and on `EP-RPT-02`'s rows, and on no field of
+`EP-RPT-01`. **A screen that fetched only `EP-RPT-01` would render `Halls shown: 3, 5.`** — which is
+what the previous revision of this paragraph specified, by calling the opening load one request while
+the copy table published `Halls shown: Hall 3, Hall 5.`
+
+**So the scope line is rendered by looking each id in `screen_ids` up in `EP-RPT-03`'s `screens[]`,
+in `screen_id` ascending order.** It is keyed on `screen_ids` rather than on `screens[]` because the
+two differ the moment a `screen_id` narrowing is applied: the filter offers every hall the caller may
+read, and the line must state the halls **this response actually covers**. An administrator's
+`screen_ids` is every screen (`P-RPT-02`), and the line takes its own published form,
+`Halls shown: every hall.`, rather than naming six.
+
+**Requests 1 and 2 are issued together and each part renders when its own request lands.** That is
+not a partial render in `P-RPT-07`'s sense: `P-RPT-07` forbids one **figure** having a value while its
+neighbour shows a loading block, and all four figures come from request 2 alone. The scope line and
+the hall filter are not figures, and neither is the per-show listing (`P-RPT-06`).
 
 **`Day`, and the choice costs something, which is why it may not be left to the implementer.** Day and
 Month return **entirely different headline figures** — a different takings total, a different
@@ -1253,7 +1331,7 @@ be a second implementation of the one thing this epic's opening paragraph says w
 
 | State | What renders |
 |---|---|
-| **Empty — no halls assigned** | Period tabs live. All four figures render `—`. The occupancy bar is absent. One line: *"No halls are assigned to this account. Ask an administrator to assign one."* The per-film and per-show tables are absent. **This is not styled as an error** — no danger surface, no danger ink, no error banner. |
+| **Empty — no halls assigned** (`scope_empty: true`) | Period tabs live; the period stepper live; the period line renders. **The scope line is absent and the hall filter is absent** — see below the table. The live-figures note is absent. All four figures render `—`. The occupancy bar is absent. One line: *"No halls are assigned to this account. Ask an administrator to assign one."* The per-film and per-show tables and the per-show pagination are absent. **This is not styled as an error** — no danger surface, no danger ink, no error banner. |
 | **Empty — no shows in this period** | Period tabs live. Takings renders `₹0.00`; Seats sold and Shows render `0`; Occupancy renders `—` and its bar is absent. One line: *"No shows were scheduled in this period."* |
 | **Empty — shows but no sales** | Takings `₹0.00`, Seats sold `0`, Occupancy `0.0 %` with its bar at zero width, Shows the real count. One line: *"No seats were sold in this period."* A zero is a fact. |
 | **Loading** | Figure-sized `--fr-surface-inset` blocks in place of every figure at once. The period tabs stay live. The previous period's figures are **cleared**, not left on screen under a spinner — a stale figure beside a live tab is a wrong number. |
@@ -1264,15 +1342,41 @@ be a second implementation of the one thing this epic's opening paragraph says w
 | **Rate limited** | The banner states the wait. The figures already on screen are cleared, because they belong to the request that was refused. |
 | **Future period selected** | Renders normally. Every per-show row carries *"Still selling"* where `has_started` is false. No projection and no estimate is shown. |
 
+**The scope line and the hall filter are absent when `scope_empty` is true, and the enumeration above
+now says so because it reads as exhaustive.** `P-RPT-02` closed exactly this failure for the
+**administrator** — whose `[]` would have rendered `Halls shown:` with nothing after it — and left the
+**manager's** half of it open, which is the caller the state exists for. **There is nothing to publish
+and nothing to filter here**: `EP-RPT-03` returns `screens: []`, so a scope line would name no hall and
+the hall filter would hold its "All my halls" option alone — a control whose only option is the state
+the reader is already in. **No third scope-line string is published**, because the state's own
+sentence already answers the question a scope line asks, and two sentences answering one question in
+different words is how they later disagree.
+
+**The two zeros a manager can be looking at are different facts and must render differently, which is
+the whole reason `scope_empty` is a boolean on the wire rather than an inference from zeros**
+(`P-RPT-08`).
+
+| The state | What it is a fact about | Scope line | Hall filter | Takings | Occupancy | Tables |
+|---|---|---|---|---|---|---|
+| **No assignment** | the **account** — the cinema did take money and this account cannot see any of it | absent | absent | `—` | `—` | absent |
+| **Assigned, shows scheduled, nothing sold** | the **business** — these halls sold nothing | renders, naming the halls | renders, populated | `₹0.00` | `0.0 %`, bar at zero width | render, with real rows |
+
+A screen that collapsed the two into one "no data" state would tell a manager with **no assignment**
+that their halls took nothing — a claim about the cinema that the response never made, and the
+opposite of what `scope_empty` was put on the wire to prevent.
+
 **Copy.** Every string a reader sees on this screen.
 
 | Where | Verbatim |
 |---|---|
 | Panel heading | "Dashboard" |
 | Zone note, once, under the heading | "All dates and times are Asia/Kolkata." |
+| Live-figures note, first sentence, both roles | "These figures are recomputed from current records each time this page loads." |
+| Live-figures note, second sentence, **manager only** | "If a figure has changed, ask an administrator to check the change log." |
 | Period tabs | "Day" · "Week" · "Month" |
 | Period line, day | "Friday 14 August 2026" |
-| Period line, week | "Monday 10 August to Sunday 16 August 2026" |
+| Period line, week, both dates in one year | "Monday 10 August to Sunday 16 August 2026" |
+| Period line, week, the two dates in different years | "Monday 29 December 2025 to Sunday 4 January 2026" |
 | Period line, month | "August 2026" |
 | Figure labels | "TAKINGS" · "OCCUPANCY" · "SEATS SOLD" · "SHOWS" |
 | Scope line, manager | "Halls shown: Hall 3, Hall 5." |
@@ -1318,13 +1422,50 @@ be a second implementation of the one thing this epic's opening paragraph says w
 
 No string above apologises, exclaims, or uses a figure of speech (`SRC-002 §2.2`, `FR-ADR-052`).
 
+**The period line's forms, published as patterns because four examples are not a rule.**
+
+**`S7.19` owns every rendered *instant* in this product and says in terms that it does not own this
+line.** Its closing clause reads *"a heading that names a span in prose is not"* this section's, it
+names all three of the strings this screen publishes, and it rules that *"they stay `P-RPT`'s."* So
+the full weekday and the full month name here are **not** a sixth `S7.19` form and are **not** a
+non-conformance against it. **What was missing is a pattern**: three examples were published with no
+rule behind them, and `P-RPT` is the owner that owed one.
+
+| Period | Pattern | Example |
+|---|---|---|
+| `day` | weekday in full, day of month with no ordinal suffix, month in full, four-digit year | `Friday 14 August 2026` |
+| `week`, **both dates in one year** | the day form twice with the year dropped from the first, joined by ` to `, with **one** year at the end | `Monday 10 August to Sunday 16 August 2026` |
+| `week`, **the two dates in different years** | the day form **in full on both sides**, joined by ` to ` | `Monday 29 December 2025 to Sunday 4 January 2026` |
+| `month` | month in full, four-digit year | `August 2026` |
+
+**The year-boundary form exists because the one-year form is wrong once a year, silently.** ISO week 1
+of 2026 is the week containing the first Thursday of January — Thursday 1 January 2026 — so
+`P-RPT-01`'s "the Monday on or before the anchor" puts it at **Monday 29 December 2025**, ending
+**Sunday 4 January 2026**. Rendered by the one-year form that week reads *"Monday 29 December to
+Sunday 4 January 2026"*, which files 29 December **2026** under the takings of a week that ended
+eleven months earlier. The manager is given a wrong year against a money figure and nothing else on
+the screen contradicts it. **The test is the two dates' years and never their months**: a week running
+`Monday 31 August to Sunday 6 September 2026` crosses a month, stays inside one year, and takes the
+ordinary form.
+
+**The line is rendered from a local calendar date and never from the boundary instants.**
+`period_start_utc` and `period_end_utc` are bare UTC and `P-RPT-01` rules that they are never
+rendered; a client deriving `Sunday 16 August` from `2026-08-16T18:30:00Z` would be doing zone
+arithmetic on the client, which the same row forbids. The screen instead holds a **local anchor
+date** — `EP-RPT-03`'s `today` on first load, then moved by the period stepper one whole period at a
+time — and derives the weekday, the ISO Monday and the month from that date by calendar arithmetic
+alone, under `P-RPT-01`'s own ISO-8601 Monday-first rule so that the line and the server's window
+cannot describe two different periods. **No instant is converted anywhere on the client.**
+
 **Accessibility.**
 - **Focus order** follows visual order: period tabs → period stepper → hall filter → change log link
   (admin only) → per-film table → per-show table → per-show pagination. The focus ring is
   `--fr-stroke-bold` solid `--fr-focus-ring` with `outline-offset: 2px`, never removed
   (`COMPONENTS.md §0.2`). **Every control in that order has a published string in the copy table
   above** — a control named in a focus order and nowhere else is a control whose words were left to
-  the implementer, which is a defect and not a detail.
+  the implementer, which is a defect and not a detail. **When `scope_empty` is true the hall filter,
+  the two tables and the pagination are absent from the DOM and therefore from this order**, leaving
+  the period tabs and the stepper; nothing is rendered disabled to hold a place.
 - **The period stepper's labels change with the period type**, so its accessible name is `Previous
   week` on a week view and `Previous month` on a month view. One label reading `Previous` would leave
   a screen-reader user to infer the unit from a heading they may not have reached.
@@ -1536,7 +1677,7 @@ the only endpoint a manager or administrator needs in order to see a period's nu
         "evaluated_at_utc": "string, ISO-8601 instant taken from the injected clock",
         "timezone": "string, the cinema's IANA zone, Asia/Kolkata",
         "scope_empty": "boolean, true when the caller has no halls assigned",
-        "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array.",
+        "screen_ids": "array of integer, the halls this response actually covers. For an admin this is EVERY screen, never an empty array and never omitted — the resolver's internal None, meaning apply no screen filter, is an implementation detail and is not the wire value (P-RPT-02). An empty array means one thing only: a manager with no assignment, whose response covers nothing (P-RPT-08). Consistent with EP-RPT-03, which carries all_halls plus the full screens array. INTEGERS ONLY: this endpoint carries no screen_name and no is_active flag. SCR-RPT-01 renders its scope line and its hall filter from EP-RPT-03's screens array, looking these ids up in it, and never from this field alone — a screen fetching only this endpoint would render 'Halls shown: 3, 5.'",
         "takings_paise": "integer, minor units, never a float and never a formatted string",
         "seats_sold": "integer",
         "capacity": "integer, the sum of seat_count_at_creation over the period's showtimes",
@@ -1798,6 +1939,11 @@ merge pass to route. *(Class: cross-lane, and it contradicts a `RULED` BRD row.)
 | **The 429 wait is 1 second, not 30** | **defect corrected**, `S7.20` · `P-RPT-12` | `P-RPT-03` ex. 3, `P-RPT-12` ex. 3 and `SCR-RPT-01`'s copy table all published `Try again in 30 seconds.` The bucket is 60 per 60 s, so `ceil(60/60) = 1` and `S7.20` names this bucket as one where the **singular** ships. **Thirty was neither the capacity, the window, nor the refill interval.** Fourth instance of one class — a bucket's capacity or window written into copy that wanted its refill interval — so the arithmetic is now shown once in `P-RPT-12` and the other two point at it. |
 | **`screen_ids` carries the halls the response covers; an admin gets every screen** | **defect corrected** (`P-RPT-02`, `EP-RPT-01`) | An admin previously emitted `[]` for "no filter", which was **byte-identical to an unassigned manager** while meaning the opposite, and would have rendered `SCR-RPT-01`'s `Halls shown:` line empty for the one caller who sees everything. The resolver's internal `None` no longer reaches the wire. `[]` now means one thing only. `EP-RPT-03` already carried `all_halls` and was left alone. |
 | **The change log's option sets are computed over the date window alone** | **`[JUDGMENT CALL]`** (`P-RPT-11`, `EP-RPT-04`, `SCR-RPT-02`) | Both selects on `SCR-RPT-02`. **Decided because the other reading collapses each select to the option already chosen**, so a reader cannot switch filters without clearing one, and `SCR-RPT-02`'s drop-and-announce rule then cascades between the two selects. The old one-row worked example could not distinguish the readings; it is replaced with a three-row, two-action window where `rows` has one entry and both option sets have two. Reversible: one clause in the query. |
+| **`SCR-RPT-01`'s opening load was specified as one request** | **defect corrected** (`SCR-RPT-01`, `EP-RPT-01`) | The scope line and the hall filter. The screen said *"It is one request: `GET /api/reports/dashboard?period=day`"* while its copy table published `Halls shown: Hall 3, Hall 5.` and its hall filter rendered names and out-of-service marks — and **`EP-RPT-01` returns `screen_ids` as integers only**, with `screen_name` living on `EP-RPT-03` alone. The screen could not render what it was specified to render from the data it was specified to fetch, and would have shipped `Halls shown: 3, 5.` The opening load is now published as a three-request table naming which endpoint carries what, the scope line is a row in the fields table, and `EP-RPT-01`'s own generator block says it carries no name. |
+| **`P-RPT-09`'s 405 escaped the error envelope** | **defect corrected** (`P-RPT-09` exception 3) | Any non-`GET` against a reports path. The row said 405 **with no error code from the registry** and the framework's own body, while `P-XCT-11` exception 3a and the generated `api/error_codes.md` fix `METHOD_NOT_ALLOWED` at 405 inside the envelope. `FR-ADR-052` requires the client to branch on `code`; under the old reading it received none. **This lane's side was the wrong one and was changed.** `METHOD_NOT_ALLOWED` is deliberately absent from every `errors` array here — the generator's `VALID_CODES` would raise, and the code is raised by no route. |
+| **The empty-scope state named neither the scope line nor the hall filter** | **defect corrected** (`SCR-RPT-01` States) | A newly created manager, the caller the state exists for. The enumeration read as exhaustive and no scope-line string was published for an empty scope, so `Halls shown: ` would have shipped with nothing after it — **the same failure `P-RPT-02` closed for the administrator's `[]` and left open for the manager's.** Both are now **absent** when `scope_empty` is true, and no third string is published, because the state's own sentence already answers what a scope line asks. A table now contrasts the two zeros a manager can be looking at — a fact about the account against a fact about the business. |
+| **The week period line broke at a year boundary, and the line had no pattern at all** | **defect corrected** (`SCR-RPT-01` Copy) | The manager's only statement of which window the money covers. One published form carried a single year at the end, so ISO week 1 of 2026 — **Monday 29 December 2025 to Sunday 4 January 2026** — would have rendered `Monday 29 December to Sunday 4 January 2026`, filing 29 December **2026** under a week that ended eleven months earlier. A second form is published for that case and all four period lines are now patterns rather than examples. **`S7.19` is not violated and never was**: it names these three strings and rules that a prose heading naming a span *"stays `P-RPT`'s"*, which is why the pattern was this lane's to owe. |
+| **A manager has no route to an explanation when a figure moves** | **partially closed; the rest is `OPEN-RPTIMMUT-01`, reserved** (`P-RPT-11`, `SCR-RPT-01`) | A manager who reported a number yesterday and reads a different one today. Nothing is stored to compare against (`P-RPT-12`), so **no surface can state that a figure changed** and none claims to; the change log that records the administrator's edit is admin-only with no link in a manager's DOM. Closed: the screen states the figures are recomputed on every load and names an administrator as the route, in two published sentences and **no link**, because a link answering 403 teaches the reader the product is broken. Not closed, and not closable here: *why* a figure moved is `OPEN-RPTIMMUT-01`, reserved for reporting integrity, and widening the change log to managers is an access-to-financial-data decision rather than a stricter adoption. |
 | **The occupancy denominator is the size of the showtime's materialised seat set** | **`[JUDGMENT CALL]`** — recorded as a **deferral**, not a decision of this lane (`P-ADM-14`, `FR-ADR-022`) | `P-RPT-04`'s denominator, and with it every occupancy figure in this epic. **Decided so that the numerator and the denominator are counted over one set**, which is what makes occupancy unable to exceed 100 %; the alternative — a denominator computed live from the screen's current seats — lets a seat added after the showtime existed be sold and counted while the denominator does not move. **The rule is `P-ADM-14`'s and is not restated here**; this lane names the column and points. Reversible in one place: if `P-ADM-14` changes what a seat set is, this row's denominator follows it with no change to any formula above. |
 
 ### Where I would have had to guess and did not

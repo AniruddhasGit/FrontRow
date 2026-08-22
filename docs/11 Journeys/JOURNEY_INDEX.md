@@ -241,6 +241,32 @@ endpoint block silently drops the P-row's overflow ceiling (`J-ADM-07`).
 
 ---
 
+## The fix wave — 2026-08-22
+
+**The journeys file defects; they do not fix them** (`GOAL_06` guardrail). The 65 defects marked
+`PRD-fix` were repaired in a separate wave by nine agents, one per PRD section file, with exclusive
+file ownership. Outcomes are in `DEFECTS_RESOLUTION.tsv`: **58 `fixed`, 8 `partially-fixed`, 16
+`open-article-x`** — the last being the questions only the client may answer.
+
+**Cross-file contradictions were not fixed by the two agents holding the two halves.** Each defect
+had exactly one owner, who fixed its own file and emitted a patch record for the other side; those 15
+records were applied centrally afterwards. The failure this avoids is specific: two agents each
+editing their own side to match the other **swap the error instead of resolving it**.
+
+It was not theoretical. One record was **refused on application** because its anchor had drifted —
+E2 rewrote the passage while E3 was reading it — and E2's rewrite had kept the exact sentence the
+patch existed to change, so the root cause of `J-CUS-04` would have survived the wave that was
+fixing it. It was reconciled by hand instead. A second collision was caught by an agent re-reading
+before finalising: E5's draft would have collapsed a two-key design E2 had just introduced.
+
+**Four questions were reached that no agent could answer without deciding something reserved**, and
+each stopped rather than decide. They are filed as `CONSTITUTION.md` Article X.0f — `OPEN-REFCHAR-01`,
+`OPEN-SEATALPHA-01`, `OPEN-BULKBUY-01` and `OPEN-EMAILOWN-01`. **Two of them expire**: the reference
+alphabet at the first confirmed booking (Phase 4), the row-label alphabet at the first showtime
+(Phase 2).
+
+---
+
 ## What this goal could not do
 
 - **Nothing was executed.** There is no application code. Every seam behaviour is read from the
@@ -268,3 +294,4 @@ endpoint block silently drops the P-row's overflow ceiling (`J-ADM-07`).
 | `MANAGER_JOURNEY.md` | the read-only, screen-scoped manager |
 | `ADMIN_JOURNEY.md` | the admin, who performs every privileged write in the product |
 | `DEFECTS_FOUND.tsv` | all 81 defects, worst severity first, one row each |
+| `DEFECTS_RESOLUTION.tsv` | what happened to each of the 81 — one row each, cross-checked against the register in both directions |

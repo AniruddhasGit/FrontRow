@@ -104,6 +104,44 @@ a factor of ten — 13 million compressed into the wrong unit. The expectation `
 correct; only the sentence reading it back was wrong, which is the kind of error that survives because
 the figure it contradicts is sitting three lines above it.)*
 
+**What the alphabet fixes and what it does not. Written down because the reference's only real
+consumer is a person reading eight characters aloud at an entrance with no software in the path**
+(`P-TKT-08`).
+
+**Excluded, exactly as `SRC-003 OPEN-TICKET-01` asked** (*"no `0`/`O`, no `1`/`I`/`l`"*): `0`, `1`,
+`I`, `L`, `O`, `U`. What that leaves is not unambiguous, and the document may not imply that it is:
+
+| Still inside the alphabet | Confusable | Where it bites |
+|---|---|---|
+| `2`/`Z`, `5`/`S`, `8`/`B`, `6`/`G` | by eye, on a phone screen held out at a door | `P-TKT-08` step 1 and step 2 |
+| `B` `C` `D` `E` `G` `P` `T` `V` `Z` `3`; also `M`/`N` and `F`/`S` | by ear, read aloud or over a telephone | the same, and no exclusion list fixes this half — a spoken alphabet is confusable at any size |
+
+**There is no check character and no checksum.** Every 8-character string over the alphabet is a
+well-formed reference, so a single substitution produces **another well-formed reference** rather than
+a detectable error — and because both members of every pair above are *in* the alphabet, the mis-read
+value can be a real other booking's reference. The error is undetectable by construction, not merely
+unreported.
+
+**What the product does about that: nothing, deliberately, and the consequence is not symmetrical.**
+`P-TKT-02` corrects nothing, and it is right not to — a system that guesses can admit the wrong
+person. So a mis-read surfaces **online** as the flat 404 of `P-TKT-02` exception 2, which is
+recoverable because the customer can look again; and **at the door as no failure at all**, because
+`P-TKT-08` has nothing to compare the characters against.
+
+**This is not `OPEN-SEATLABEL-01`'s defect, and the difference matters when the two are read
+together.** Two stored references can never differ only in case or spacing: the value is generated
+uppercase from a fixed alphabet, stored uppercase with no separators, and normalised with an
+ASCII-only uppercase on the way back in (`P-TKT-02`). There is no collision half here. The exposure is
+the same surface and the same deadline; the mechanism is not.
+
+**Whether to trim the alphabet further or add a check character is raised as `PROPOSED-REFCHAR-01`
+and is not decided here.** It is not reserved — `SRC-003 OPEN-TICKET-01` rules the exclusions and then
+says in terms *"Format specified in the PRD"* — so no client signature is needed for it. It is
+deferred for a different reason, stated in the lane notes: **it stops being decidable at Phase 4.** A
+reference already issued to a customer cannot be re-cut, so the change costs nothing until the first
+booking is confirmed and cannot be made at all afterwards, and choosing the format is a larger
+decision than closing the gap that hid it.
+
 ---
 
 ### `P-TKT-02` · Accept a reference typed by a person, and correct nothing · `RULED`
@@ -339,6 +377,8 @@ reaches it.
   row for every booking the application confirms; `P-TKT-05` only ever transitions one.** The seed
   script is the one other writer and it writes the row `suppressed` — see the block below.
 - `QUEUE_URL` is configured. In AWS it points at SQS; locally at ElasticMQ (`FR-ADR-059`).
+- `QUEUE_SEND_TIMEOUT_MS` is configured. It bounds the fast-path send in step 3 below, and it is the
+  only thing standing between an unreachable queue and a confirm response that never returns.
 
 **Happy path.**
 1. Inside the booking transaction, after the booking and its seats are inserted and the payment is
@@ -358,8 +398,9 @@ reaches it.
    written**, and it is what lets `P-TKT-07`'s resend read a row while the worker is down — which is
    precisely the state a resend is most likely to arrive in.
 2. Commit.
-3. **Fast path.** The same request now calls the queue's `send`, and on success updates the row to
-   `status = 'sent'`, `sent_at = now()`. This is what happens almost always.
+3. **Fast path, and it is bounded.** The same request now calls the queue's `send` **under
+   `QUEUE_SEND_TIMEOUT_MS`**, and on success updates the row to `status = 'sent'`, `sent_at = now()`.
+   This is what happens almost always. **A timeout is treated exactly as a failure** — step 4.
 4. **Recovery path.** If step 3 fails, or the process dies before it, the row stays `pending`. Before
    each poll of the queue, the worker selects `pending` rows older than a short threshold with
    `SELECT ... FOR UPDATE SKIP LOCKED`, in a bounded batch, sends them and marks them `sent`. This runs
@@ -367,6 +408,46 @@ reaches it.
    OPEN-PROC-01`).
 5. `sent` rows are kept forever as the record that the receipt was dispatched (`FR-ADR-012`). Nothing
    prunes this table.
+
+**Where the fast-path send sits in the confirm request, and what bounds it. Both halves are stated
+because neither is inferable from the other and a developer has to guess both.**
+
+**It is inside the request, and the confirm response is emitted after it.** Step 3 runs in the API
+process, in the confirm request's own thread, after the commit — it is `E3 P-PAY-10` step 15, the last
+of that specification's three post-commit steps — and **the response the customer is waiting for is
+emitted after step 3 returns, whether it succeeded, failed or timed out.** The customer's wait
+therefore includes the queue call. Nothing is emitted early and nothing is handed to a background task:
+a background task is process-local state that a SIGTERM or a SIGKILL loses (`P-XCT-18`, `P-XCT-17`),
+which is the failure the outbox exists to make impossible, and re-introducing it here to save a few
+hundred milliseconds would trade a durability guarantee for latency.
+
+**Because it is inside the request, it carries a timeout, and the timeout is the customer's worst
+case.** `QUEUE_SEND_TIMEOUT_MS = 2000` (**`ASSUMED`** — no source states a figure). Worked through
+against `P-PAY-10`'s own worked example, whose transaction takes about **1.56 seconds**: an unreachable
+queue makes that confirm about **3.56 seconds** and then returns `201` normally, because the booking
+is already committed and no outcome of step 3 can change it.
+
+```
+worst-case confirm = transaction (~1560 ms) + QUEUE_SEND_TIMEOUT_MS (2000 ms) ≈ 3.56 s
+```
+
+**The bound is the value, not a multiple of it.** The AWS SDK retries a failed API call by default,
+and three attempts at a two-second timeout is a six-second hang that no reading of the variable's name
+would predict. **SDK-level retry is disabled on this path**: the retry that matters is the relay in
+step 4, which is the one that also survives the process dying, and a second attempt inside the request
+buys nothing the relay does not already provide 30 seconds later.
+
+**`QUEUE_SEND_TIMEOUT_MS` must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS`** (20 s, `S7.9`), or a
+SIGTERM arriving while a send is hung means the drain cannot finish and SIGKILL lands mid-request
+(`P-XCT-17` exception 3). At 2000 ms it is a tenth of it. **This ordering cannot be checked at boot in
+one place** — both values are read by the API — so it is checked in `S7.9` and stated here.
+
+**No timeout at all is the worst available outcome and it is what the document said before this pass.**
+An unreachable queue would hold the confirm response open until the load balancer's idle timeout or the
+customer's browser gave up, so the customer who has paid would see a failed request against a booking
+that is committed, seats that are sold, and a receipt that the relay was going to send anyway. The
+outbox exists so that the queue being down costs nothing; an unbounded call inside the request hands
+that cost straight back to the customer.
 
 **The `suppressed` state, and why the seed writes one rather than no row at all.**
 
@@ -402,7 +483,7 @@ The two are different facts and the open row stays open (`FR-ADR-049`).
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
 | 1 | The outbox insert fails | the whole booking transaction rolls back: no booking, no seats sold, no payment recorded | the confirm screen's failure copy (lane E3). Nothing about a receipt, because no booking exists |
-| 2 | The queue send in step 3 fails | **nothing is returned to the customer.** The confirm response has already succeeded. The row stays `pending` and the worker relays it | nothing. The confirmation page renders normally |
+| 2 | The queue send in step 3 fails, **or does not answer within `QUEUE_SEND_TIMEOUT_MS`** | **nothing about it is returned to the customer.** The failure is logged at `ERROR` with the `request_id`; the row stays `pending` and the worker relays it. The confirm response is emitted at the point it always is — after step 3 — carrying its ordinary `201`, at most `QUEUE_SEND_TIMEOUT_MS` later than it would have been | nothing. The confirmation page renders normally |
 | 3 | The API process dies between commit and step 3 | as row 2 | nothing |
 | 4 | The worker is down | receipts are delayed, not lost. They go out when it restarts | nothing on the site |
 | 5 | The queue is unreachable from the worker as well | the relay logs at `ERROR` and retries on the next loop; the row stays `pending` and `attempts` increments | nothing. **Nobody is alerted** — see `P-TKT-11` |
@@ -481,9 +562,47 @@ looks.
    is a stale copy from an earlier `dispatch_seq`.** The worker deletes the queue message and stops.
    There is still exactly one row per booking, which is what `FR-ADR-032` requires.
 3. It reads the current booking from PostgreSQL — the payload carries no booking data.
-4. It renders the receipt (`SCR-TKT-02`) and calls SES through the mail port.
+4. It renders the receipt (`SCR-TKT-02`) and calls SES through the mail port **under
+   `SES_SEND_TIMEOUT_MS`**. See the block below: without a bound, a hung call holds the claim in
+   `sending` and no redelivery can take it for `RECEIPT_CLAIM_STALE_SECONDS`.
 5. On success it sets `status='sent'`, `sent_at=now()`, `ses_message_id=<the id SES returned>`, and
-   deletes the queue message.
+   deletes the queue message. **`sent` means SES accepted the message for delivery. It does not mean
+   the customer received it, and no later event ever revises it** — `P-TKT-11` states what that table
+   can and cannot answer.
+
+**The SES call is bounded, and the bound is what keeps a dead worker from costing fifteen minutes.**
+
+`SES_SEND_TIMEOUT_MS = 5000` (**`ASSUMED`** — no source states a figure). **The ordering around it is
+not assumed**, and it is bounded on both sides:
+
+- **It must be far shorter than the queue's visibility timeout** — 120 seconds in the worked example
+  below — so this delivery reaches a terminal state, `sent` or `failed`, before the next redelivery
+  arrives. A send still running when its own redelivery lands is how two deliveries end up in the same
+  job, and only the claim then stands between the customer and two receipts.
+- **It must be shorter than the worker's drain.** On SIGTERM the worker "finishes the message it is
+  handling" (`P-XCT-17` exception 5), so an unbounded SES call makes an unbounded drain, and SIGKILL
+  arrives mid-send. At 5000 ms it is a quarter of `SHUTDOWN_DRAIN_TIMEOUT_SECONDS` (20 s, `S7.9`).
+- **It must be comfortably longer than a normal in-region `SendEmail` round trip**, or ordinary
+  receipts fail under no fault at all. *(reasoned from the configured values, not observed — nothing
+  in this project has called SES.)*
+
+**What the absence of it cost, stated because it is the reason this paragraph exists.** With no
+timeout the call can hang indefinitely. The row stays `sending` with a live `claimed_at`, so every
+redelivery reads the claim as held and deletes its own message (the claim table below), and **no
+delivery can retake the send until `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds — has elapsed.** For
+fifteen minutes the customer has paid, no receipt has gone out, nothing is being attempted, and
+`P-TKT-11` means nobody is told. With the bound the same failure lands on `failed` in five seconds and
+the next redelivery claims it (exception row 3).
+
+**A timeout is not a known failure, and this is the one place `FR-ADR-032`'s guarantee does not
+reach.** On a timeout the worker does not know what SES did: the message may have been accepted and
+the response lost. The claim makes **two senders** impossible; it cannot make **two sends** impossible
+when the first sender never learned its own outcome. So a retry after a timeout can deliver a second
+identical receipt. **That is the lesser of the two outcomes and it is chosen deliberately**: the
+alternative — never retrying a send whose outcome is unknown — is a customer who has paid, cannot
+enter, and has nothing coming. `SCR-TKT-02`'s re-sent state already renders a second copy
+byte-identically for exactly this reason. `last_error` records that the call **timed out** rather than
+that SES **refused**, so the two are distinguishable afterwards by the operator `P-TKT-11` describes.
 
 **What the claim does with every status it can find.** Stated exhaustively, because the row now exists
 before the worker ever sees it and a reader has to be able to tell a first delivery from a reclaim
@@ -507,7 +626,7 @@ out-of-band writer produces is exactly the kind a reachability argument otherwis
 | Status | Reached by | A `receipt.send` delivery (`P-TKT-05`) | A resend request (`P-TKT-07`) | The SES call returning |
 |---|---|---|---|---|
 | `pending` | `P-TKT-04`, in the booking transaction | claims it → `sending` | refused, 202 `queued: false` (`attempts = 0`) or 202 `queued: false` (`attempts > 0`) | n/a — no claim is held |
-| `sending` | the claim | live claim → nothing; stale claim → reclaims it | refused, 202 `queued: false` | success → `sent`; error → `failed` |
+| `sending` | the claim | live claim → nothing; stale claim → reclaims it | refused, 202 `queued: false` | success → `sent`; error **or timeout** → `failed` |
 | `sent` | a successful SES call | nothing; the message is deleted | accepted → `dispatch_seq + 1`, back to `pending` | n/a |
 | `failed` | an SES error | claims it → `sending` | accepted → `dispatch_seq + 1`, back to `pending` | n/a |
 | `suppressed` | **the seed script only** (`P-XCT-30`, `P-XCT-32`) | nothing; the message is deleted and logged at `WARNING` | **refused, 409** (`P-TKT-07` exception 8) | n/a |
@@ -531,6 +650,7 @@ out-of-band writer produces is exactly the kind a reachability argument otherwis
 |---|---|---|---|
 | 1 | The claim returns zero rows (a duplicate delivery, or an older `dispatch_seq`) | the message is deleted, no email is sent, one `INFO` line is logged | nothing. This is the mechanism working |
 | 2 | SES returns an error | `status='failed'`, `last_error` set, **the queue message is not deleted**, so it is redelivered | nothing on the site |
+| 2a | **The SES call does not answer within `SES_SEND_TIMEOUT_MS`** | treated as row 2 — `status='failed'`, **`last_error` records that the call timed out rather than that SES refused**, the message is not deleted and is redelivered. **The outcome of the abandoned call is unknown**, so the retry may deliver a second identical receipt; see the block above | nothing on the site. A second copy of the same receipt, if the first one was in fact accepted |
 | 3 | A redelivery arrives for a `failed` claim | the claim is retryable and the send is attempted again | nothing |
 | 4 | The worker is killed mid-send, leaving `sending` | after `RECEIPT_CLAIM_STALE_SECONDS` the claim is reclaimable by a later delivery | nothing |
 | 5 | Redelivery exceeds the queue's `maxReceiveCount` | the message moves to the dead letter queue. The `receipt_dispatch` row stays `failed` with the SES error | **nothing.** See `P-TKT-11` and `P-TKT-10` |
@@ -586,8 +706,8 @@ visibility timeout, or a redelivery arriving while the first attempt is still ru
 claim stale, take it, and send a second email. `900 > 120` holds with a wide margin — 900 is seven and
 a half visibility timeouts — so the property is satisfied more strongly at 900 than it was at 300.
 **That ordering is the whole point of the number**, and it is a rule about two values rather than a
-value in itself: if the client raises the visibility timeout past 900, this variable has to move too,
-and the deployment specification owes the client that sentence (`FR-ADR-059`).
+value in itself: if the client raises the visibility timeout past 900, this variable has to move too
+(`FR-ADR-059`).
 
 **What the larger threshold costs, stated rather than glossed.** Eight redeliveries are spent before
 the reclaim instead of three, and each one consumes a receive against `maxReceiveCount`. If the
@@ -596,6 +716,26 @@ the claim ever goes stale, and the receipt is not sent at all until a person loo
 here** — `maxReceiveCount` is a Zone C value (`SRC-002 §6.3.6`) — but the arithmetic above is what the
 deployment specification has to put in front of the client, because a default chosen without it
 produces a silently unsent receipt. *(reasoned from the configured values, not observed.)*
+
+**The two rules this lane owes `docs/30 Deployment/`, written out here in the form they have to reach
+the client — because as of this pass they are not there.** `docs/30 Deployment/` holds one file,
+`AWS_PREP_QUEUE.md`, and its SQS entry (row 9, `REQUESTED`) names the queue and its dead letter queue
+and **neither of these two values**. Both are Zone C settings the application cannot read
+(`FR-ADR-032`), so no boot check and no test can catch either one, and both fail silently in opposite
+directions:
+
+| # | The rule | What a wrong value does, with nothing reporting it |
+|---|---|---|
+| 1 | **The queue's visibility timeout must be less than `RECEIPT_CLAIM_STALE_SECONDS`** (900) | A visibility timeout above 900 means a redelivery arrives while the first attempt is still running, finds the claim stale, takes it, and **sends a second receipt**. The property this whole specification is built on stops holding, and nothing errors |
+| 2 | **`maxReceiveCount` must be greater than `ceil(RECEIPT_CLAIM_STALE_SECONDS / visibility_timeout)`** — `ceil(900 / 120) = 8` at the worked pair, so **greater than 8** | At 8 or fewer the message is in the dead letter queue **before** the claim ever goes stale, so the reclaim in the table above never happens and **the receipt is never sent**. Dead letter queue depth is not alarmed (`P-TKT-11`), so nothing reports it |
+
+The second rule is stated as arithmetic rather than as the number 8 on purpose: **8 is derived from
+the pair, not chosen**, so a client who changes the visibility timeout changes the required
+`maxReceiveCount` with it. At 120 seconds the eighth redelivery is the first whose claim age (960 s)
+exceeds 900, and it is the ninth receive of the message counting the original delivery — which is why
+`maxReceiveCount` must exceed 8 rather than reach it. **Both rules belong in the SQS row of the prep
+queue and neither is there yet; this lane owes it and the debt is recorded here rather than assumed
+paid.** *(reasoned from the configured values, not observed.)*
 
 ---
 
@@ -940,14 +1080,34 @@ no customer-facing message about one.
 | the dead letter queue (`FR-ADR-059`) | the messages whose send failed past `maxReceiveCount` |
 | `booking` | **unchanged.** A failed send alters no booking field. The booking remains exactly as confirmed |
 
-**What the customer can always reach without the email**, and which specification provides it:
+**What the customer can reach without the email**, which specification provides it, and **what each
+route requires of them.** The word *always* is not used, and the third column is why:
 
-| Route | Specification |
-|---|---|
-| the reference on the confirmation page, shown immediately and independently of the email | `P-TKT-03` |
-| the same page, durable and reachable again at `/bookings/{reference}` | `P-TKT-03`, `P-TKT-09` |
-| the reference in their own bookings list | lane E5's screen, reading the same booking row |
-| a resend they can trigger themselves | `P-TKT-07` |
+| Route | Specification | What it requires |
+|---|---|---|
+| the reference on the confirmation page, shown immediately and independently of the email | `P-TKT-03` | a signed-in session, a network, a device |
+| the same page, durable and reachable again at `/bookings/{reference}` | `P-TKT-03`, `P-TKT-09` | the same three. `EP-TKT-01` is authenticated and ownership-only; a signed-out visit is `401` |
+| the reference in their own bookings list | lane E5's screen, reading the same booking row | the same three. `E5 P-ACC-10` is authenticated |
+| a resend they can trigger themselves | `P-TKT-07` | the same three, **plus knowing that the receipt failed** — and nothing tells them (`P-TKT-11`, and the failed state is off the customer API by `P-TKT-09`) |
+
+**All four routes share one precondition, and naming it is the point of the column.** Every one needs
+an **authenticated session**. A guest reaches none of them, which is consistent rather than a gap — a
+guest cannot book (`SRC-003 OPEN-BOOK-02`) — but **a customer who is signed out at the entrance and
+has forgotten their password reaches none of them either**, and that one is not consistent with
+anything.
+
+**The route that restores a session is the route that cannot help here.** A password reset writes a
+`password_reset.send` row into **the same `outbox_message` table**, relayed by **the same relay**,
+consumed by **the same worker**, and sent through **the same SES identity** (`P-TKT-04`, `P-TKT-12`)
+that has just failed to deliver the receipt. When SES is the failing component, account recovery fails
+with it — and `P-ACC-07`'s deliberately uniform `202` means the customer cannot tell that it did.
+**The four routes are not four independent routes; three of them and the fix for the fourth all
+terminate at the same session.**
+
+**Nothing is specified against that, and nothing may be.** A second channel, a fallback address, a
+one-time link, or any unauthenticated route to a reference is a product answer to a post-capture send
+failure, which is exactly `OPEN-EMAILFAIL-01` (`FR-ADR-049`). The shared dependency is recorded in the
+table it belongs to rather than discovered at a door.
 
 **What is deliberately absent.**
 - No message, banner, email, or page state for a definitively failed send.
@@ -994,14 +1154,57 @@ discovered.
 |---|---|---|---|
 | 1 | A receipt fails past `maxReceiveCount` and lands in the dead letter queue | the message sits there. `receipt_dispatch.status` is `failed` with the SES error | **nothing.** No email to the operator, no banner, no entry in any screen that exists in v1 |
 | 2 | The outbox relay is stuck and `pending` rows accumulate | the rows accumulate | nothing |
-| 3 | SES bounces every receipt for a whole evening | every send is recorded as `failed` | nothing |
+| 3 | SES **accepts** every receipt for a whole evening and every one **bounces afterwards** | every send is recorded as **`sent`**, because acceptance is what `P-TKT-05` records and a bounce arrives later and separately. The bounce notifications publish to SNS and nothing subscribes (`FR-ADR-060`) | **nothing — and this is worse than row 1.** Row 1 at least leaves a `failed` row. Here the product's own record says the receipts went out |
+| 3a | SES **refuses** every receipt at the call — a sandbox refusal, a suspended identity, an unverified sender | every send is recorded as `failed` with the SES error, and each message ends in the dead letter queue as row 1 | nothing |
 
 **Server-side validation.** Not applicable.
 
 **What is available to a person who does look.** `/metrics` exposes queue depth
 (`SRC-002 §7.7`, `FR-ADR-057`) and **nothing scrapes it** — it is not an alerting mechanism and must
-not be counted as one. The `receipt_dispatch` table answers "did this customer get their receipt" and
-holds the SES message id that makes the answer checkable. The runbook must name both.
+not be counted as one. The other thing available is the `receipt_dispatch` table, and the next block
+says what it can and cannot answer. The runbook must name both, **in these terms and not in shorter
+ones.**
+
+**`receipt_dispatch` answers a narrower question than its name suggests, and the difference is the
+whole of this specification's usefulness.** It records **whether SES accepted the message**, when, and
+under which `ses_message_id` — `P-TKT-05` step 5 writes `sent` on acceptance and **nothing ever
+revises it afterwards**. It does **not** record delivery. SES publishes bounces and complaints to SNS
+and **nothing subscribes** (`FR-ADR-060`, `P-TKT-10`), so a receipt that bounced, or that the
+customer's mail provider filed as spam, sits in this table as `sent` and is **indistinguishable from
+one that reached the inbox**. The product's knowledge of the receipt ends at the SES API call.
+
+So an operator answering *"did this customer get their receipt"* can establish only that the message
+was handed to SES. **A `sent` row is evidence of dispatch, never of receipt**, and the last hop — the
+one the customer is standing in — is not observed anywhere in this product. **This is stated at
+length because the short version is the dangerous one**: `sent` read as *delivered* is the reading
+that ends a support conversation with a customer who has paid, cannot enter, and has been told the
+receipt was sent. **This specification previously carried that short version**, in the words "the
+`receipt_dispatch` table answers 'did this customer get their receipt'", which was a claim of
+knowledge the product does not have, made in the one row whose subject is what nobody can see.
+
+**Adding bounce handling is not the fix and is not available here.** Subscribing to the SNS topic and
+marking an address invalid changes a customer's ability to receive their ticket, which is
+`OPEN-EMAILFAIL-01` — `OPEN` and reserved (`FR-ADR-049`, `P-TKT-10`). **The document stops claiming
+the knowledge; it does not go and get it.**
+
+**And there is no product action available on a receipt that has failed.** Discovery is one half of an
+operator's problem and the other half is missing, so it is written here rather than found at the
+moment it is needed. **No endpoint, screen or job in v1 re-sends a receipt on an operator's behalf.**
+`EP-TKT-02` is authorised on ownership alone, with **no override for any role** (`P-TKT-07`,
+`P-TKT-09`, `EP-TKT-02`'s `authorisation_rule`), so an admin looking at a dead-lettered receipt for a
+paying customer **cannot press that customer's resend control for them**. What exists is:
+
+| Route | What it needs | Why it may not be enough |
+|---|---|---|
+| the customer presses the resend control themselves (`P-TKT-07`) | that they know the receipt failed | **nothing tells them.** The dispatch state is off the customer API (`P-TKT-09`) and `P-TKT-10` writes no message |
+| a person redrives the dead letter queue in the AWS console | an operator with console access | **Zone C** (`SRC-002 §6.3.6`), specified in **no file** in `docs/30 Deployment/`, and not a product capability at all |
+
+**No operator resend is specified here and none may be added by whoever builds this.** An
+administrative action taken on a customer's booking after a post-capture send failure is the substance
+of `OPEN-EMAILFAIL-01` — *what the product does when a paid-for receipt definitively fails* — which is
+`OPEN` and reserved to the client (`FR-ADR-049`). Building it would also reverse the ownership-only
+rule the merge pass adjudicated across `EP-TKT-01`, `EP-TKT-02` and `P-ACC-12`, and would put a
+customer's email address into an admin response (`P-TKT-07`). **The gap is stated, not closed.**
 
 **The recommendation, offered and not adopted.** A CloudWatch alarm on non-empty dead letter queue
 depth is the single most valuable thing the client could add, and `FR-ADR-068` carries it as a
@@ -1044,7 +1247,10 @@ what it needs from the row.
    where `:stale_interval` is `RECEIPT_CLAIM_STALE_SECONDS`. **Affecting zero rows means one of two
    things — the email has already been sent, or another delivery is running right now** — and in both
    the worker deletes the message and stops. No second email.
-3. Render the email and send it through SES.
+3. Render the email and send it through SES **under `SES_SEND_TIMEOUT_MS`**, for the reason
+   `P-TKT-05` gives: it is the same worker and the same port, and an unbounded call here holds
+   `email_claimed_at` live so that no redelivery can retake the job until
+   `RECEIPT_CLAIM_STALE_SECONDS` has elapsed — on the one message a locked-out account depends on.
 4. On success, record the send and delete the queue message:
    `UPDATE password_reset_token SET email_sent_at = :now WHERE id = :reset_token_id`.
 
@@ -1095,7 +1301,7 @@ per request, and it already has the right lifetime — the row is the thing the 
 | 2 | The token is already used or past its lifetime | as row 1. **A reset link is never re-sent for a spent token** | *(nothing)* |
 | 3 | `email_sent_at` is already set | a duplicate delivery. Zero rows, the message is deleted and nothing is sent. **This holds forever** — `email_sent_at` is never cleared, so a redelivery arriving a day after a failed queue delete still sends nothing | *(nothing)* |
 | 3a | `email_claimed_at` is set and newer than `RECEIPT_CLAIM_STALE_SECONDS`, `email_sent_at` null | another delivery is running this job now. Zero rows, the message is deleted, one `INFO` line | *(nothing)* |
-| 4 | SES refuses the send | the claim is **released explicitly** — `UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL` — the message is **not** deleted, and SQS redelivers, which the next delivery claims immediately rather than waiting out the age threshold. **This is the fast path of the one reclaim mechanism, not a second one**; `email_sent_at` is untouched because nothing was sent | *(nothing on screen — the customer is not on the site)* |
+| 4 | SES refuses the send, **or the call does not answer within `SES_SEND_TIMEOUT_MS`** | the claim is **released explicitly** — `UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL` — the message is **not** deleted, and SQS redelivers, which the next delivery claims immediately rather than waiting out the age threshold. **This is the fast path of the one reclaim mechanism, not a second one**; `email_sent_at` is untouched because on a refusal nothing was sent. **On a timeout the outcome is unknown**, exactly as in `P-TKT-05`, so the retry may deliver a second copy — which is harmless here in a way it is not for a receipt, because both copies carry the **same single-use token** and are therefore the same link rather than a second one (`P-ACC-07`) | *(nothing on screen — the customer is not on the site)* |
 | 5 | The send fails `maxReceiveCount` times | the message reaches the dead letter queue, and **nothing watches it** (`S7.14`). The customer asked for a reset link and never receives one, and no one is told | *(nothing — this is the account-recovery twin of `OPEN-EMAILFAIL-01`, and it is stated rather than hidden)* |
 | 6 | The worker dies between the claim and the send | `email_claimed_at` is set, `email_sent_at` is **null**, and no email went out. Nothing survives to release the claim, so the age branch in the claim's own `WHERE` clause does it: after `RECEIPT_CLAIM_STALE_SECONDS` the next redelivery reclaims the row and sends. **This is the case the previous statement could not express**, and it is the one that lost accounts | *(nothing — the link simply arrives late)* |
 
@@ -1228,6 +1434,7 @@ and a change to any of it is made here.
 | Reference label | `BOOKING REFERENCE` |
 | Receipt sentence — **first render only** | `A receipt is on its way to name@example.com.` |
 | Entry line | `Show this reference at the entrance. A person will check it.` |
+| Policy line, directly beneath the entry line | `This booking cannot be changed, cancelled or refunded.` — **required by `P-PAY-12`**, which owns the rule; this page owns the string. It renders in **every** success state, first render and later visits alike, because the question it answers is asked long after the booking is made. It is a statement, not a control, and there is nothing to press: no cancellation or refund path exists anywhere in the product (`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`). Without it a customer who cannot attend meets silence, and silence does not tell a ruled absence from a feature they have failed to find |
 | Fact labels | `FILM` · `HALL` · `SHOWTIME` · `SEATS` · `PAID` |
 | Copy control | `Copy reference` |
 | Copy confirmation, live region | `Reference copied.` |
@@ -1433,15 +1640,42 @@ inline.
 
 ### Article X candidates raised by this lane
 
-**None new.** Every reserved question this lane touches maps onto an Article X row that already
-exists:
+**No new reserved question. One new `PROPOSED-` row, and it is not reserved** —
+`PROPOSED-REFCHAR-01`, below the table. Every **reserved** question this lane touches maps onto an
+Article X row that already exists:
 
 | Question this lane hit | Existing row |
 |---|---|
-| What a customer is told when the receipt definitively fails, and whether the booking stays valid | `OPEN-EMAILFAIL-01` (`FR-ADR-049`) — carried as `P-TKT-10`, written as `OPEN` |
+| What a customer is told when the receipt definitively fails, whether the booking stays valid, **and what an operator may do about one** — no admin resend exists and none is specified (`P-TKT-11`) | `OPEN-EMAILFAIL-01` (`FR-ADR-049`) — carried as `P-TKT-10`, written as `OPEN` |
 | Whether the receipt may carry a poster or any supplied image | `OPEN-ATTRIB-01` (`FR-ADR-007`) — resolved conservatively: **no image in the email at all** |
 | Whether the link in the receipt reaches the site over TLS | `OPEN-TLS-01` (`FR-ADR-069`) — the link reads `PUBLIC_BASE_URL` from configuration and this lane asserts nothing about the scheme. `FR-ADR-060` records that deliverability without a verified domain is materially worse, which is a second argument for closing this row and a different one from TLS itself |
 | What happens to a receipt when an admin withdraws a showtime that has bookings | `OPEN-SHOWCANCEL-01` (`FR-ADR-023`) — no withdraw capability exists in v1, so this lane specifies nothing for it |
+
+**`PROPOSED-REFCHAR-01` — should the booking reference carry a check character, and should the
+alphabet drop `2`/`Z`, `5`/`S`, `8`/`B` and `6`/`G`?** Class: **product**. Not reserved, and **not
+raised because the build session may not decide it** — `SRC-003 OPEN-TICKET-01` rules the exclusions
+and then says *"Format specified in the PRD"*, so the format is this document's to set and adopting a
+narrower alphabet would be the stricter option, needing no signature (`CONSTITUTION.md` Art III.10).
+
+It is raised rather than decided for two reasons, and the second is the one with a date on it.
+
+1. **It is a larger decision than the gap it closes.** A check character changes the length and
+   therefore the `FR-XXXX-XXXX` presentation form, the copy control, the accessible name that spells
+   the characters, `SCR-TKT-02`'s subject and body, and both endpoints' `reference` parameter — and
+   it only detects a mis-read, it does not correct one, so `P-TKT-02` still refuses to guess. A
+   narrower alphabet fixes the four *visual* pairs and does nothing at all about the spoken set
+   (`B` `C` `D` `E` `G` `P` `T` `V` `Z` `3`, `M`/`N`, `F`/`S`), which is the half that bites at a door.
+   Neither is a small change and neither is a complete fix; choosing between them is a product
+   decision the client should see.
+2. **It stops being decidable at Phase 4.** A reference already issued to a customer cannot be
+   re-cut, and there are no refunds and no reissue path (`SRC-003 OPEN-CANCEL-01`). The change is free
+   while no booking exists and impossible once the first one is confirmed — **the same deadline shape
+   as `OPEN-SEATLABEL-01`, on a different mechanism** (`P-TKT-01`). If the client is to rule it, they
+   must be asked **before the first confirmed booking**, not when somebody notices at a door.
+
+Until it is ruled, `P-TKT-01` stands as written — 8 characters, 30-character alphabet, no check
+character — and `P-TKT-01` now states the residual ambiguity rather than implying the exclusion list
+removed it.
 
 ### Assumptions I had to flag
 
@@ -1449,6 +1683,8 @@ exists:
 |---|---|---|
 | `RECEIPT_RESEND_MIN_INTERVAL_SECONDS = 300` | **`ASSUMED`** | `FR-ADR-048` rules that the resend is rate limited per booking; no source gives a value, and `FR-ADR-058`'s table has no row for this endpoint. The number is a configuration value with a starting figure, not a constraint. It appears in `P-TKT-07`'s worked example and in the copy "in 4 minutes", which is computed from the bucket and not typed into the string |
 | `RECEIPT_CLAIM_STALE_SECONDS = 900`, against a visibility timeout of 120 | **`ASSUMED`**; the name and the value are the cross-cutting configuration inventory's and are adopted here verbatim | `FR-ADR-032` requires the threshold to be configuration rather than a literal and does not give a value. The **ordering** — the threshold must exceed the visibility timeout — is not assumed; it is what stops a duplicate receipt, and `900 > 120` holds with a margin of seven and a half visibility timeouts. The deployment specification owes the client that sentence, and the second one under it: at 900 a stale claim costs eight redeliveries before the reclaim, so `maxReceiveCount` must exceed eight or the message reaches the dead letter queue first (`FR-ADR-059`, `P-TKT-05` worked example). **This lane earlier carried the name `RECEIPT_CLAIM_ABANDON_SECONDS` and the value `300`; both are withdrawn** |
+| `QUEUE_SEND_TIMEOUT_MS = 2000` | **`ASSUMED`**; the name is this lane's and `S7.9` owes it a row | No source states a timeout for the queue client, and `S7.9`'s inventory carried one for Redis, one for the database and one for bcrypt and **none for SQS** — which left the one call that runs inside the customer's confirm request as the only unbounded dependency call in the product. **The bound is not assumed:** it must stay well below `SHUTDOWN_DRAIN_TIMEOUT_SECONDS` (20 s) or a SIGTERM during a hung send outlives the drain, and it is the customer's worst-case confirm latency on top of `P-PAY-10`'s ~1.56 s transaction. The **retry** rule is not assumed either — SDK-level retry is disabled on this path, or the wall-clock bound is a multiple of the value. Replaced by Phase 7's load test |
+| `SES_SEND_TIMEOUT_MS = 5000` | **`ASSUMED`**; the name is this lane's and `S7.9` owes it a row | No source states a timeout for the mail client and `S7.9` had no row for one. **The bounds are not assumed:** shorter than the worker's drain (`P-XCT-17` exception 5 makes the drain as long as the message in hand), and far shorter than the queue's visibility timeout so a delivery reaches `sent` or `failed` before its own redelivery arrives. Without it a hung call holds the claim `sending` and **nothing can retake the send for `RECEIPT_CLAIM_STALE_SECONDS` — 900 seconds** (`P-TKT-05`). The **unknown-outcome** consequence is stated in `P-TKT-05` rather than assumed away |
 | `OUTBOX_RELAY_MIN_AGE_SECONDS = 30` | **`ASSUMED`** | `FR-ADR-031` says "older than a short threshold" and gives no figure. It sets how long a receipt is delayed after an API crash, which is the figure in `P-TKT-04`'s worked example |
 | Hall sizes and the 100,000-booking figure in `P-TKT-01` | **`ASSUMED`** / illustrative | The hall sizes are `SRC-003 OPEN-SCALE-02`, `ASSUMED`. The 100,000 is a round number chosen to make the collision arithmetic legible and is labelled in the text as not a forecast |
 | Sales close **after** the advertised start | **`PROVISIONAL`** | `SRC-003 OPEN-BOOK-03`. It does not bite this lane — a receipt is sent for a confirmed booking regardless of the cut-off's direction — but it changes which bookings exist, and the seed and test data this lane's tests rely on |
@@ -1530,6 +1766,18 @@ business process, not software, and I specified no door screen, no staff account
 door attendant could use. `EP-TKT-01` is authenticated and returns only the caller's own booking
 precisely so it cannot quietly become the door tool.
 
+**4a. Whether the reference should carry a check character, or a narrower alphabet.** The format is
+the PRD's to set (`SRC-003 OPEN-TICKET-01`: *"Format specified in the PRD"*), so this is not a
+question I was forbidden to answer — it is one I judged larger than the defect that exposed it and
+**time-limited in a way the client has to be told about before Phase 4.** Raised as
+`PROPOSED-REFCHAR-01`. What I did do is stop `P-TKT-01` implying that the exclusion list made the
+reference unambiguous, which it does not.
+
+**4b. What an operator does about a receipt that has definitively failed.** No admin resend endpoint
+was added, no dead-letter redrive was specified, and no bounce subscription was designed. All three
+are the product acting on a post-capture send failure, which is `OPEN-EMAILFAIL-01`. `P-TKT-11` now
+says the operator has nothing to act with, and stops there.
+
 **5. The value of the per-booking resend interval, the claim-stale threshold and the relay
 threshold.** Every one of these is a number no source states. Each is a named configuration value with
 an `ASSUMED` starting figure, flagged above, rather than a literal in the code.
@@ -1593,6 +1841,15 @@ deleted rather than reconciled.
 `SRC-002 §E E-5`. Not a defect — the erratum governs — but it is recorded because a session reading
 `§8.5.1` alone will build a QR code. The same applies to `SRC-001 §5.3.3`'s "scannable ticket",
 corrected by `SRC-001 §E E-9`. **No QR code is generated anywhere in this lane.**
+
+**4a. `FR-ADR-032`'s "a duplicate receipt is impossible" has one case it cannot cover, and it is named
+rather than left implied.** The claim makes two *senders* impossible. It cannot make two *sends*
+impossible when a send's outcome was never returned — a `SendEmail` call abandoned at
+`SES_SEND_TIMEOUT_MS` may or may not have been accepted, and the retry that follows may deliver a
+second identical receipt (`P-TKT-05`). The record is not re-opened and the mechanism is not changed:
+the alternative to retrying an unknown outcome is a customer who has paid and gets nothing, which is
+the worse failure on this product's own terms. **Recorded here because a reader of `FR-ADR-032` alone
+will believe the guarantee is unconditional.**
 
 **5. `CONSTITUTION.md` Art I.6 still names "a booking reference and a scannable ticket" in the win
 condition.** Already recorded as stale by BRD `B1.5` and `lens-merge.md §4`, and not re-litigated here.

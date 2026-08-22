@@ -398,6 +398,36 @@ unverified address is a plausible route to a customer who has paid and cannot en
 failure `OPEN-EMAILFAIL-01` describes, reached by a different road, and `OPEN-EMAILFAIL-01` is an open
 row reserved to the client (`FR-ADR-049`).
 
+**The larger consequence, recorded here because this row previously stopped at the receipt.** A
+misdelivered receipt is not the worst outcome of an address the registrant does not control.
+**Whoever controls the address controls the account**, deterministically, at a time of their choosing,
+and by mechanisms this document already specifies:
+
+1. `P-ACC-07` sends a single-use reset link **to the account's address**. The endpoint is public,
+   anyone may ask for one, and the response is identical whether or not the address has an account.
+2. `P-ACC-08` completes that reset, writes a new `password_hash`, increments `password_version` and
+   issues a fresh session to whoever followed the link.
+3. `P-ACC-05`'s `pv` claim then **immediately stops every existing session for that account from
+   being accepted** — including the registrant's, on their next request.
+4. `P-ACC-12` scopes `/api/me/` to the caller, and the caller is now the address's owner: every
+   booking the account owns and every booking reference on it (`FR-ADR-015`, the reference being the
+   only thing that gets a person into a hall).
+
+**The registrant has no route back.** The reset goes to the address; the address is not theirs; the
+address is taken permanently on `lower(email)` and nothing in this system is deleted (`FR-ADR-012`);
+the bookings belong to the first user row and not to any second account they register (`P-ACC-09`);
+and there is no support desk, because the client is the sole operator (`SRC-001 §8.2`).
+
+**Every step in that chain is correct on its own terms and none of them is the defect.** The reset
+must reach the account's address, or a forgotten password against a permanently-taken address is an
+unrecoverable account (`P-ACC-07`). The session must die on a password change, or a customer who
+resets precisely because someone else has their password leaves that person signed in for the whole
+token lifetime (`P-ACC-05`). **What was missing was the sentence saying where they lead when the
+address was never the registrant's.** It is written here rather than solved: `FR-ADR-050` is
+`APPROVED` and immutable and rules the verification gate out for v1, and reason 3 below names this
+exact situation and then stopped at the receipt. **This is an enlargement of an accepted weakness
+already on the record, not a new decision, and it changes no behaviour in this document.**
+
 **Why the gate is nevertheless not built** (`FR-ADR-050`, which is `APPROVED` and immutable):
 
 1. It inserts a second interruption into the exact flow `SC-1`'s two minutes and `FR-ADR-046` are
@@ -411,11 +441,32 @@ row reserved to the client (`FR-ADR-049`).
 
 - The address is validated for shape and normalised only by trimming (`P-ACC-01`).
 - The address is displayed back to the customer on the confirmation screen — "A receipt is on its way
-  to `<address>`" (`FR-ADR-048`) — so a typo is visible at the moment it costs something.
+  to `<address>`" (`FR-ADR-048`) — so a typo is visible at the moment it costs something. **It makes
+  the typo visible; it does not make it fixable** — the block below states why, because a mitigation
+  read without that sentence promises a recourse the product does not have.
 - The booking reference is on the confirmation screen and in the bookings list independently of the
   email (`P-ACC-10`, `FR-ADR-048`).
 - The booking's receipt dispatch record holds its state and its attempts (`FR-ADR-031`, `FR-ADR-032`),
   so the failure is recorded even though nothing watches it.
+
+**No endpoint changes an account's email address, so the first mitigation is visibility without a
+remedy.** `S3.8`'s route inventory is generated from the `endpoint` blocks and contains no route that
+patches an account: the address is written once, by `P-ACC-01`, and is never written again by
+anything. A customer who reads the confirmation screen and sees the wrong address can therefore do
+**nothing about it**, and the mitigation was stated as though they could.
+
+What is actually available to them, in full:
+
+| What they can do | What it does not do |
+|---|---|
+| Register a second account at the correct address (`P-ACC-01`) | **It does not move the booking.** `P-ACC-09` binds the booking to the first user row and no endpoint reassigns one |
+| Read the reference from the confirmation screen and from `SCR-ACC-04`, neither of which depends on the email (`FR-ADR-048`) | It does not stop the receipt reaching the wrong address, and it needs the first account's session — which the address's owner can end at any moment, by the chain in the block above |
+| Nothing else. The mistyped address is taken permanently on `lower(email)` (`FR-ADR-012`) | — |
+
+**An address-change endpoint is not specified here and this row does not invent one.** No frozen
+source, ruling or `APPROVED` ADR asks for one; `SRC-001 §6.6` means adding one later is a migration
+rather than a redesign; and adding a v1 endpoint to close a documentation defect would be a scope
+change this specification may not make. **The gap stays a gap and is written down as one.**
 
 **What may not be written here.** **No wording is specified for a customer whose receipt has
 definitively failed, and no policy is stated about money already taken.** `OPEN-EMAILFAIL-01` is
@@ -436,8 +487,20 @@ specification would close a question nobody answered.
 table, no session store and no server-side session state, because containers are stateless
 (`SRC-002 §7.3`).
 
-**Who may do it.** Sign-out is `authenticated`. Every other endpoint reads the cookie through the
-router's authorisation dependency (`P-ACC-12`).
+**Who may do it.** **Sign-out is `public`, not `authenticated`.** It is mounted on the public router
+and anyone may call it, with or without a session — as `EP-ACC-03` below declares and as `S3.8`'s
+generated route inventory lists it. Every other endpoint reads the cookie through the router's
+authorisation dependency (`P-ACC-12`).
+
+**This row previously said `authenticated`, and that sentence was the outlier rather than the rule.**
+Its own exception row 6 says sign-out with no session returns `204` and is not an error; `EP-ACC-03`
+declares `auth: public`; `S3.8` is generated from that block and lists the endpoint under *Public —
+no session required*. Three artefacts agreed and one sentence did not, and `S1.2.1` case 8 makes a
+declared owner that states one thing two ways a defect in that row. **The reason sign-out is public
+is exception row 6's reason**: the cookie is `HttpOnly`, so a client holding an expired or malformed
+one **cannot clear it itself**, and a `401` here would leave that cookie in the browser with nothing
+able to remove it. `E8 SCR-XCT-05` depends on this directly — its sign-out control must not be
+blockable by a failed request, and it is the only sign-out control in the product.
 
 **Where the token lives.**
 
@@ -805,11 +868,42 @@ by definition the one who does not have it.
 ---
 
 ### `P-ACC-09` · Every booking belongs to one registered customer · `RULED`
-`[SRC: SRC-001 §9.2 · SRC-003 OPEN-BOOK-02 · SRC-003 OPEN-ROLE-01 · FR-ADR-014 · FR-ADR-009]`
+`[SRC: SRC-001 §9.2 · SRC-003 OPEN-BOOK-02 · SRC-003 OPEN-ROLE-01 · FR-ADR-014 · FR-ADR-012 · FR-ADR-013 · FR-ADR-009]`
 `[BRD: R-ACC-03]`
 
 **Behaviour.** A booking carries a non-null foreign key to a user row. There is no anonymous order, no
 guest checkout, and no placeholder user.
+
+**The referential action is `ON DELETE RESTRICT`, and this row states it because it is the row that
+owns the column.** The declaration is
+`booking.user_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT`. Deleting a user row that
+any booking references **fails**: the delete is refused, the transaction that attempted it rolls
+back, and nothing is destroyed.
+
+**This is the document-wide default applied to this column, not a new decision.** `FR-ADR-012`,
+`E6 P-ADM-18` and `E8 P-XCT-04` all already state it — nothing on a path that can reach a booking is
+ever deleted, no foreign key on any such path uses `ON DELETE CASCADE`, and the default for every
+relationship is `ON DELETE RESTRICT`. It was stated everywhere except on the column itself, which
+left the Phase 2 migration with three candidates and no rule. The other two are named here so that a
+reader who considers either stops at this row rather than at a test:
+
+| Candidate | Why not |
+|---|---|
+| `ON DELETE CASCADE` | **It silently destroys paid bookings and is unrecoverable.** A booking is permanent — there is no customer cancellation and no refund (`FR-ADR-013`; `SRC-001 §5.4.3` is withdrawn by erratum `E-2`) — so a cascade would remove the booking, its `booking_seat` rows and their snapshotted prices (`FR-ADR-039`), and with them every takings figure computed from them (`E7`). **A cascade is a delete that happens without anyone writing the word delete**, and it is the failure this row exists to make impossible |
+| `ON DELETE SET NULL` | **The column is `NOT NULL`.** It is not a policy choice that was rejected; it is a statement the database refuses to accept, and naming it costs one line and saves a developer the round trip |
+
+**The booking's `status` and `cancelled_at` columns are not an exception to any of this.** They exist
+in the schema so that adding cancellation later is not a migration over live bookings, and no v1
+endpoint sets or returns either (`P-ACC-10`, `FR-ADR-013`). **Neither is a route by which a booking
+leaves the table**, and `SRC-001 §6.6` keeping them there is not a reason to loosen the key.
+
+**`P-ACC-05` exception 5 remains reachable, and that is why it stays.** `RESTRICT` refuses the delete
+only for a user row that a booking references. A user row with **no** bookings can still be removed
+by the same direct database action that is the only route to creating an admin account in the first
+place (`E6 P-ADM-17`), which is outside the router and outside this document's endpoints. A live
+session whose user row has gone is therefore a real state, not dead code, and `P-ACC-05` exception
+5's `401 AUTH_REQUIRED` is the specified answer to it. **The two rows agree once the action is
+stated: a booking's owner cannot be deleted, an account with no bookings can.**
 
 **Who may do it.** A `customer` or an `admin` (admin is a superset of customer by capability,
 `FR-ADR-009`). A `guest` cannot. A `manager` is read-only for privileged actions but is a person with
@@ -840,6 +934,7 @@ path for the customer's only proof of purchase.
 |---|---|---|---|
 | 1 | A guest presses the primary action on the seat map | `401` `AUTH_REQUIRED` from the hold endpoint | The interface does not let this reach the server in the normal case: the action reads "Sign in to hold these seats" (`COMPONENTS.md §5`). If it does reach the server — an expired session, a direct call — the customer sees "Sign in to hold these seats." |
 | 2 | A caller submits a booking for a different user's id | not possible: the owner is taken from the session, never from the request body | — |
+| 3 | A `DELETE` is attempted against a user row that a booking references | the foreign key refuses it under `ON DELETE RESTRICT` and the transaction rolls back. **No application path issues it** — no endpoint deletes an account — so this can only arrive from a direct database action | — (no user-facing surface; the operator sees the constraint violation) |
 
 **Server-side validation.** The booking's `user_id` is read from the authorisation dependency's
 resolved caller. **It is never read from the request body**, and no endpoint accepts a `user_id`
@@ -1204,10 +1299,37 @@ looking at a seat map from a customer looking at one.
 |---|---|
 | Mechanism | `sessionStorage` — **not** `localStorage`, not a cookie, not a URL parameter, not the server |
 | Key | `fr.pending_selection` |
-| Value | `{"showtime_id": 412, "seat_ids": [1187, 1188], "stored_at": "2026-08-14T10:00:00Z"}` |
-| Written | when the primary action is pressed and the visitor is not authenticated, **before** the authentication step opens |
+| Value | `{"showtime_id": 412, "seat_ids": [1187, 1188], "stored_at": "2026-08-14T10:00:00Z"}`. `stored_at` is the instant of the write — the moment the visitor left the seat map |
+| Written | **once**, when a visitor who is not authenticated leaves this seat map for the authentication screen with a non-empty selection, **before** the authentication step opens. **By either route out** — the seat map's primary action **or** the header's `Sign in` link (`E8 SCR-XCT-05`). **Which control they pressed does not change what is stored**: see the block below |
 | Lifetime | until the tab closes, which is `sessionStorage`'s own behaviour and is the right lifetime; **and** discarded on restore if `stored_at` is more than **30 minutes** before the current instant |
 | Cleared | on a successful hold; when the visitor navigates to a different showtime; **and on sign-out, which clears every `fr.*` value and not this key alone** — the rule below |
+
+**`fr.pending_selection` is one of two keys and this row owns only this one.** The live local
+selection on the seat map is `fr.selection`, written on every tap and owned by `E2 P-SEA-03`, which
+carries the table setting the two side by side and the reason the two write policies cannot share one
+key. **This row's key is the one-shot snapshot handed to the authentication round trip**, written
+once and deleted on restore. Neither row restates the other's half.
+
+**Every route out of the seat map to the authentication screen writes it, not only the primary
+action.** `E8 SCR-XCT-05`'s header carries a `Sign in` link on every route in the product, the seat
+map included, and a visitor who uses it never touches the primary action. **Under a write-on-press
+rule that visitor arrived at `SCR-ACC-01` with nothing stored**, fell to that screen's *otherwise*
+branch, and was returned to the **movie listing** — their showtime gone, their seats not restored,
+and no message — from the same screen that returns everyone else to their seats. The rule is
+therefore stated by **what the visitor is doing**, leaving a seat map with a selection, rather than
+by **which control they touched**:
+
+```
+leaving /showtimes/{id} for the authentication screen, not authenticated, selection non-empty
+  -> write fr.pending_selection, then open SCR-ACC-01
+        by the primary action        "Sign in to hold these seats"
+        by the header's Sign in link  E8 SCR-XCT-05
+```
+
+Both routes then arrive at `SCR-ACC-01` in the same state, show the same context note, and return to
+the same seat map with the same seats re-selected. **Which of two controls the visitor pressed two
+screens earlier may not decide whether they keep their selection** — and this is the one seam in the
+product where a guest becomes a customer, so it is where losing it costs the sale.
 
 **Sign-out clears every `fr.*` value in `sessionStorage`, without exception.** Not this key, not a
 named list of keys — **the whole `fr.` namespace**, whatever any lane has put in it.
@@ -1251,14 +1373,18 @@ report every seat gone is worse than starting clean.
 2. The primary action reads **"Sign in to hold these seats"** — the requirement is stated before it is
    enforced, not discovered by clicking (`COMPONENTS.md §5`, `FR-ADR-046`).
 3. Pressing it writes `fr.pending_selection` and opens the authentication screen (`SCR-ACC-01`). It
-   does not navigate away and lose context.
+   does not navigate away and lose context. **A visitor who instead follows the header's `Sign in`
+   link (`E8 SCR-XCT-05`) writes the same value and opens the same screen**, per the storage table
+   above, and every step below reads the same for both.
 4. The visitor registers (`P-ACC-01`) or signs in (`P-ACC-02`). Either returns a session.
 5. The interface returns to the seat map for `showtime_id` and **refetches the seat map** before
    restoring anything.
 6. Seat ids from the stored selection that are still `available` are re-selected.
 7. Seat ids that are now `sold` or `held_by_other` are **not** selected, are shown in their real state,
    and are named in the error banner (`COMPONENTS.md §6`).
-8. `fr.pending_selection` is deleted.
+8. `fr.pending_selection` is deleted. **`E2 P-SEA-03`'s `fr.selection` is not** — that key holds the
+   live selection this step has just re-applied, it is written on every change, and it is that row's
+   to clear. Deleting both here would erase the selection step 6 restored.
 9. **The hold is not taken.** The customer presses the primary action — now reading "Hold these seats"
    — once.
 
@@ -1276,10 +1402,21 @@ matters.
 | 1 | **Two or more** stored seats are now `sold` or `held_by_other`, and at least one survives | client-side, after the refetch; no server error | "C12 and C13 were taken while you were signing in. Your other seats are still selected." |
 | 1a | **Exactly one** stored seat has gone, and at least one survives | as row 1 | "C12 was taken while you were signing in. Your other seats are still selected." |
 | 2 | Every stored seat has gone | client-side | "The seats you chose were taken while you were signing in. Choose again from the map." |
-| 3 | Sales for the showtime closed while the visitor was registering | the hold endpoint returns `409` `SALES_CLOSED` when pressed | "Sales for this showtime have closed." |
+| 3 | Sales for the showtime closed while the visitor was registering | the hold endpoint returns `409` `SALES_CLOSED` when pressed | `E2 P-HLD-14` row 9's body, reproduced and not authored here: "Sales for this showtime closed at 7:45 pm. Choose another showtime." — the time renders `sales_close_at` in `S7.19`'s `h:mm am/pm` form in Asia/Kolkata and is never typed |
 | 4 | The stored entry is older than 30 minutes | client-side | nothing is restored and nothing is said. The seat map opens with no selection. |
 | 5 | `sessionStorage` is unavailable or full | client-side | nothing is stored and nothing is said before the fact. On return the map opens with no selection. The sign-in still works. |
 | 6 | The stored `showtime_id` no longer exists | client-side | the interface returns to the movie listing. "That showtime is no longer available." |
+
+**Exception 3 publishes no string of its own, and this row previously did.** It published the
+sales-closed **banner** — `Sales for this showtime have closed.` — against a **hold attempt**, which
+is a different surface with a different job. `E1 P-BRW-07` owns that banner and states in terms that
+a hold attempted on a closed showtime takes `E2 P-HLD-14` row 9's body **and not the banner**; `E2`
+states the same split from its own side, that a banner describes a standing condition the customer
+can see for themselves while an error explains an action that was just refused. Both are declared
+owners and this row is neither, so this row cites rather than restates. **The customer most likely to
+meet this case is the one who has just spent thirty seconds registering** — and the banner names no
+time and offers no next step, which leaves them with a refusal, no idea when sales closed, and
+nothing to do about it.
 
 Rows 1 and 1a's wording is the rule from `FR-ADR-052` applied literally: it says what happened, it
 names the seats so the interface can highlight them, and **it does not blame the customer for a race
@@ -1452,11 +1589,17 @@ the seat map rather than to the other tab.
 · **Who reaches it.** guest · a customer whose session expired · anyone following a "sign in" control
 · **Component basis.** `COMPONENTS.md §11` (forms), `COMPONENTS.md §6` (the error banner)
 
-**What the user arrives with / leaves with.** They arrive from one of two places: the movie listing,
-with nothing, or the seat map, having pressed "Sign in to hold these seats" — in which case
-`fr.pending_selection` has already been written (`P-ACC-13`). Both are **deliberate** sign-ins. They
-leave with a session cookie and are returned to exactly where they came from: the seat map for the
-stored showtime, with the selection restored, or the movie listing.
+**What the user arrives with / leaves with.** They arrive in one of two states, and **the state is
+decided by whether they left a seat map with seats selected, never by which control they pressed**:
+from a surface with no selection behind it — the movie listing, or the header's `Sign in` link from
+any screen that is not a seat map (`E8 SCR-XCT-05`) — with nothing stored; or from a seat map with a
+non-empty selection, in which case `fr.pending_selection` has already been written **by whichever
+route out they took**, the primary action or that same header link (`P-ACC-13`). So "Sign in to hold
+these seats" and the header's `Sign in` link arrive here identically and **this screen cannot tell
+them apart** — which is the point, because under the earlier write-on-press rule the header route
+arrived with nothing stored and was silently dropped on the movie listing. Both are **deliberate**
+sign-ins. They leave with a session cookie and are returned to exactly where they came from: the seat
+map for the stored showtime, with the selection restored, or the movie listing.
 
 **A third arrival exists and this screen does not own its destination**: a customer sent here by a
 `401` mid-task. `SCR-XCT-04` preserves the path they were on and returns them there. The scope note
