@@ -83,7 +83,7 @@ Numbered in **dependency order**, not generation order. Each is derived from the
 | `07 Architecture/` | `for_llm/` to orient a session · `for_humans/` to decide from, including the accepted weaknesses. | empty |
 | `08 SIT/` · `09 NegativeTesting/` | Positive cases (one per acceptance criterion) + the cases that try to break it. | empty |
 | `10 EngineeringLedger/` | Derived from the Bible. **`/ss` reads this for the frontier.** Only `Status` is hand-edited. | empty |
-| `11 Journeys/` | Persona journeys, each walk naming the seam it crosses. | empty |
+| `11 Journeys/` | Persona journeys, each walk naming the seam it crosses. Five walks, 313 steps, **81 defects against the PRD** — 25 of them `blocks-code`. | **written** |
 | `12 DesignReview/` | **The gate before code.** | empty |
 | `13`–`40` | Lifecycle. **`30 Deployment/` is written** — it holds the client's AWS prep queue, 18 rows — 17 `REQUESTED` and one `BLOCKED` (row 14, the ACM certificate, waiting on `OPEN-TLS-01`). The rest are empty. | **part written** |
 

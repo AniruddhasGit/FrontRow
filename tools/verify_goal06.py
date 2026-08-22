@@ -41,7 +41,7 @@ HEADER = ["DefectID", "Lane", "PRDSection", "Anchor", "Kind", "Severity",
           "Seam", "Statement", "WhyItMatters", "Disposition"]
 KINDS = {"gap", "contradiction", "unhandled-edge"}
 SEVERITIES = ["blocks-code", "ambiguous", "cosmetic"]        # worst first; order is load-bearing
-DEFECT_ID = re.compile(r"^J-(CUS|GST|ENT|MGR|ADM)-[0-9]{2}$")
+DEFECT_ID = re.compile(r"^J-(CUS|GST|ENT|MGR|ADM|XCT)-[0-9]{2}$")
 DISPOSITION = re.compile(r"^(PRD-fix|new-Art-X-row|already-open:OPEN-[A-Z0-9]+-[0-9]+)$")
 
 # The lane is keyed off the VALIDATED DefectID prefix, never off the free-text Lane cell.
@@ -49,8 +49,8 @@ DISPOSITION = re.compile(r"^(PRD-fix|new-Art-X-row|already-open:OPEN-[A-Z0-9]+-[
 # MANAGER), so grouping on it reported zero for every lane while the total said 64 - a
 # zero-detector that reports zero for everything cannot detect a real zero.
 PREFIX_LANE = {"CUS": "customer", "GST": "guest", "ENT": "entry",
-               "MGR": "manager", "ADM": "admin"}
-LANES = ["customer", "guest", "entry", "manager", "admin"]
+               "MGR": "manager", "ADM": "admin", "XCT": "crosscutting"}
+LANES = ["customer", "guest", "entry", "manager", "admin", "crosscutting"]
 
 # Column positions in a step table. Anchored by the header row, checked, never assumed.
 STEP_COLUMNS = ["#", "Surface", "State entering", "Action", "Seam crossed", "Seam type",

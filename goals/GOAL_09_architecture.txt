@@ -45,6 +45,13 @@ WRITE-SET
   CONSTITUTION.md                                        (Article X only)
   PROGRESS.md . handoffs/
 
+CORRECTION APPLIED 2026-08-22 - one deleted dependency struck from 08_failure_modes
+  "TMDB down" was listed as a failure mode. There is no external movie API (SRC-003 OPEN-TMDB-01)
+  and nothing runs on a schedule (OPEN-PROC-01), so it is not a dependency and cannot fail.
+  Struck against SRC-003, which outranks a goal file (CONSTITUTION.md Art II.1). SES and S3 are
+  named in its place because they ARE approved dependencies of this product and were missing from
+  the list; that is the correction being stricter, not wider. Reversible: git revert this file.
+
 DELIVERABLES - what each document must carry
   03_concurrency_model  The two-system guarantee end to end: which lock is taken when, in which
                         order, what happens when each one fails, and WHY the database guard is
@@ -53,10 +60,14 @@ DELIVERABLES - what each document must carry
                         which port each listens on, which health endpoint the load balancer calls
                         and which the container health check calls, and the memory arithmetic.
                         Everything AWS is (reasoned, not observed).
-  08_failure_modes      Redis down . Postgres down . TMDB down . SQS down . the payment provider
-                        slow . a container SIGTERM'd holding locks . a deploy during a rush .
-                        the poll loop failing silently. For each: what the customer sees, what
-                        the operator sees, and whether data is at risk.
+  08_failure_modes      Redis down . Postgres down . SQS down . SES down or rejecting . S3 down
+                        or the poster missing . the simulated payment provider slow . a
+                        container SIGTERM'd holding locks . a deploy during a rush . the poll
+                        loop failing silently. For each: what the customer sees, what the
+                        operator sees, and whether data is at risk.
+                        SES DOWN IS THE ONE TO WRITE FIRST: the receipt is the customer's only
+                        proof of purchase and only way into the hall, so a failure AFTER capture
+                        leaves a customer who has paid and cannot enter (OPEN-EMAILFAIL-01).
   02_decisions_owed     Every Art X row still open, and what it blocks.
   03_the_deliberate_gaps  What this architecture knowingly does not do, and why that was
                         acceptable. No TLS until OPEN-TLS-01 is ruled. One Redis node with no

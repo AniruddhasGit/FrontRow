@@ -38,17 +38,41 @@ DELIVERABLES - the attack families that must each have a plan and cases
   MONEY         double submit . refresh mid-payment . payment succeeds and confirm fails .
                 confirm succeeds and payment capture fails . a price changed between map render
                 and confirm . a negative or zero quantity . an integer overflow on a large booking
-  AUTHZ         customer reaching a manager route . manager reaching another cinema . staff
-                reaching admin . a guest reaching anything requiring an account . a role changed
-                mid-session . a token for a deactivated account
-  DATA          a seat id from another screen . a showtime id from another cinema . a booking
-                reference belonging to someone else . a ticket validated twice . a ticket for a
-                show that already started
-  DEPENDENCY    Redis down during hold . Redis down during confirm . Postgres down mid-confirm .
-                TMDB down during sync . TMDB returning a duplicate id . SQS unavailable after a
-                confirmed booking . the container SIGTERM'd holding locks
+  AUTHZ         customer reaching a manager route . MANAGER READING A SCREEN THEY ARE NOT
+                ASSIGNED TO (assert BOTH halves - a non-empty, non-zero result for their own
+                screen AND a denial for another; a test asserting only "denied" passes against a
+                query that returns nothing for anybody) . manager reaching any admin WRITE route
+                . a guest reaching anything requiring an account . a role changed mid-session .
+                a token for a deactivated account
+  DATA          a seat id from another screen . a showtime id from another screen . a booking
+                reference belonging to someone else . THE SAME BOOKING REFERENCE PRESENTED TWICE
+                at the door (nothing prevents it - SRC-003 OPEN-TICKET-02; the resolution is
+                OPEN-DUPREF-01 and is NOT yours to decide) . a booking for a show that has
+                already started (legitimate: sales close 15 minutes AFTER the advertised start,
+                SRC-003 OPEN-BOOK-03, PROVISIONAL - so this asserts the booking is ACCEPTED)
+  DEPENDENCY    Redis down during hold . Redis down during confirm . Postgres down mid-confirm
+                . SQS unavailable after a confirmed booking . SQS SLOW OR TIMING OUT INSIDE the
+                confirm request . SES FAILING AFTER PAYMENT IS CAPTURED, so the customer has
+                paid and has no way into the hall (OPEN-EMAILFAIL-01) . SES ACCEPTING and then
+                bouncing, which currently reads as a delivery . the container SIGTERM'd holding
+                locks
   ABUSE         the rate limiter keyed on the load balancer rather than the client . a hold loop
                 that never confirms, exhausting a screen . poll flooding
+
+CORRECTIONS APPLIED 2026-08-22 - deleted scope struck from the case list
+  Four cases named capabilities SRC-003 removed, and writing them would have produced negative
+  tests for features that do not exist. Corrected against SRC-003, which outranks a goal file
+  (CONSTITUTION.md Art II.1). Reversible: git revert this file.
+    "staff reaching admin"          - there is no cinema-staff role (SRC-003, SRC-001 §E E-1)
+    "manager reaching another cinema" - one cinema, six screens (SRC-003 C-2, PROVISIONAL), so
+                                      cinema-level scoping would scope NOTHING and the test
+                                      would pass vacuously. Scope attaches to the SCREEN.
+    "a ticket validated twice"      - there is no scanner and no validation endpoint
+    "TMDB down during sync" and
+    "TMDB returning a duplicate id" - there is no external movie API and no scheduled job
+  Replacements are drawn from defects the GOAL_06 journeys actually found (docs/11 Journeys/
+  DEFECTS_FOUND.tsv), not invented: the SQS-inside-confirm timeout and the SES bounce-reads-as-
+  delivery case are J-ENT-04 and J-ENT-03.
 
 WRITE-SET
   docs/09 NegativeTesting/SIT_NegativeCases.tsv          (new)
