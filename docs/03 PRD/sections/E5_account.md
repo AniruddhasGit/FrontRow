@@ -2440,8 +2440,13 @@ Two existing open rows were touched and neither was decided:
 `S7.20` owns the rule and this section owns none of it. It has **two halves, and a string has to
 satisfy both**:
 
-1. **Derivation.** `Retry-After = ceil(window_seconds / capacity)` — the time to earn one token from
-   empty — taken from **whichever bucket refused**. It is not the bucket's capacity and it is not its
+1. **Derivation.** `Retry-After` is the time until the refusing bucket next holds one token, taken
+   from **whichever bucket refused**. `ceil(window_seconds / capacity)` is that figure at the instant
+   the bucket empties, so it is the **maximum** a bucket can ever produce and not the value — a caller
+   who retries part-way through the interval is told the remainder, which is less.
+   *(Corrected 2026-08-23: this clause stated the maximum as if it were the derivation, which made it
+   disagree with `S7.20`, the owner this very sentence names, and with `P-ACC-14`'s own worked example
+   of 60 at t=30s against a 90-second maximum.)* It is not the bucket's capacity and it is not its
    window. Where two limiters guard one endpoint, a row publishing one figure **must name its bucket**.
 2. **Rendering.** `"<n> seconds"` below 120; `"<m> minutes"` with `m = ceil(seconds / 60)` at 120 and
    above; singular at 1.

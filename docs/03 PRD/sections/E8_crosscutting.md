@@ -96,7 +96,7 @@ watches it fail. Adopting a stricter option needs no signature (`CONSTITUTION.md
 |---|---|---|---|
 | 1 | The unique constraint fires at insert — another booking took the seat first. **This is the confirm path** (`P-PAY-10` step 7), never the hold | 409 `SEAT_UNAVAILABLE`, the whole confirm transaction rolled back | **`P-HLD-14` row 4 (one seat lost) or row 4b (two or more) — the *at confirm* sentences. This row publishes none of its own** (`P-PAY-11`) |
 | 2 | The hold is gone at confirm | 409 `HOLD_EXPIRED` | "The hold on your seats has ended and they have been released. You have not been charged." |
-| 3 | Redis is unreachable on the hold or confirm path | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes." |
+| 3 | Redis is unreachable on the hold or confirm path | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes." |
 | 4 | The stress script's fifty request start instants span more than the configured threshold | the script exits non-zero with "not concurrent" | *(no user-facing surface — this is a build gate)* |
 | 5 | **Stage B** of the drill runs with the constraint dropped and still produces exactly **one** `booking_seat` row for the pair | the drill is recorded as **failed** and the whole proof is void — the run did not reach the constraint | *(no user-facing surface — this is a stop-the-line finding)* |
 | 5a | **Stage A** — the fifty-request gate — is run with the constraint dropped and produces one winner | **that is the expected result and it is not a finding.** Stage A fires at the hold, where Redis decides the winner and the constraint is never reached. **A drill that reads Stage A as the red proof has proved nothing**, and reading it as a failure blocks a story for a defect that is not there | *(no user-facing surface)* |
@@ -789,11 +789,20 @@ options, and adopting a stricter option needs no signature (`CONSTITUTION.md` Ar
 5. `/health/ready` returns 503 within `READINESS_CACHE_TTL_SECONDS`, and the load balancer removes
    the instance.
 
+**Corrected 2026-08-23 — the hold-outage copy contradicted step 3 of this very walk.** The
+published string read *"You can still look at showtimes and seat maps"* in all thirteen places it
+appeared, while step 3 above and exception row 2 both say the seat-map read returns **503 in this
+same outage**. The sentence was reassuring the customer about the one surface that is definitely
+down. It now reads *"You can still browse showtimes"* — the phrasing `P-BRW-12` already used
+correctly for the seat-map failure, and true because the movie list, the showtime list and a
+customer's own bookings are served from PostgreSQL. **Both halves of the contradiction passed their
+own tests**, which is why reading one row at a time never found it.
+
 **Exception paths.**
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | Hold or confirm while Redis is down | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes." |
+| 1 | Hold or confirm while Redis is down | 503 `DEPENDENCY_UNAVAILABLE` | "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes." |
 | 2 | A seat-map read while Redis is down | **503 `DEPENDENCY_UNAVAILABLE`** — the read is rate-limited, the limiter runs before the cache, and it fails closed. The PostgreSQL fallback is never reached | **the string owned by `P-BRW-12`. This row publishes none for this case** — see the note below |
 | 3 | A limited endpoint while Redis is down | 503 `DEPENDENCY_UNAVAILABLE` | "That is unavailable right now. Try again in a few minutes." |
 | 4 | Redis restarts | every live hold is lost; those customers re-select | "Your seats were released. Choose them again if they are still free." |
@@ -1240,7 +1249,11 @@ which is Zone C.
 **Happy path.**
 1. The process starts.
 2. Every variable is read, coerced to its type and validated.
-3. The **twelve** cross-field checks run, in the order S7.9 lists them.
+3. The **thirteen** cross-field checks run, in the order S7.9 lists them. *(Corrected 2026-08-23:
+   this read twelve while S7.9's own table numbers thirteen. Row 13 is the mail-transport check,
+   `MAIL_PROVIDER` exactly `ses` or `stub` — without which row 8 never fires and receipts fail
+   silently, so an implementation built to the stale count drops precisely the check that hides
+   its own absence.)*
 4. The resolved configuration is logged once, with secret values redacted. `PAYMENT_PROVIDER` is
    logged prominently, because it is the flag that says whether the payments are real.
 5. The application begins accepting requests.
@@ -3122,7 +3135,7 @@ explain and nothing about the rest of the product to reassure the reader about.
 
 | Situation | Verbatim |
 |---|---|
-| Hold or confirm while Redis is down | "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes." |
+| Hold or confirm while Redis is down | "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes." |
 | A rate-limited path while Redis is down | "That is unavailable right now. Try again in a few minutes." |
 | A seat-map refresh while Redis is down | **deferred to `P-BRW-12`, which owns this code on this endpoint and publishes the one string for it.** This screen renders that string and no variant of it. It is deliberately not copied here: a copy is a copy that can go stale, which is exactly how three different sentences for this one situation came to exist (`S1.2`, rank 4) |
 | Redis restarted and live holds were lost | "Your seats were released. Choose them again if they are still free." |

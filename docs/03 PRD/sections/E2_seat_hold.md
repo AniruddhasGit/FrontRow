@@ -569,7 +569,7 @@ blank cell meant.
      "user_sees": "Sales for this showtime closed at 7:45 pm. Choose another showtime."},
     {"from": "available", "input": "HOLD_REQUEST_REDIS_DOWN", "to": "available",
      "guard": "server: the hold path fails loudly and never falls back to the database for locks. 503 DEPENDENCY_UNAVAILABLE",
-     "user_sees": "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes."},
+     "user_sees": "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes."},
     {"from": "available", "input": "HOLD_ACQUIRE_OK", "to": "held_by_me",
      "guard": "server: SET key token NX PX ttl in one command returned OK, and the sold-seat check found no booking_seat row for this pair. expires_at is fixed here and never moves",
      "user_sees": "3 seats held by you"},
@@ -657,7 +657,7 @@ blank cell meant.
      "user_sees": "Sales for this showtime have closed. You can still pay for the seats you are holding."},
     {"from": "held_by_me", "input": "HOLD_REQUEST_REDIS_DOWN", "to": "held_by_me",
      "guard": "server: the new request fails 503. This key is unaffected but will expire on its own, and a confirm will also fail while Redis is unreachable, so this hold is effectively lost",
-     "user_sees": "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes."},
+     "user_sees": "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes."},
     {"from": "held_by_me", "input": "HOLD_ACQUIRE_OK", "to": "held_by_me",
      "guard": "impossible: SET NX cannot succeed against a live key. A nil reply against a key this hold owns is the no-op of FR-ADR-026",
      "user_sees": "(nothing - no message is shown)"},
@@ -745,7 +745,7 @@ blank cell meant.
      "user_sees": "Sales for this showtime have closed. You can still pay for the seats you are holding."},
     {"from": "held_by_me_paying", "input": "HOLD_REQUEST_REDIS_DOWN", "to": "held_by_me_paying",
      "guard": "server: the new request fails 503. This confirm is already past its Redis re-validation and touches Redis again only for the post-commit release, so it can still commit",
-     "user_sees": "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes."},
+     "user_sees": "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes."},
     {"from": "held_by_me_paying", "input": "HOLD_ACQUIRE_OK", "to": "held_by_me_paying",
      "guard": "impossible: SET NX cannot succeed against a live key",
      "user_sees": "(nothing - no message is shown)"},
@@ -833,7 +833,7 @@ blank cell meant.
      "user_sees": "Sales for this showtime closed at 7:45 pm. Choose another showtime."},
     {"from": "held_by_other", "input": "HOLD_REQUEST_REDIS_DOWN", "to": "held_by_other",
      "guard": "server: the hold is refused with 503 regardless of what the map showed. With Redis unreachable the seat map itself answers 503 (X-7: the rate limiter reads Redis and fails closed before the cache is reached), so no degraded map is served. PostgreSQL has no knowledge of holds - what the map should render for this seat in that window is not decided anywhere and is raised as an Article X candidate in the lane notes",
-     "user_sees": "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes."},
+     "user_sees": "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes."},
     {"from": "held_by_other", "input": "HOLD_ACQUIRE_OK", "to": "held_by_other",
      "guard": "impossible: SET NX cannot succeed against a live key held by another customer",
      "user_sees": "(nothing - no message is shown)"},
@@ -921,7 +921,7 @@ blank cell meant.
      "user_sees": "Sales for this showtime closed at 7:45 pm. Choose another showtime."},
     {"from": "sold", "input": "HOLD_REQUEST_REDIS_DOWN", "to": "sold",
      "guard": "server: the hold is refused with 503. The seat map answers 503 while Redis is down (X-7), so no map is served at all; sold would be the one state PostgreSQL could report if one were on its own",
-     "user_sees": "Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes."},
+     "user_sees": "Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes."},
     {"from": "sold", "input": "HOLD_ACQUIRE_OK", "to": "sold",
      "guard": "server: SET NX can succeed on a sold seat, because a booking does not leave a key behind. The acquisition step is therefore followed by a check for a committed booking_seat row on this pair; finding one, the key just taken is released with the compare-and-delete script and the whole request is refused. Without this check a customer would hold a sold seat for three minutes and find out at payment",
      "user_sees": "C12 was taken by another customer. No seats were held. Choose a different seat and press Hold these seats again."},
@@ -1116,7 +1116,7 @@ remainder of the 180 seconds and then free themselves. No cleanup job is needed 
 | 7 | The request would take the customer over ten seats | 422 `SEAT_LIMIT_EXCEEDED` | `You can hold up to 10 seats for one showtime. You are holding 6 and chose 5 more.` |
 | 8 | The sales cut-off has passed | 409 `SALES_CLOSED` | `Sales for this showtime closed at 7:45 pm. Choose another showtime.` |
 | 9 | No authenticated user | 401 `AUTH_REQUIRED` | `Sign in to hold seats. Your selection has been kept.` |
-| 10 | Redis is unreachable | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes.` |
+| 10 | Redis is unreachable | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes.` |
 | 11 | The per-user or per-IP bucket is empty | 429 `RATE_LIMITED` with `Retry-After` | `Too many attempts. Try again in 3 seconds.` — the span is computed from the emptied bucket's refill rate and rendered by **S7.20**; it is never a constant. `P-HLD-14` row 16 owns the sentence and carries the arithmetic |
 | 12 | Anything unhandled | 500 `INTERNAL_ERROR` | `Something went wrong and your seats were not held. You have not been charged. If you need help, quote a1b2c3d4.` |
 
@@ -1682,7 +1682,7 @@ here is a cleanup job and none is needed.**
 | 3 | The seat is not in this hold | 422 `VALIDATION_FAILED` | `That seat is not part of your hold.` |
 | 4 | A release lands **before** the confirm's re-validation | 200 on the release; the confirm then finds no key and returns 409 `HOLD_EXPIRED` before any payment | `The hold on your seats has ended and they have been released. You have not been charged. Choose them again if they are still free.` |
 | 5 | A release lands **after** the booking committed | the compare-and-delete matches no live token and deletes nothing; the booking stands | the confirmation and its booking reference — the seat was bought before the release arrived |
-| 6 | Redis is unreachable | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes.` |
+| 6 | Redis is unreachable | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes.` |
 | 7 | The compare-and-delete returns 0 because the key already expired | treated as success; the seat is removed from the hold record | (nothing — the seat repaints to available and the total drops) |
 
 **Server-side validation.** `hold_token` is a string of **exactly 43 characters from the URL-safe
@@ -1812,9 +1812,9 @@ with it.
 
 | # | Trigger | Server | What the user sees, verbatim |
 |---|---|---|---|
-| 1 | Redis unreachable at a hold request | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes.` |
+| 1 | Redis unreachable at a hold request | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes.` |
 | 2 | Redis unreachable at confirm | 503 `DEPENDENCY_UNAVAILABLE`, before any payment | `We cannot complete your booking right now. You have not been charged. Try again in a few minutes. If you need help, quote a1b2c3d4.` |
-| 3 | Redis unreachable at a release | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes.` |
+| 3 | Redis unreachable at a release | 503 `DEPENDENCY_UNAVAILABLE` | `Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes.` |
 | 4 | Redis unreachable while the seat map is polled | **503 `DEPENDENCY_UNAVAILABLE`** on the poll (`X-7`). The last good map stays on screen and stops updating; it is never blanked | "The seat map is not updating. The seats shown may be out of date." |
 | 5 | Redis returns after an outage | holds taken before it are gone; new holds work | as row 1 until it returns, then normal operation |
 
@@ -2163,7 +2163,7 @@ countdown has no room for and the banner does.
 | 14 | `VALIDATION_FAILED` 422, seat not in this hold | `That seat is not part of your hold.` |
 | 15 | `NOT_FOUND` 404 | `That showtime could not be found.` |
 | 16 | `RATE_LIMITED` 429, with `Retry-After` | `Too many attempts. Try again in 3 seconds.` |
-| 17 | `DEPENDENCY_UNAVAILABLE` 503, at hold or release | `Seat holds are unavailable right now. You can still look at showtimes and seat maps. Try again in a few minutes.` |
+| 17 | `DEPENDENCY_UNAVAILABLE` 503, at hold or release | `Seat holds are unavailable right now. You can still browse showtimes. Try again in a few minutes.` |
 | 18 | `DEPENDENCY_UNAVAILABLE` 503, at confirm | `We cannot complete your booking right now. You have not been charged. Try again in a few minutes. If you need help, quote a1b2c3d4.` |
 | 19 | `INTERNAL_ERROR` 500 | `Something went wrong and your seats were not held. You have not been charged. If you need help, quote a1b2c3d4.` |
 | 20 | `VALIDATION_FAILED` 422, a seat that is out of service, **one** offending seat | `Seat C12 is out of service. No seats were held.` |
