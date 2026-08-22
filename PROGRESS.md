@@ -448,3 +448,34 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 
 - **Session closed 2026-08-23_0241 by Aniruddha Jathar** → handoff:
   `handoffs/HANDOFF_2026-08-23_0241_ani87.md`
+
+## 2026-08-23 — `GOAL_08` part done: the data model applies, and the guard was watched failing
+
+- **Three inherited PRD defects repaired** (`36cef2d`) — the `Retry-After` maximum stated as the
+  value, the twelve/thirteen cross-field count, and a customer-facing outage message the product
+  falsified in thirteen places. Three Bible cells quoted the message byte-exact and moved in the
+  **same commit**, which is the failure mode the previous session caused by fixing only one half.
+- **Eight acceptance criteria that cannot run repaired** (`aa18326`). Every one verified against a
+  source before being touched; **two verified empirically against a live PostgreSQL 16**.
+  `S-ADM-18` carried two defects at once: `information_schema.check_constraints` has no
+  `table_name` column, and PostgreSQL reports every `NOT NULL` as a `check_constraints` row, so
+  "returns 0" was unsatisfiable against any correct table.
+- **`docs/06 DataModel/` written** (`59cb4d6`) — 22 tables, 152 columns, every one cited,
+  assembled from six independent cluster reads preserved verbatim under `derivation/`.
+  `schema.sql` **applies to an empty PostgreSQL 16.14 database: exit 0, 75 objects, zero errors.**
+  `consistency_check.py` 13/13, and **14 of 14 rules watched going red** under `--selftest`.
+- **The seat guarantee was red-proofed at the database layer** — guard in place gives one winner;
+  dropped on purpose gives **two, watched**; restored; refused again; definition confirmed
+  `UNIQUE (showtime_id, seat_id)` with **no `WHERE`**. This is the database half only — the Redis
+  lock and the 50-request stress script are Phase 4 and do not exist.
+- **Three of my own rules would have failed a correct schema** and were rewritten before shipping:
+  the guard rule (two relations legitimately carry the column pair), the clock rule
+  (`created_at` *must* default to `now()`), and the Bible-reference rule (most dotted tokens are
+  audit actions, and one is a filename). Same defect class the Bible census catalogued.
+- **Two database roles, forced by an observed fact**: a table's owner sees seven privilege rows on
+  PostgreSQL 16.14, so `S-XCT-07`'s "exactly two" cannot be met by a single role. Filed as
+  `AWS_PREP_QUEUE` row 20, needed by **Phase 1**.
+- **`GOAL_08` is `part done`, not `Done`.** `verify_invariants.sql`, the seed expectations,
+  `fingerprints.json` and the ADR ledger's `included_in_datamodel` column are **not** written, and
+  the schema has only ever been applied as a superuser.
+- **Session closed 2026-08-23_0336 by ani87** → handoff: `handoffs/HANDOFF_2026-08-23_0336_ani87.md`
