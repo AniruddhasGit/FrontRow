@@ -106,3 +106,48 @@ GUARDRAILS
   - An unknown becomes an Art X row, never a plausible guess.
   - Create nothing in AWS. RDS is not needed for this goal - a local container is enough, and
     that is the LAST goal for which that is true.
+
+CORRECTIONS APPLIED 2026-08-23
+  This contract was written before the nine Article X rows filed on 2026-08-22. Five of them land
+  on columns THIS goal defines, so they are restated here as binding constraints. All five are
+  RESERVED - the schema models the column and cites the row; it never decides the question.
+
+  - OPEN-RESETTOKEN-01 (reserved: SECRETS). The password-reset flow AS SPECIFIED CANNOT BE BUILT:
+    three PRD passages are jointly unsatisfiable - the token is never stored, the token never
+    travels in the queue, and the worker must render a link containing the token. Nothing holds
+    the 43 characters. THE SCHEMA MUST NOT RESOLVE THIS. Adding a plaintext token column, or a
+    payload column on outbox_message wide enough to be used for one, decides a reserved question
+    about credential handling by making one of the three resolutions cheap. Model token_sha256,
+    cite the row, and leave the flow unbuildable until the client rules. This does NOT relax the
+    three-column rule below: claim, sent and used are about worker mechanics, not about where the
+    plaintext lives, and they are still three columns.
+
+  - OPEN-REFCHAR-01 (reserved: IRREVERSIBLE, expires Phase 4). The booking-reference alphabet
+    keeps the confusable pairs 2/Z, 5/S, 8/B, 6/G and carries no check character, and the
+    reference is transcribed BY EYE at a door with no software in the path. Model the column and
+    its uniqueness; do NOT narrow the alphabet, add a check character, or bake either into a
+    CHECK constraint. A reference already issued cannot be re-cut.
+
+  - OPEN-SEATALPHA-01 (reserved: IRREVERSIBLE, expires Phase 2). Sits BESIDE OPEN-SEATLABEL-01 on
+    the same column. SEATLABEL is about normalising case; SEATALPHA is about whether the letter I
+    may appear at all. Both are unruled and neither may be expressed as a constraint.
+
+  - OPEN-DUPREF-01 (reserved: PRODUCT). Nothing rules what happens when one reference is presented
+    twice at the door, and no audit action exists for the incident. This is a schema question only
+    in that a redemption or admission column would answer it. DO NOT ADD ONE.
+
+  - OPEN-HOLDRECOVER-01 (reserved: SCOPE). A live hold is Redis-only and deliberately has no
+    database row. Do not model holds. A holds table would make the reserved question answerable
+    and would put the seat guarantee in two places, which is exactly what the two-system design
+    already rejects.
+
+  TABLE NAMES ARE INHERITED, NOT CHOSEN. GOAL_07's 200 acceptance criteria already contain SQL
+  naming these fifteen relations: users, cinema, screen, seat, movie, showtime, showtime_seat,
+  booking, booking_seat, payment, idempotency_record, password_reset_token, outbox_message,
+  receipt_dispatch, audit_log. A rename here silently breaks criteria in 200 cells that nothing
+  in the repo cross-checks. If a name is WRONG, changing it is a deliberate act that updates the
+  Bible in the same commit - never a quiet improvement.
+
+  OPEN-LOCALE-01 IS RULED, not pending. The zone is Asia/Kolkata, currency INR, minor-unit ratio
+  100 (SRC-003). The line below reading 'if it was DECLINED' predates that ruling. The ratio
+  remains configuration and is never baked into a column name, comment or constraint.
