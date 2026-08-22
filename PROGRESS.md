@@ -384,3 +384,67 @@ requesting · 18 AWS prep-queue rows, all `REQUESTED`.
 
 - **Session closed 2026-08-15_2118 by Aniruddha Jathar** → handoff:
   `handoffs/HANDOFF_2026-08-15_2118_ani87.md`
+
+## 2026-08-23 — `GOAL_06` closed, the PRD repaired, `GOAL_07` written and blocked (Aniruddha Jathar)
+
+**Done:**
+
+- **`GOAL_06` complete.** Six lanes, 313 steps, 150 of 163 P-rows, **81 defects filed**. The five
+  persona lanes could not see each other's work (Art VII.7), and it paid on the first merge: **three
+  converged independently on one hole — the booking path never checks whether a film is still inside
+  its display window**, and no admin action can stop a showtime selling.
+- **The nine walkable P-rows the persona lanes missed were published as a gap, then closed** by a
+  sixth lane — which found **`J-XCT-01`: the never-waivable concurrency drill fires at the wrong
+  endpoint**, so dropping the constraint changes nothing and the drill **reports failure against a
+  correct implementation**. Repaired by ADDING a Stage B, not by weakening anything.
+- **PRD fix wave — 65 defects repaired** by nine agents with exclusive file ownership. Cross-file
+  contradictions were fixed by one owner each, emitting a patch record for the other side, because
+  two agents fixing opposite halves swap the error. **One patch was refused on application** — E2 had
+  rewritten the passage while E3 read it and kept the exact sentence the patch existed to change.
+- **`GOAL_07` written**: 210 rows, 200 stories, **163/163 coverage, no-gap 0, no-creep 0**.
+- **`GOAL_09` and `GOAL_11` corrected** for `SRC-003` rot. `GOAL_11`'s *"manager reaching another
+  cinema"* would have **passed vacuously** — with one cinema, cinema-level scoping scopes nothing.
+- **`tools/verify_goal06.py`** added; re-derives every journeys figure from the committed documents.
+- **Nine Article X rows filed** (`X.0e`, `X.0f`, `X.0g`). **19 → 28 open, 21 reserved.**
+
+**Rulings** (worst first):
+
+- **Adversarial reading does not converge for this document.** Five panels — three samples, a full
+  200-cell census, and a re-census control — each found true defects the previous missed, and **none
+  was a repeat**. The control says **27% of the cells the census called `OK` are wrong**. What would
+  settle a criterion is *running* it, and no application code exists. `GOAL_07`'s DoD assumes reading
+  can certify these cells; the evidence is that it cannot. Full record: `docs/05 Bible/CENSUS_2026-08-22.md`.
+- **`OPEN-RESETTOKEN-01` blocks a feature, not a document.** The token is never stored, never travels
+  the queue, and yet an email must render a link containing it. **Nothing downstream holds the 43
+  characters.** Phase 2 reaches it.
+- **The 91 wrong cells were eight mistakes, repeated** — a grep matching its own test, a per-request
+  id asserted as a literal, a bound absence satisfies, a view that cannot answer the question, a
+  catalog query with no schema filter, equality over a countdown, a framework misunderstanding, and
+  arithmetic. Fixing them **by class** is what finally stopped adding new defects; three rounds of
+  cell-by-cell repair had been introducing them at roughly the rate they removed them.
+
+**Defects in this session's own work:**
+
+- **I contaminated the re-census** by editing files while the graders read them. Group A is not a
+  valid measurement; the control group is. Recorded rather than dropped.
+- **My scope rule had three successive coverage gaps** — the prose form, the `rather than -1`
+  variant, and paths with no trailing slash. Each was caught by a grader, not by me.
+- **Two Bible criteria were invalidated by my own PRD fixes**, and **my PRD fix made a customer-facing
+  message worse** — the outage sentence now promises a seat map that returns 503 in that outage.
+- **I amplified two defective repairs** in my own reporting, and **should have questioned the
+  sampling method after round 2**, not round 3.
+
+**In progress:** nothing half-written, no red gate. `GOAL_05` and `GOAL_07` are both stopped
+deliberately, awaiting signatures.
+
+**Open / next:** rule on `OPEN-RESETTOKEN-01` → decide what `GOAL_07`'s gate should be → `GOAL_08`
+data model (**which inherits the Bible's table names as a hard constraint**) → `GOAL_12` ledger →
+the PRD defects the Bible inherited.
+
+**Blockers:** `OPEN-RESETTOKEN-01` blocks a feature and Phase 2 reaches it · `GOAL_07`'s gate ·
+`OPEN-PRDCLOSE-01` · 28 open Article X rows, 21 reserved · **three rows now carry deadlines** —
+`OPEN-SEATLABEL-01` and `OPEN-SEATALPHA-01` at Phase 2, `OPEN-REFCHAR-01` at Phase 4 · no seeded
+account can sign in · SES production access · 19 AWS prep-queue rows.
+
+- **Session closed 2026-08-23_0241 by Aniruddha Jathar** → handoff:
+  `handoffs/HANDOFF_2026-08-23_0241_ani87.md`
