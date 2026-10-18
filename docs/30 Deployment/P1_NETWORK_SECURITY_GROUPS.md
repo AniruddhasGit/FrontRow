@@ -3,7 +3,7 @@
 > Zone C specification (`SRC-002 §6.3.3`, `§6.3.4`). What to build, not how. Every claim about AWS
 > behaviour is **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - A VPC with **public subnets in at least two Availability Zones** in `ap-south-1`. The load balancer
   needs two (reasoned, not observed). The EC2 instance needs one of them.
@@ -15,7 +15,7 @@
   - one for **each data store** when it exists (RDS, ElastiCache)
 - A rule set in which **the only inbound path to a container is from the load balancer's security group**.
 
-## 2. What the application expects
+## What the application expects
 
 | Traffic | From | To | Port | Why |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@ the app needs outbound internet access":
 | 5 | SQS, SES | the application |
 | 6 | S3 | the application |
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 1. No security group in this project has an inbound rule from `0.0.0.0/0` (or `::/0`) except the load
    balancer's, on port 80.
@@ -43,15 +43,15 @@ the app needs outbound internet access":
    source, not a CIDR block.
 3. The RDS and ElastiCache security groups, when they exist, allow inbound only from the instance
    security group, on 5432 and 6379.
-4. The account has **no NAT Gateway** for this project (`describe-nat-gateways` shows none).
+4. The account has **no NAT Gateway** for this project (forbidden, `SRC-002 §5.3`) (`describe-nat-gateways` shows none).
 5. The instance has a public IPv4 address. Without one it cannot pull its image, and the task never starts.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **Opening 8000 to the internet "to test it".** The container is then reachable without the load
   balancer, and every later rule you add to the load balancer (rate limiting by client IP, TLS) can be
   walked around. Test through the load balancer's DNS name instead.
-- **Putting the instance in a private subnet because that is "best practice".** Without a NAT Gateway a
+- **Putting the instance in a private subnet because that is "best practice".** Without a NAT Gateway (forbidden) a
   private subnet has no route to ECR. The task sits in `PENDING` and then fails with an image-pull or
   `ResourceInitializationError`, and the application never logs a line, because it never started.
 - **Allowing SSH (22) from anywhere.** It does not affect the application. It does put a public login

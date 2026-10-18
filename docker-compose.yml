@@ -9,6 +9,8 @@
 # They are not secrets and must never be reused anywhere.
 #
 #   docker compose up -d --build
+#   docker compose --profile tools run --rm migrate      apply migrations (a separate step, NEVER on boot)
+#   docker compose --profile test run --rm --build test  the backend suite, against throwaway databases
 #   API        http://localhost:8000/health/live   http://localhost:8000/health/ready
 #   Frontend   http://localhost:8080/
 #   Postgres   localhost:55433   (5432 and 55432 on this host belong to other containers)
@@ -16,6 +18,20 @@
 # =====================================================================================================
 
 name: frontrow
+
+# The two database roles (docs/06 DataModel/AGENT_CONTRACT.md "Two database roles"), created on the
+# FIRST start of an empty pgdata volume by running the checked-in roles_local.sql verbatim:
+#   frontrow_owner  owns every table, runs migrations       password local-dev-owner
+#   frontrow_app    what the API connects as - INSERT/SELECT on audit_log, never superuser
+#                   (S-XCT-33: rolsuper is false for the API's DATABASE_URL)  password local-dev-app
+# An EXISTING volume does not re-run init scripts. To add the roles to one, run the same file by hand:
+#   docker compose exec postgres sh /docker-entrypoint-initdb.d/10-frontrow-roles.sh
+configs:
+  frontrow_roles_init:
+    content: |
+      #!/bin/sh
+      set -eu
+      psql -v ON_ERROR_STOP=1 -v owner_password=local-dev-owner -v app_password=local-dev-app -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -f /frontrow/roles_local.sql
 
 services:
   postgres:
@@ -30,6 +46,10 @@ services:
       - "55433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - "./docs/06 DataModel/checks/roles_local.sql:/frontrow/roles_local.sql:ro"
+    configs:
+      - source: frontrow_roles_init
+        target: /docker-entrypoint-initdb.d/10-frontrow-roles.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U frontrow -d frontrow"]
       interval: 5s
@@ -59,12 +79,33 @@ services:
     command: ["api"]
     environment:
       # The full inventory, with what each one does, is in .env.example.
-      DATABASE_URL: postgresql://frontrow:local-dev-only@postgres:5432/frontrow
+      # frontrow_app, NEVER the owner or the superuser: building against the restricted role locally is
+      # how a missing grant is found here instead of on RDS (GOTCHAS "Local Postgres gives you superuser").
+      DATABASE_URL: postgresql://frontrow_app:local-dev-app@postgres:5432/frontrow
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: INFO
       API_PORT: "8000"
       SHUTDOWN_DRAIN_TIMEOUT_SECONDS: "20"
       READINESS_CACHE_TTL_SECONDS: "3"
+      # Local throwaway signing key. In AWS: an SSM SecureString, never this value.
+      JWT_SECRET: local-dev-only-signing-key-not-a-secret
+      # false: there is no TLS locally (OPEN-TLS-01). true here would make every sign-in silently fail.
+      COOKIE_SECURE: "false"
+      PUBLIC_BASE_URL: http://localhost:8080
+      CURRENCY_CODE: INR
+      CURRENCY_MINOR_UNIT_RATIO: "100"
+      # The rest of PRD S7.9's no-default list: without any one of them the api exits 78 at boot.
+      # Local placeholders only - nothing reads QUEUE_URL, S3 or SES until Phases 5 and 6, and the
+      # ElasticMQ service that QUEUE_URL will point at arrives with the worker (Phase 5).
+      QUEUE_URL: http://elasticmq:9324/000000000000/frontrow-receipts
+      PAYMENT_PROVIDER: simulated
+      # stub: writes the message to stdout and sends nothing. Local development only (S7.9).
+      MAIL_PROVIDER: stub
+      S3_BUCKET_NAME: frontrow-posters-local
+      AWS_REGION: ap-south-1
+      SES_SENDER_ADDRESS: receipts@example.invalid
+      FORWARDED_ALLOW_IPS: 127.0.0.1
+      PAYMENT_SIMULATOR_FAIL_KEY_PREFIX: local-fail-
     ports:
       - "8000:8000"
     # service_started, NOT service_healthy: the API must start even when a dependency is down, so
@@ -97,6 +138,59 @@ services:
       - /tmp
     # The architecture's budget for the static frontend. Measured idle locally: ~2-3 MiB.
     mem_limit: 15m
+
+  # One-off: apply migrations, then exit. The same image as the api - so the migration and the code are
+  # the same build - with the command overridden and DATABASE_URL pointed at the OWNER role.
+  migrate:
+    profiles: ["tools"]
+    image: frontrow-api:phase1
+    build:
+      context: ./backend
+      target: runtime
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgresql://frontrow_owner:local-dev-owner@postgres:5432/frontrow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+
+  # The backend test suite, inside the test image, against the compose postgres and redis. Each run
+  # creates throwaway databases (fr_test_<random>), runs roles_local.sql and the real `migrate`
+  # command on them, and drops them afterwards; the `frontrow` database is never touched.
+  # Source is mounted read-only, so edits are picked up without a rebuild (deps changes need --build).
+  test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    image: frontrow-api:test
+    environment:
+      # The SUPERUSER, used only to CREATE/DROP the throwaway databases and grant the roles on them.
+      TEST_ADMIN_DATABASE_URL: postgresql://frontrow:local-dev-only@postgres:5432/postgres
+      TEST_OWNER_PASSWORD: local-dev-owner
+      TEST_APP_PASSWORD: local-dev-app
+      TEST_REDIS_URL: redis://redis:6379/15
+      DATAMODEL_DIR: /docs/06 DataModel
+      # The M1 story tests (tests/xct/_support.py) read repository-root files too - .env.example,
+      # docker-compose.yml, .gitignore, the manifests, docs/30 Deployment. They look here first.
+      FRONTROW_REPO_ROOT: /repo
+    # The repository laid out as the tests expect it: backend at /srv (the image's WORKDIR), and docs/
+    # and frontend/src beside it at /docs and /frontend/src, so a test reads the frozen documents and the
+    # frontend source exactly where Path(__file__).parents[3] puts the repository root.
+    volumes:
+      - ./backend:/srv:ro
+      - ./docs:/docs:ro
+      - ./frontend/src:/frontend/src:ro
+      - .:/repo:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   pgdata:

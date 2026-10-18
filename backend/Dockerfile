@@ -59,22 +59,39 @@ WORKDIR /build
 # Requirements are copied BEFORE the source so the dependency layer is cached. Without this ordering
 # every one-line code change reinstalls every dependency and a build takes minutes instead of seconds.
 COPY requirements.txt requirements-dev.txt ./
+# The runtime dependencies, into the venv. Without them the runtime stage copies an empty venv and the
+# container exits at the first import.
 RUN /usr/local/bin/pip --python /opt/venv/bin/python install -r requirements.txt
 
 
 # -------------------------------------------------------------------------------------------- test
 # Not deployed. Exists so the tests run on the same interpreter, OS and wheels as production.
 FROM builder AS test
+# The test tools, in this stage only. Without them there is no pytest; installed here, they never reach
+# the runtime image.
 RUN /usr/local/bin/pip --python /opt/venv/bin/python install -r requirements-dev.txt
+# psql, TEST STAGE ONLY: the database tests run docs/06 DataModel/checks/roles_local.sql and
+# verify_invariants.sql verbatim, and both are psql scripts (\set, :'var'). Without it those checks
+# would have to be re-typed in Python, and a re-typed check can drift from the file of record.
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 # The same non-root user as runtime, so a test that only passes as root cannot pass here.
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin frontrow
 # The same /srv as runtime, so `import app` resolves from the same directory in tests as in production.
 # Without it pytest runs from /build, finds no tests and no pyproject.toml, and exits "no tests ran".
 WORKDIR /srv
+# pytest's configuration (test paths, pythonpath, no cache directory). Without it pytest finds no tests.
 COPY pyproject.toml ./
+# The code under test, the same files the runtime stage copies.
 COPY app ./app
+# The migration revisions, so the database tests can run the real `migrate` command.
+COPY migrations ./migrations
+# The entrypoint, so the database tests run `migrate` through it exactly as the task does.
+COPY entrypoint.sh ./entrypoint.sh
+# The tests themselves. Without them `docker run` of this stage reports "no tests ran".
 COPY tests ./tests
+# The non-root user created above, so a test that only passes as root fails here.
 USER 10001
+# `docker run` of this stage runs the suite.
 CMD ["python", "-m", "pytest"]
 
 
@@ -102,6 +119,9 @@ WORKDIR /srv
 # Owned by root and not writable by the runtime user: the application has no reason to modify its
 # own code, and a process that cannot write here cannot be tricked into persisting anything here.
 COPY app ./app
+# The revisions the entrypoint's `migrate` command applies. Same image as the code, so the migration
+# and the code it serves are always the same build (P-XCT-19). Without it `migrate` finds nothing.
+COPY migrations ./migrations
 # 0555 = executable and read-only for everyone. Without the exec bit the container fails at start
 # with "permission denied"; without read-only, the runtime user could rewrite its own entrypoint.
 COPY --chmod=0555 entrypoint.sh /usr/local/bin/frontrow-entrypoint

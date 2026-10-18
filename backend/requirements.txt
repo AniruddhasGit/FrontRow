@@ -1,9 +1,18 @@
 # Runtime dependencies of the API image. Exact pins: an unpinned install builds a different image
 # on a different day, and "it worked last week" stops being a statement about the same code.
-# Every entry is implied by SRC-002 §4 (Python 3.12 + FastAPI, PostgreSQL, Redis). Nothing else may
-# be added without asking the client (SRC-002 §13.1).
+# Every entry is implied by SRC-002 §4 (Python 3.12 + FastAPI, PostgreSQL, Redis, Alembic, JWT auth).
+# Nothing else may be added without asking the client (SRC-002 §13.1).
 fastapi==0.143.3
 uvicorn==0.54.0
 pydantic-settings==2.16.0
 redis==8.1.0
 psycopg[binary]==3.3.6
+# Phase 2. The ORM/query layer Alembic is built on; [asyncio] pulls greenlet, which the async engine
+# needs. Driver stays psycopg 3 (above) in both sync (migrations) and async (API) mode - one driver.
+sqlalchemy[asyncio]==2.1.5
+# SRC-002 §4.7 names Alembic for migrations. Run ONLY by the entrypoint's `migrate` command.
+alembic==1.20.0
+# SRC-002 §4.8 "own email + password with JWT"; P-ACC-05 HS256 session token.
+pyjwt==2.15.1
+# P-XCT-06 / P-ACC-03 / FR-ADR-050 name bcrypt for password hashing.
+bcrypt==5.0.0

@@ -3,7 +3,7 @@
 > Zone C specification (`SRC-002 §6.3.3`). What to build, not how. Every claim about AWS behaviour is
 > **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - One internet-facing **Application Load Balancer** across the two public subnets, in the load
   balancer security group.
@@ -16,7 +16,7 @@
   are public by design and return nothing sensitive (PRD `P-XCT-10`). The target group's own health
   checks do not need a listener rule; they go straight to the target.
 
-## 2. What the application expects
+## What the application expects
 
 | Target group | Health check path | Healthy | Unhealthy |
 |---|---|---|---|
@@ -51,11 +51,16 @@ If the cache outlives the threshold window, the load balancer acts on stale answ
 503 is read as a timeout instead.
 
 **Deregistration delay** runs **before** ECS sends SIGTERM, so it is not inside the stop timeout
-(`P1_TASK_DEFINITIONS.md` §2). The stricter safe bound `ECS stop timeout > deregistration delay + 20`
+(`P1_TASK_DEFINITIONS.md` *What the application expects*). The stricter safe bound `ECS stop timeout > deregistration delay + 20`
 still needs it below about 100 s, because the stop timeout is capped at about 120 s. Its 300 s default
 fails that bound. *(reasoned, not observed)*
 
-## 3. Acceptance criteria
+**Which check goes where, in one line:** the load balancer's target group health check calls
+`/health/ready`; the container-level restart check calls `/health/live`. They are different on
+purpose, and reversing them turns a recoverable outage into a restart loop: a database blip then fails
+the restart check, every container is killed, and a restart cannot fix the database. *(reasoned, not observed)*
+
+## Acceptance criteria
 
 1. The api target group's health check path is exactly `/health/ready`, on the traffic port, with a
    success code of 200.
@@ -68,7 +73,7 @@ fails that bound. *(reasoned, not observed)*
 6. The interval, unhealthy threshold, timeout and deregistration delay are written in the prep queue,
    and they satisfy both inequalities above.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **Pointing the api health check at `/health/live` to make it go green.** It will go green, and it will
   stay green while the database is unreachable, so the load balancer sends every customer to an

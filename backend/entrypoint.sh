@@ -17,34 +17,49 @@ set -eu
 # and land in CloudWatch in the same shape as the application's. The request id is 8 hex characters
 # from /dev/urandom, the same format the application generates.
 log() {
+  # 4 random bytes as 8 hex characters. Without a fresh one per line, two entrypoint lines share an id.
   rid=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+  # The JSON line itself, in a fixed format, so CloudWatch can parse it like the application's lines.
   printf '{"timestamp":"%s","level":"%s","logger":"entrypoint","message":"%s","request_id":"%s","service":"api","instance_id":null}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$1" "$2" "$rid"
+# End of log().
 }
 
+# Dispatch on the command; with none given, start the API (the image's default CMD is `api`).
 case "${1:-api}" in
+  # The API server.
   api)
     # `exec` REPLACES this shell with Python, so Python becomes PID 1 and receives SIGTERM directly.
     # Without exec, the shell is PID 1, it does not forward SIGTERM, the app never drains, and ECS
     # SIGKILLs it after the stop timeout - mid-request, with no lock release.
     #
-    # NOTHING may be added above this line that touches the database. In particular never
-    # `alembic upgrade head && exec ...`: that is "migrations on boot", and two tasks starting
-    # together then race on the same schema change (Alembic takes no lock - GOTCHAS.md).
+    # NOTHING may be added above this line that touches the database. In particular never chain the
+    # migrate command in front of this exec: that is "migrations on boot", and two tasks starting
+    # together then race on the same schema change (the migration tool takes no lock - GOTCHAS.md).
     exec python -m app api
+    # End of the api branch (never reached: exec replaced the shell).
     ;;
+  # The one-off migration command, run by hand before a service update. Never on boot.
   migrate)
-    # Phase 1 has no migrations (no data model exists yet - SRC-002 §12.2). This branch exists now so
-    # the command is already a separate, explicit path when Phase 2 adds `alembic upgrade head` here.
-    # Exits 0 because nothing was asked of it that it failed to do - and it says so.
-    log "INFO" "migrate: no migrations exist in Phase 1; nothing was applied"
-    exit 0
+    # Applies every pending revision in ONE transaction, then EXITS with the migration's status: `exec`
+    # makes alembic PID 1, so its exit code is the task's exit code. Step 3 of the deploy order reads
+    # that code; without exec a failed migration could still end in exit 0.
+    # DATABASE_URL must be the OWNER's connection string here (frontrow_owner), not the app's.
+    # Paths are relative to /srv, the image's WORKDIR, where migrations/ is copied.
+    log "INFO" "migrate: applying alembic revisions up to head"
+    # exec, so the migration tool's exit status is the task's exit status.
+    exec alembic -c migrations/alembic.ini upgrade head
+    # End of the migrate branch (never reached: exec replaced the shell).
     ;;
+  # Anything else is a typo in the task definition's command.
   *)
     # Without this, a typo in the task definition's command (e.g. "API") would fall through and the
     # task would exit with no explanation. EX_USAGE. The command is reduced to safe characters first:
     # a quote inside it would break the JSON line.
     log "CRITICAL" "unknown command '$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')'; expected: api | migrate"
+    # EX_USAGE: distinct from a crash (1) and a bad configuration (78) in the stopped-task reason.
     exit 64
+    # End of the unknown-command branch.
     ;;
+# End of the dispatch.
 esac

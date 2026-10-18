@@ -3,7 +3,7 @@
 > Zone C specification (`SRC-002 §6.3.2`). What to build, not how. Every claim about AWS behaviour is
 > **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - **An api task definition**: one container from the api image, default command (`api`).
 - **A frontend task definition**: one container from the frontend image.
@@ -18,7 +18,7 @@
 Network mode: **bridge** on the instance. `awsvpc` gives each task its own network interface, and a
 `t3.micro` has too few to place three services (`04_deployment.md`, AWS-04-06).
 
-## 2. What the application expects
+## What the application expects
 
 | Setting | api | frontend | Why |
 |---|---|---|---|
@@ -51,10 +51,17 @@ observed), is `stop timeout > deregistration delay + 20`. The container `stopTim
 capped at about 120 s (from AWS documentation, not observed), so meeting the strict bound means
 lowering the deregistration delay below about 100 s.
 
+**The rule to build to, stated once:**
+the ECS stop timeout must exceed the deregistration delay plus SHUTDOWN_DRAIN_TIMEOUT_SECONDS.
+Get it wrong and nothing reports an error, because
+SIGKILL arriving during the drain skips the release:
+in-flight requests are cut off now, and from Phase 4 this instance's seat holds stay locked until their
+180-second expiry instead of being released. *(reasoned, not observed)*
+
 Measured locally: SIGTERM 1 s into a 5-second request. The request completed with HTTP 200, the
 process exited **0**, and the shutdown took **3742 ms** from signal to exit. An idle api stopped in ~200 ms.
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 1. Both task definitions exist. The api's names container port 8000, the frontend's 8080.
 2. Both set a hard memory limit, and the api's limit sits within the architecture's budget unless you
@@ -68,7 +75,7 @@ process exited **0**, and the shutdown took **3742 ms** from signal to exit. An 
    parameter, and the api task definition does not reference that parameter (prep-queue row 24).
 7. Stopping a running api task gives exit code **0**, and its log stream ends with `api stopped cleanly`.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **Health check on `/health/ready`.** Every RDS or Redis blip then restarts the api container, and a
   restart loop replaces a ten-second outage.

@@ -1,0 +1,73 @@
+/* The shell (SCR-XCT-05). Every value is a design token (FR-ADR-044); no hex code appears here. */
+.fr-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.fr-skip {
+  position: absolute;
+  left: var(--fr-space-4);
+  top: calc(-1 * var(--fr-space-7));
+}
+.fr-skip:focus {
+  top: var(--fr-space-2);
+}
+/* Not sticky: a sticky header steals height from a 220-seat map on a 375px phone (P-XCT-25). */
+.fr-header {
+  background: var(--fr-surface-raised);
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule);
+  padding: var(--fr-space-3);
+}
+@media (min-width: 40rem) {
+  .fr-header {
+    padding: var(--fr-space-4);
+  }
+}
+.fr-header-inner {
+  max-width: var(--fr-page-max);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--fr-space-4);
+}
+.fr-brand {
+  font-family: var(--fr-font-display);
+  font-weight: var(--fr-weight-black);
+  letter-spacing: var(--fr-track-tight);
+  color: var(--fr-ink-strong);
+  text-decoration: none;
+  min-height: var(--fr-tap-min);
+  display: inline-flex;
+  align-items: center;
+}
+.fr-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-4);
+  font-size: var(--fr-text-sm);
+}
+.fr-nav a {
+  color: var(--fr-ink);
+}
+.fr-account {
+  margin-left: auto;
+}
+.fr-main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--fr-page-max);
+  margin: 0 auto;
+  padding: var(--fr-space-6) var(--fr-space-4);
+  box-sizing: border-box;
+}
+.fr-footer {
+  padding: var(--fr-space-4);
+  background: var(--fr-surface-base);
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-xs);
+  border-top: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+.fr-footer p {
+  margin: 0 auto;
+  max-width: var(--fr-page-max);
+}

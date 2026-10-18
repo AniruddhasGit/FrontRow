@@ -1,6 +1,8 @@
-"""Application factory. Phase 1: health endpoints, request ids, JSON logs, the shutdown hook list.
+"""Application factory: middleware, error handlers, the database engine, and every router.
 
-Nothing else (SRC-002 §12.2). No data model, no auth, no movie route.
+Every router module is registered HERE, once, so feature lanes add routes to their own module and
+never edit this file. Each router carries its own authorisation dependency (app/api/deps.py).
+NO MIGRATION RUNS FROM HERE, at import or in the lifespan (SRC-002 §7.8).
 """
 
 from __future__ import annotations
@@ -10,11 +12,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.api import admin, auth, auth_session, browse, manager
+from app.api.errors import install_error_handlers
 from app.api.health import router as health_router
 from app.core.clock import Clock, SystemClock
 from app.core.config import Settings
-from app.core.errors import install_error_handlers
+from app.db import make_engine
 from app.core.readiness import Probe, Readiness, postgres_probe, redis_probe
 from app.core.request_context import RequestContextMiddleware
 
@@ -41,15 +46,23 @@ def _real_redis_client(settings: Settings):
     )
 
 
-def create_app(settings: Settings, clock: Clock | None = None, probes: list[Probe] | None = None) -> FastAPI:
+def create_app(
+    settings: Settings,
+    clock: Clock | None = None,
+    probes: list[Probe] | None = None,
+    engine: AsyncEngine | None = None,
+) -> FastAPI:
     clock = clock or SystemClock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        redis_client = None
+        # The one Redis client of the process: the readiness probe and the request path (the rate
+        # limiter, app/core/ratelimit.py) share it. Creating it opens no connection, so an unreachable
+        # Redis never stops boot - the first command that needs it fails, and the limiter answers 503.
+        redis_client = _real_redis_client(settings)
+        app.state.redis = redis_client
         active_probes = probes
         if active_probes is None:
-            redis_client = _real_redis_client(settings)
             active_probes = [
                 postgres_probe(settings.DATABASE_URL, settings.DB_CONNECT_TIMEOUT_MS),
                 # Connect + command: a probe on a fresh connection pays both, so a smaller bound would
@@ -58,6 +71,11 @@ def create_app(settings: Settings, clock: Clock | None = None, probes: list[Prob
             ]
         # Without this, /health/ready raises AttributeError and answers 500 instead of 503.
         app.state.readiness = Readiness(active_probes, ttl_s=settings.READINESS_CACHE_TTL_SECONDS, clock=clock)
+        # The request-path engine. Creating it opens no connection; the first query does. So an
+        # unreachable or not-yet-migrated database never stops boot: /health/live stays 200 and the
+        # first query that needs a missing column answers 500 (P-XCT-19 exception 1).
+        owned_engine = engine is None
+        app.state.db_engine = engine if engine is not None else make_engine(settings)
         # The resolved configuration, once, with NO secret values: the two URLs are omitted entirely.
         log.info(
             "api started",
@@ -80,6 +98,8 @@ def create_app(settings: Settings, clock: Clock | None = None, probes: list[Prob
             if redis_client is not None:
                 # Last, because a Phase 4 hook releases locks THROUGH this client.
                 await redis_client.aclose()
+            if owned_engine:
+                await app.state.db_engine.dispose()
 
     app = FastAPI(
         title="FrontRow API",
@@ -95,9 +115,16 @@ def create_app(settings: Settings, clock: Clock | None = None, probes: list[Prob
     # seat holds" here. A failing hook is logged and does not stop the next one, because expiry - not
     # release - is the correctness guarantee.
     app.state.shutdown_hooks: list[ShutdownHook] = []
+    # Read by app/api/deps.py: the dependencies take settings and the clock from here, so a test that
+    # builds the app with a FakeClock moves every decision-bearing instant (sessions, audit rows).
+    app.state.settings = settings
+    app.state.clock = clock
     app.add_middleware(RequestContextMiddleware, clock=clock)
     install_error_handlers(app)
     app.include_router(health_router)
+    # One line per router module, each with its own prefix and authorisation dependency (deps.py).
+    for module in (browse, auth, auth_session, admin, manager):
+        app.include_router(module.router)
     return app
 
 

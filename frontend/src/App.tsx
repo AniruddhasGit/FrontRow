@@ -1,32 +1,32 @@
-// Phase 1 (SRC-002 §12.2): a served page proving the static container works. Nothing else - no
-// movie list, no sign-in, no API call. Browsing arrives in Phase 3.
+// The app: the shell around whichever screen the path selects. Feature screens live in
+// src/features/<feature>/ and register their paths in that feature's routes.tsx.
+import { Layout } from "./layout";
+import { Outlet, allRoutes, type AppRoute } from "./router";
+
+const home: AppRoute = {
+  path: "/",
+  // Browsing (the movie list) arrives with the browse lane, Phase 3.
+  render: () => (
+    <>
+      <p className="eyebrow">FrontRow</p>
+      <h1>Now showing</h1>
+      <p className="lede">The movie list arrives in Phase 3.</p>
+    </>
+  ),
+};
+
+function NotFound() {
+  return (
+    <>
+      <h1>That page does not exist.</h1>
+    </>
+  );
+}
+
 export function App() {
   return (
-    <main className="shell">
-      <p className="eyebrow">FrontRow</p>
-      <h1>The skeleton is running.</h1>
-      <p className="lede">
-        This page is static files served by a small nginx container. There is nothing to book yet:
-        Phase 1 exists so the deployment pipeline can be learned against something trivial.
-      </p>
-      <dl className="facts">
-        <div>
-          <dt>Frontend</dt>
-          <dd>static, served by nginx</dd>
-        </div>
-        <div>
-          <dt>API liveness</dt>
-          <dd>
-            <code>/health/live</code>
-          </dd>
-        </div>
-        <div>
-          <dt>API readiness</dt>
-          <dd>
-            <code>/health/ready</code>
-          </dd>
-        </div>
-      </dl>
-    </main>
+    <Layout>
+      <Outlet routes={allRoutes(home)} notFound={<NotFound />} />
+    </Layout>
   );
 }

@@ -3,14 +3,14 @@
 > Zone C specification (`SRC-002 §6.3.2`). What to build, not how. Every claim about AWS behaviour is
 > **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - **Two services** in the cluster, **api** and **frontend**, each with a desired count of **1**, each
   attached to its own target group. A third, the worker, comes in Phase 5 (`SRC-002 §7.2`: the
   processes scale independently, so they are separate services).
 - A **deployment configuration** for each that can complete on a single `t3.micro`.
 
-## 2. What the application expects
+## What the application expects
 
 - **The application is stateless** (`SRC-002 §7.3`). Killing a task mid-request corrupts nothing.
   Measured locally: no file is written; the root filesystem is read-only.
@@ -24,7 +24,7 @@
 - **Graceful stop on every deploy**: SIGTERM, drain (≤ 20 s), exit 0, as proved locally. This only
   holds if the shutdown ordering in `P1_TASK_DEFINITIONS.md` is satisfied.
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 1. Two services exist, each with desired 1 and running 1.
 2. Each is attached to its target group (api → api, frontend → frontend), on the right container port.
@@ -33,7 +33,7 @@
 4. The deployment configuration values are written in the prep queue, with the downtime window you
    accept stated next to them.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **Default deployment settings on one host.** The deploy shows "in progress" indefinitely. Nothing
   fails, so nothing alerts.

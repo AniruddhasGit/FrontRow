@@ -1,0 +1,7 @@
+# S-XCT-46 — Done
+
+Lane `p2-seed-scope`, workflow wl883ib1u, 2026-10-18. Verifier verdict: PASS_WITH_DEFECTS; this row was not refuted.
+
+**Evidence:** backend/tests/xct/test_s_xct_46.py (9 tests, all pass): audit_log 0 after a fresh seed, 0 null actors, 0 users off SEED_EMAIL_DOMAIN, 0 non-DEMO movies; NOTICE printed exactly once and before the first `INSERT INTO showtime` in the captured SQL trace, with nothing printed earlier; first INSERT order language/certification/genre/format < screen < seat < movie < showtime; no input(/sys.stdin, and a subprocess run with stdin=DEVNULL exits 0 with 720 showtimes; with insert_vocabulary patched to a no-op the seed exits non-zero, movie count is 0 and every table is unchanged; a second run leaves all 22 table counts unchanged and keeps a hand-changed password_hash; --help lists --wipe-and-reseed; the wipe sentence, 'Settle seat labelling...' and '409 LAYOUT_FROZEN' are in docs/30 Deployment/P2_SEED_TASK.md; PATCH label, PATCH category and DELETE on a seeded seat each return 409 LAYOUT_FROZEN; a sweep of all 12 mounted /api/admin POST/PATCH/PUT/DELETE routes adds exactly +1 audit_log row each, and the walk fails if a write route has no request in the sweep -> `.........` in `102 passed`. Red-proofed: a doubled NOTICE and a non-idempotent showtime pass each turned their test red.
+
+**Note:** --wipe-and-reseed is also exercised (owner URL; edited row gone; 11,003 bookings again).

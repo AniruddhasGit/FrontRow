@@ -2,7 +2,7 @@
 
 > Zone C specification. What to build, not how. Every claim about AWS behaviour is **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - A **log group** for this project, and the containers' stdout and stderr sent to it through the
   `awslogs` log driver in each task definition.
@@ -11,7 +11,7 @@
   therefore yours. What a shorter one loses: the ability to answer "what happened to this booking"
   for a booking older than the retention.
 
-## 2. What the application expects
+## What the application expects
 
 - **Without this item, every log line the application writes is lost when the container stops.** The
   application writes only to stdout (`SRC-002 §5.4.5`). It writes no file, by design and as proved
@@ -28,7 +28,12 @@
 - The frontend's nginx writes one JSON line per request on stdout. Its rare error lines on stderr are
   plain text and cannot be made JSON.
 
-## 3. Acceptance criteria
+**`LOG_LEVEL=DEBUG` is refused for the deployed environment.** Set `LOG_LEVEL=INFO` (the default) in
+the task definition. DEBUG multiplies the log volume against the 5 GB CloudWatch Logs allowance and
+risks writing request detail that INFO never carries. No code path raises or lowers the level by
+environment; the task definition's value is the only switch, so it is the one to get right.
+
+## Acceptance criteria
 
 1. The log group exists, belongs to this project, and has a retention period that is not "never expire".
 2. Both task definitions use the `awslogs` driver pointed at it.
@@ -38,7 +43,7 @@
 5. After a deliberate config failure (index acceptance item 9), the log stream holds the
    `configuration invalid` line.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **The execution role cannot create the log stream.** The task fails at start, and because logging
   is what failed, there is no log explaining why. The reason is in the stopped task's

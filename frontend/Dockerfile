@@ -25,6 +25,7 @@ RUN npm ci --no-audit --no-fund
 # Without any one of these files the build fails: tsc needs tsconfig.json, vite needs its config and
 # the index.html entry point, and src is the application.
 COPY tsconfig.json vite.config.ts index.html ./
+# The application source. Without it the build has nothing to compile.
 COPY src ./src
 # Type-checks and builds. A type error fails the image build instead of shipping.
 RUN npm run build

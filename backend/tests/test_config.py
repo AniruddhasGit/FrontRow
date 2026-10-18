@@ -13,6 +13,8 @@ import pytest
 
 from app.core.config import ConfigError, load_settings
 
+from .conftest import VALID_ENV
+
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -84,8 +86,8 @@ def test_error_message_never_echoes_the_value(valid_env):
 
 def test_process_exits_nonzero_with_json_line_naming_the_variable(tmp_path):
     """The real boot path, as a subprocess: no DATABASE_URL -> exit 78 and one JSON line on stdout."""
-    env = {k: v for k, v in os.environ.items() if k not in ("DATABASE_URL", "REDIS_URL")}
-    env["REDIS_URL"] = "redis://cache.invalid:6379/0"
+    env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
+    env.update({k: v for k, v in VALID_ENV.items() if k != "DATABASE_URL"})
     env["PYTHONPATH"] = str(BACKEND_DIR)
     proc = subprocess.run(
         [sys.executable, "-m", "app", "api"],
@@ -119,3 +121,12 @@ def test_unknown_command_is_one_json_line_on_stdout_and_exits_64(tmp_path):
     assert lines[0]["command"] == "API"
     assert lines[0]["request_id"]
     assert proc.stderr == ""
+
+
+@pytest.mark.parametrize("value", ["CHANGE_ME_LONG_RANDOM_SIGNING_KEY", "short-secret"])
+def test_jwt_secret_refuses_the_published_placeholder_and_a_short_key(valid_env, value):
+    """A deployment copied from .env.example would sign sessions with a key anyone can read."""
+    valid_env.setenv("JWT_SECRET", value)
+    with pytest.raises(ConfigError) as exc:
+        load_settings()
+    assert "JWT_SECRET" in str(exc.value)

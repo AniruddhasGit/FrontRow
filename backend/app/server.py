@@ -29,7 +29,7 @@ from types import FrameType
 import uvicorn
 
 from app.core.clock import SystemClock
-from app.core.config import ConfigError, Settings, load_settings
+from app.core.config import ConfigError, Settings, load_settings, redacted
 from app.core.logging import configure_logging, emit_fatal, new_request_id
 
 log = logging.getLogger("app.lifecycle")
@@ -117,6 +117,9 @@ def main() -> int:
         emit_fatal(
             f"configuration invalid, refusing to start: {exc}",
             clock.now,
+            # stderr as well as stdout: the operator running the container by hand reads stderr, and
+            # S-XCT-29 / S-SCP-03 require the variable's name there. stdout keeps the JSON-lines rule.
+            also_stderr=True,
             missing_or_invalid=exc.names,
         )
         return EXIT_CONFIG
@@ -125,6 +128,10 @@ def main() -> int:
     # registry on it.)
     instance_id = new_request_id()
     configure_logging(level=settings.LOG_LEVEL, service="api", instance_id=instance_id, now=clock.now)
+    # The resolved configuration, exactly once per boot, so an operator can read what the process
+    # actually loaded (PRD S7.9). Every value whose NAME matches SECRET|PASSWORD|TOKEN|URL is
+    # [REDACTED] at the source; PAYMENT_PROVIDER is printed on purpose.
+    log.info("configuration resolved", extra={"settings": redacted(settings)})
     from app.main import create_app  # after logging, so import-time log lines are JSON too
 
     return serve(settings, create_app(settings, clock=clock))

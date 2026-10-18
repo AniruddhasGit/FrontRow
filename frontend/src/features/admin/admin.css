@@ -1,0 +1,19 @@
+/* Admin screens. Tokens only (docs/05 B DesignSystem); no raw colour. */
+.admin { display: grid; gap: var(--fr-space-4); max-width: var(--fr-page-max); }
+.admin-form { display: grid; gap: var(--fr-space-3); padding: var(--fr-space-4); background: var(--fr-surface-raised);
+  border: var(--fr-stroke-hair) solid var(--fr-rule); border-radius: var(--fr-radius-md); }
+.admin-form label { display: grid; gap: var(--fr-space-1); color: var(--fr-ink); }
+.admin-form input, .admin-form select { font: inherit; padding: var(--fr-space-2); border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-radius: var(--fr-radius-sm); background: var(--fr-surface-base); color: var(--fr-ink); }
+.admin-form button, .admin button { font: inherit; justify-self: start; padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-sm); border: var(--fr-stroke-hair) solid var(--fr-control-edge); background: var(--fr-surface-base);
+  color: var(--fr-ink-strong); cursor: pointer; }
+.admin-form button[type="submit"] { background: var(--fr-surface-accent); color: var(--fr-ink-on-accent); }
+.admin button:focus-visible, .admin input:focus-visible, .admin select:focus-visible { outline: var(--fr-stroke-bold) solid var(--fr-focus-ring); }
+.admin-list { display: grid; gap: var(--fr-space-2); padding: 0; list-style: none; }
+.admin-link { border: 0 !important; background: none !important; padding: 0 !important; text-decoration: underline; }
+.admin-banner { padding: var(--fr-space-3); background: var(--fr-surface-notice); color: var(--fr-ink-on-notice); border-radius: var(--fr-radius-sm); }
+.admin-help { color: var(--fr-ink-muted); font-size: var(--fr-text-sm); }
+.admin-note { color: var(--fr-ink-muted); font-size: var(--fr-text-sm); }
+.admin-editor { display: grid; gap: var(--fr-space-3); margin-top: var(--fr-space-3); }
+[role="alert"] { color: var(--fr-danger-ink); }

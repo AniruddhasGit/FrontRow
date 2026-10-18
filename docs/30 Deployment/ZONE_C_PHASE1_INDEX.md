@@ -1,4 +1,4 @@
-# Zone C, Phase 1: what to build in AWS, in what order, and how you will know it works
+# Zone C, Phase 1: what to build on AWS, in what order, and how you will know it works
 
 > **Specifications only** (`SRC-002 §6.4`, `§6.5`). Each file says what to build, what the application
 > expects of it, how to check it, and the two or three mistakes people usually make. **None of them
@@ -6,7 +6,7 @@
 > are yours to write and to get wrong.
 >
 > **The build session has never seen this application run in AWS.** Every sentence here about how an
-> AWS service behaves is **reasoned, not observed**. What *is* observed is the application's side,
+> AWS service behaves is **(reasoned, not observed)**. What *is* observed is the application's side,
 > measured locally on 2026-10-18 (GOAL_14 gate). Those figures are quoted, and labelled as local
 > measurements.
 >
@@ -38,7 +38,7 @@ The worker is not part of Phase 1. It arrives in Phase 5.
 | 9 | [`P1_ECS_SERVICES.md`](P1_ECS_SERVICES.md) | 18 | two services, and what a deploy costs |
 | 10 | [`P1_TASK_COUNT_ALARM.md`](P1_TASK_COUNT_ALARM.md) | 13 | the one alarm, and who it emails |
 
-## Read this before you start: Phase 1 in AWS cannot pass readiness without a database and a Redis
+## Read this before you start: Phase 1 on AWS cannot pass readiness without a database and a Redis
 
 `/health/ready` returns 200 only when PostgreSQL answers `SELECT 1` **and** Redis answers `PING`
 (`SRC-002 §7.4`). The load balancer's target group health check must point at `/health/ready`. So:
@@ -66,7 +66,7 @@ Either way, **the frontend target becomes healthy on its own**. It has no depend
 
 ## Phase 1 acceptance, end to end
 
-Phase 1 in AWS is done when all of these hold. The build session checks each one with read-only
+Phase 1 on AWS is done when all of these hold. The build session checks each one with read-only
 `describe` / `list` / `get` calls and records the output.
 
 1. Both images are in ECR, tagged with something other than only `latest`.
@@ -94,7 +94,7 @@ Phase 1 in AWS is done when all of these hold. The build session checks each one
 | health check, frontend | `GET /index.html` (any static file) | `P1_ALB.md` |
 | SIGTERM to drain | up to `SHUTDOWN_DRAIN_TIMEOUT_SECONDS` = 20 s | `P1_TASK_DEFINITIONS.md`, `P1_ALB.md` |
 | readiness cache | `READINESS_CACHE_TTL_SECONDS` = 3 s | `P1_ALB.md` |
-| required variables | `DATABASE_URL`, `REDIS_URL`: exit 78 if missing | `P1_SSM_PARAMETERS.md` |
+| required variables | the thirteen with no default (`DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `QUEUE_URL`, `COOKIE_SECURE`, ...): exit 78 if any is missing, and 78 if any of thirteen cross-field checks fails | `P1_SSM_PARAMETERS.md` |
 | logs | JSON on stdout. The app never writes a file | `P1_CLOUDWATCH_LOGS.md` |
 | filesystem | read-only root works. Measured locally: 0 paths changed | `P1_TASK_DEFINITIONS.md` |
 | outbound AWS calls made by the app in Phase 1 | **none**. The app calls no AWS API until Phase 5 | `P1_IAM_ROLES.md` |

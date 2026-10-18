@@ -93,7 +93,7 @@ def test_ready_200_when_both_dependencies_answer(settings, clock, log_capture):
     with client_for(settings, clock, [ok_probe("postgres"), ok_probe("redis")]) as c:
         r = c.get("/health/ready")
     assert r.status_code == 200
-    assert r.json() == {"status": "ready", "checks": {"postgres": "ok", "redis": "ok"}}
+    assert r.json() == {"status": "ready", "checks": {"postgres": "ok", "redis": "ok"}, "payment_provider": "simulated"}
 
 
 @pytest.mark.parametrize("down", ["postgres", "redis"])

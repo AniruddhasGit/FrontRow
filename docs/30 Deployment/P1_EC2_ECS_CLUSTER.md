@@ -3,13 +3,38 @@
 > Zone C specification. What to build, not how. Every claim about AWS behaviour is **reasoned, not observed**.
 > **Fargate and EKS are forbidden** (`SRC-002 §5.3`).
 
-## 1. What you need to build
+## Services this product uses
+
+The complete list (PRD `P-XCT-23`, `SRC-002 §4`, `SRC-003 OPEN-EMAIL-01`). Anything not on it needs the
+client's permission first.
+These are forbidden outright (`SRC-002 §5.3`): EKS, Fargate, NAT Gateway, Secrets Manager, Managed Grafana, OpenSearch.
+
+- ECS on EC2
+- Application Load Balancer
+- RDS PostgreSQL
+- ElastiCache Redis
+- SQS
+- SES
+- S3
+- SSM Parameter Store
+- ECR
+- CloudWatch Logs
+
+**Two of these have no local stand-in, on purpose.** Stated plainly:
+local development does not fully exercise the poster upload path without AWS credentials and does not exercise SES at all.
+`docker-compose.yml` runs
+PostgreSQL, Redis and (from Phase 5) ElasticMQ for SQS; there is no local S3 or mail imitation, because
+an imitation that behaves differently from the real service is a second thing to debug. The first real
+poster upload and the first real receipt therefore happen on the deployed environment.
+*(reasoned, not observed)*
+
+## What to build
 
 - An ECS **cluster** for this project, separate from `spendwise-cluster`.
 - **One EC2 `t3.micro`** running an ECS-optimised operating system image, in a public subnet with a
   public IPv4 address, with the container instance role (`P1_IAM_ROLES.md`), registered to that cluster.
 
-## 2. What the application expects
+## What the application expects
 
 **Memory: 1 GB on the whole host** (`SRC-002 §5.2.1`), shared with the OS, Docker and the ECS agent.
 Measured locally on 2026-10-18 at idle, on Docker Desktop, **not on a t3.micro**:
@@ -28,7 +53,7 @@ already holds SpendWise's `t3.micro` (stopped, as observed 2026-10-18). Running 
 twice the hours the free tier covers. The public IPv4 address is also billed hourly (prep-queue
 standing note). Both are reasoned, not observed.
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 1. The cluster exists and lists exactly one registered container instance, of type `t3.micro`.
 2. That instance reports its registered and remaining memory, and the agent is connected.
@@ -36,7 +61,7 @@ standing note). Both are reasoned, not observed.
    from `P1_NETWORK_SECURITY_GROUPS.md`.
 4. SpendWise's cluster and instance are unchanged.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **A plain Amazon Linux image instead of an ECS-optimised one.** The instance boots, but no agent
   registers it. The cluster shows zero container instances, and every task fails to place with

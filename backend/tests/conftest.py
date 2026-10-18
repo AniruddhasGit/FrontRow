@@ -13,23 +13,29 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-# Every variable the Phase 1 Settings class knows about. Tests clear all of them first so a value
-# exported on the machine running the tests can never leak into an assertion.
-PHASE1_VARS = (
-    "DATABASE_URL",
-    "REDIS_URL",
-    "LOG_LEVEL",
-    "API_PORT",
-    "DB_CONNECT_TIMEOUT_MS",
-    "REDIS_CONNECT_TIMEOUT_MS",
-    "REDIS_COMMAND_TIMEOUT_MS",
-    "SHUTDOWN_DRAIN_TIMEOUT_SECONDS",
-    "READINESS_CACHE_TTL_SECONDS",
-)
+# Every variable the Settings models declare. Tests clear all of them first so a value exported on
+# the machine running the tests can never leak into an assertion. Derived from the models, so a new
+# setting cannot be forgotten here.
+from app.core.config import SeedSettings, Settings  # noqa: E402
 
+PHASE1_VARS = tuple(Settings.model_fields) + tuple(SeedSettings.model_fields)
+
+# A complete, valid environment for the variables with no default (PRD S7.9). Every value is an
+# obvious test placeholder: .invalid hosts never resolve, and no value is a real credential.
 VALID_ENV = {
     "DATABASE_URL": "postgresql://user:pw@db.invalid:5432/frontrow",
     "REDIS_URL": "redis://cache.invalid:6379/0",
+    "QUEUE_URL": "http://queue.invalid:9324/000000000000/frontrow-receipts",
+    "JWT_SECRET": "test-only-signing-secret-not-a-real-one",
+    "PAYMENT_PROVIDER": "simulated",
+    "MAIL_PROVIDER": "stub",
+    "S3_BUCKET_NAME": "frontrow-posters-test",
+    "AWS_REGION": "ap-south-1",
+    "SES_SENDER_ADDRESS": "receipts@example.invalid",
+    "PUBLIC_BASE_URL": "http://localhost:8080",
+    "COOKIE_SECURE": "false",
+    "FORWARDED_ALLOW_IPS": "127.0.0.1",
+    "PAYMENT_SIMULATOR_FAIL_KEY_PREFIX": "test-fail-",
 }
 
 
@@ -92,3 +98,7 @@ def log_capture(clock: FakeClock):
     configure_logging(level="INFO", service="api", instance_id="test0001", now=clock.now, stream=cap.stream)
     yield cap
     logging.getLogger().handlers.clear()
+
+
+# Database fixtures for every lane (tests/dbkit.py). Imported here so pytest registers them.
+from .dbkit import anyio_backend, migrated_db  # noqa: E402,F401

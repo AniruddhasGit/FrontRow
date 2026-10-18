@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from app.core.clock import Clock
-from app.core.errors import envelope
+from app.api.errors import envelope
 from app.core.logging import bind_request_id, new_request_id
 
 log = logging.getLogger("app.request")
@@ -56,6 +56,10 @@ class RequestContextMiddleware:
                 state["status"] = message["status"]
                 state["started"] = True
                 headers = [h for h in message.get("headers", []) if h[0].lower() != b"x-request-id"]
+                # The contract's content type is `application/json; charset=utf-8` on every JSON
+                # response (contract.json conventions). Starlette adds a charset only to text/* types,
+                # so it is added here once rather than in every response class.
+                headers = [(k, b"application/json; charset=utf-8") if k.lower() == b"content-type" and v == b"application/json" else (k, v) for k, v in headers]
                 headers.append((b"x-request-id", request_id.encode()))
                 message = {**message, "headers": headers}
             await send(message)

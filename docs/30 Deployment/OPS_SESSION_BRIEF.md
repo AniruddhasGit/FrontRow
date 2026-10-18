@@ -28,7 +28,7 @@ writes the application code at the same time (see `COORDINATION.md`).
   so say this before FrontRow's EC2 or RDS is started.
 - **SES is in the sandbox** (`ProductionAccessEnabled=False`, observed 2026-10-18).
 - **Forbidden** (`SRC-002 §5.3`): EKS, Fargate, NAT Gateway, Secrets Manager, Managed Grafana,
-  OpenSearch. If one appears in their account for this project, say so right away.
+  OpenSearch (all forbidden). If one appears in their account for this project, say so right away.
 - **Money.** Before any step that can cost money beyond the free tier, say what it costs and what
   stops the cost. Examples: a second EC2 instance, a public IPv4 address, RDS without the free-tier
   class, ElastiCache, an ALB running all month.

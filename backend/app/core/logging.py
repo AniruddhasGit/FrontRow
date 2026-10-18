@@ -156,7 +156,7 @@ def configure_logging(
     logging.getLogger("uvicorn.access").disabled = True
 
 
-def emit_fatal(message: str, now: Callable[[], datetime], **fields: Any) -> None:
+def emit_fatal(message: str, now: Callable[[], datetime], also_stderr: bool = False, **fields: Any) -> None:
     """One JSON line for a failure that happens BEFORE logging can be configured (bad config)."""
     ts = now().astimezone(timezone.utc)
     line = {
@@ -169,5 +169,11 @@ def emit_fatal(message: str, now: Callable[[], datetime], **fields: Any) -> None
         "instance_id": None,
         **fields,
     }
-    sys.stdout.write(json.dumps(line, default=str, separators=(",", ":")) + "\n")
+    text = json.dumps(line, default=str, separators=(",", ":")) + "\n"
+    sys.stdout.write(text)
     sys.stdout.flush()
+    # The same line on stderr when the caller asks: a person running the container by hand reads
+    # stderr, and the config-failure path must name the variable there (S-XCT-29, S-SCP-03).
+    if also_stderr:
+        sys.stderr.write(text)
+        sys.stderr.flush()

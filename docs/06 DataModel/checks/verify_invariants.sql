@@ -558,7 +558,9 @@ BEGIN
      AND has_table_privilege('frontrow_app', c.oid, p.priv)
      AND NOT coalesce((want -> c.relname::text) ? p.priv, false);
   IF txt IS NULL AND (SELECT count(*) FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace
-                       WHERE s.nspname = 'public' AND c.relkind = 'r') = (SELECT count(*) FROM jsonb_object_keys(want)) THEN
+                       -- alembic_version: the migration tool's own table, which exists only when the
+                       -- schema arrived through `migrate` (observed on Neon, 2026-10-18). Owner-only.
+                       WHERE s.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'alembic_version') = (SELECT count(*) FROM jsonb_object_keys(want)) THEN
        RAISE NOTICE 'PASS A4  frontrow_app holds no table privilege beyond the derived matrix, on all % tables', (SELECT count(*) FROM jsonb_object_keys(want));
   ELSE failures := failures + 1;
        RAISE NOTICE 'FAIL A4  frontrow_app holds privileges beyond the least-privilege matrix, or the table count differs from it: %', coalesce(txt, '(table count mismatch)');

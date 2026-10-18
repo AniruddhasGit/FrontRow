@@ -14,6 +14,8 @@ from app.core.readiness import Readiness, postgres_probe, redis_probe
 from app.main import _real_redis_client
 from app.core.config import Settings
 
+from .conftest import VALID_ENV
+
 CLOSED = "127.0.0.1:1"  # port 1: nothing listens there inside the test container
 
 
@@ -24,7 +26,7 @@ def test_real_postgres_probe_reports_unreachable(log_capture):
 
 
 def test_real_redis_probe_reports_unreachable(clean_env, log_capture):
-    settings = Settings(DATABASE_URL="postgresql://u:pw@db/x", REDIS_URL=f"redis://{CLOSED}/0")
+    settings = Settings(**{**VALID_ENV, "DATABASE_URL": "postgresql://u:pw@db/x", "REDIS_URL": f"redis://{CLOSED}/0"})
 
     async def scenario():
         client = _real_redis_client(settings)

@@ -2,7 +2,7 @@
 
 > Zone C specification. What to build, not how. Every claim about AWS behaviour is **reasoned, not observed**.
 
-## 1. What you need to build
+## What to build
 
 - **One private repository per image**: one for the api image, one for the frontend image. A worker
   image is not needed. From Phase 5 the worker runs from the **api image** with a different command.
@@ -11,7 +11,7 @@
 - Tags that identify a build. The commit SHA is the usual choice. `latest` alone does not, because the
   same tag then means different code on different days.
 
-## 2. What the application expects
+## What the application expects
 
 | Image | Built with | `docker images` (local, containerd store) | Compressed content (what a registry stores) |
 |---|---|---|---|
@@ -26,14 +26,14 @@ image size after your first push, and write the real number into the prep queue.
 The images are built for **linux/amd64**, which is what a `t3.micro` runs. If you build on an Apple
 Silicon machine, the default build is `arm64`, and the task fails at start with `exec format error`.
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 1. Two repositories exist, named for this project, separate from SpendWise's `spendwise` repository.
 2. Each holds at least one image whose tag is not only `latest`.
 3. A rule exists that stops storage growing past 500 MB without you remembering to delete things.
 4. The image size ECR reports for the api image is written into the prep queue's "What exists" column.
 
-## 4. Common mistakes
+## Common mistakes
 
 - **Pushing an `arm64` image from a laptop.** The image pulls, the container starts, and it exits
   immediately with `exec format error`. Nothing in ECR warns you.
