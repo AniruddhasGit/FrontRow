@@ -7,6 +7,7 @@
 // tab sends nothing either: there is no unload handler, and the hold's TTL is what releases it.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { formatPaise } from "../admin/money";
+import { forgetBooking } from "../booking/checkout";
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
 import { HoldCountdown } from "./Countdown";
@@ -64,22 +65,32 @@ function motionChangeMs(): number {
   return raw.endsWith("ms") ? Number.parseFloat(raw) : Number.parseFloat(raw) * 1000 || 0;
 }
 
-export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
+// A refusal's banner. SEAT_UNAVAILABLE is not dismissible: it clears when the selection changes (COMPONENTS.md §6).
+type Notice = { code: string; message: string };
+
+// The first state, for the render harness (react-dom/server runs no effect, so nothing is fetched or polled there).
+// A seeded `map` must already have passed parseSeatMap. Production passes no seed.
+type Seed = {
+  header?: Header; map?: SeatMap; loadError?: LoadError; pollStrip?: string; selection?: number[]; gone?: string;
+  signedIn?: boolean; hold?: Hold; notice?: Notice; now?: number;
+};
+
+export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?: Seed }) {
   const id = Number(showtimeId);
-  const [header, setHeader] = useState<Header | null>(null);
-  const [map, setMap] = useState<SeatMap | null>(null);
-  const [loadError, setLoadError] = useState<LoadError | null>(null);
-  const [pollStrip, setPollStrip] = useState<string | null>(null);
-  const [selection, setSelection] = useState<number[]>(() => readSelection(id));
-  const [gone, setGone] = useState<string | null>(null);
+  const [header, setHeader] = useState<Header | null>(seed?.header ?? null);
+  const [map, setMap] = useState<SeatMap | null>(seed?.map ?? null);
+  const [loadError, setLoadError] = useState<LoadError | null>(seed?.loadError ?? null);
+  const [pollStrip, setPollStrip] = useState<string | null>(seed?.pollStrip ?? null);
+  const [selection, setSelection] = useState<number[]>(() => seed?.selection ?? readSelection(id));
+  const [gone, setGone] = useState<string | null>(seed?.gone ?? null);
   const [changed, setChanged] = useState<Set<number>>(new Set());
-  const [signedIn, setSignedIn] = useState(false);
+  const [signedIn, setSignedIn] = useState(seed?.signedIn ?? false);
   const [attempt, setAttempt] = useState(0);
-  const [hold, setHoldState] = useState<Hold | null>(() => readHold(id));
+  const [hold, setHoldState] = useState<Hold | null>(() => seed?.hold ?? readHold(id));
   const [holdSpan, setHoldSpan] = useState(0); // the bar's full length: what was left when this page first saw the hold
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(seed?.notice ?? null);
   const [busy, setBusy] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => seed?.now ?? Date.now());
   const last = useRef<SeatMap | null>(null);
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -178,7 +189,7 @@ export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
     }
     if (f.kind === "ended") setHold(null);
     if (f.kind === "sign_in") setSignedIn(false);
-    setNotice(r.message || null);
+    setNotice(r.message ? { code: r.code, message: r.message } : null);
   };
 
   const takeHold = async () => {
@@ -188,6 +199,12 @@ export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
     const r = await send<Hold>("POST", `/api/showtimes/${id}/holds`, { seat_ids: want });
     setBusy(false);
     if (r.ok && r.body) {
+      // A new hold forgets the last booking, so a second booking of this showtime in this tab reaches checkout (P-PAY-14).
+      try {
+        forgetBooking(window.sessionStorage);
+      } catch {
+        // storage refused: there is no stored booking to forget
+      }
       setHold(r.body);
       selectionRef.current = [];
       setSelection([]);
@@ -220,6 +237,7 @@ export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
     setSelection(next.selection);
     writeSelection(map.showtime.id, next.selection);
     setGone(null);
+    setNotice((n) => (n?.code === "SEAT_UNAVAILABLE" ? null : n));
   };
 
   if (loadError && !map) {
@@ -250,8 +268,10 @@ export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
       <div className="fr-banners">
         {notice ? (
           <div className="fr-banner" role="alert" aria-live="assertive">
-            <p>{notice}</p>
-            <button type="button" className="fr-banner-dismiss" aria-label="Dismiss this message" onClick={() => setNotice(null)}>Dismiss</button>
+            <p>{notice.message}</p>
+            {notice.code === "SEAT_UNAVAILABLE" ? null : (
+              <button type="button" className="fr-banner-dismiss" aria-label="Dismiss this message" onClick={() => setNotice(null)}>Dismiss</button>
+            )}
           </div>
         ) : null}
         {gone ? (
@@ -305,7 +325,7 @@ export function SeatMapScreen({ showtimeId }: { showtimeId: string }) {
           </ul>
           <p className="fr-cap-note" aria-live="polite">{capNote(MAX_SEATS_PER_BOOKING)}</p>
           {signedIn ? (
-            <button type="button" className="fr-action" disabled={!map || busy || chosen.length === 0 || map.showtime.sales_closed}
+            <button type="button" className="fr-action" disabled={!map || busy || chosen.length === 0 || sum === null || map.showtime.sales_closed}
                     onClick={() => void takeHold()}>
               {primaryLabel(true, chosen.length, holding)}
             </button>

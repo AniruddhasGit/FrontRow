@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api import admin, auth, auth_session, bookings, browse, holds, manager, me
+from app.api import admin, auth, auth_session, bookings, browse, holds, manager, me, receipts
 from app.core.logging import new_request_id
 from app.domain import holds as holds_domain
 from app.api.errors import install_error_handlers
@@ -142,7 +142,7 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health_router)
     # One line per router module, each with its own prefix and authorisation dependency (deps.py).
-    for module in (browse, auth, auth_session, admin, manager, holds, bookings, me):
+    for module in (browse, auth, auth_session, admin, manager, holds, bookings, me, receipts):
         app.include_router(module.router)
     return app
 

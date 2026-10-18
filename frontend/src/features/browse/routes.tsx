@@ -1,5 +1,4 @@
-// Browse screens - owned by the browse lane (Phase 3). src/router.tsx collects feature route tables; this one
-// still has to be added there (and `/` handed to ListingScreen in App.tsx) by the owner of those two files.
+// Browse screens (Phase 3). src/router.tsx collects this table; `/` is the listing.
 import type { AppRoute } from "../../router";
 import { SeatMapScreen } from "../seatmap/SeatMapScreen";
 import { ListingScreen } from "./ListingScreen";

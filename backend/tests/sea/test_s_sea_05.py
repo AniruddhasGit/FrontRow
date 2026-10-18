@@ -115,3 +115,25 @@ async def test_a_seat_with_a_committed_booking_takes_the_rollback_path(world):
     assert r.status_code == 409 and r.json()["error"]["code"] == "SEAT_UNAVAILABLE"
     assert r.json()["error"]["details"]["unavailable_seats"] == ["C10"]
     assert r_keys("lock:seat:77:*") == []
+
+
+async def test_a_rollback_on_an_extend_never_releases_a_seat_already_in_the_hold(world):
+    """402 is already held; the extend names 402, 403 and 410. 403 is won, 410 is lost to another customer, so the
+    request rolls back - and only 403 is in the rollback set: 402 stays under the hold's token, PTTL not raised."""
+    customer, other = user(world["db"]), user(world["db"])
+    async with api(world["db"], _clock()) as c:
+        mine = session(c, customer)
+        first = (await c.post(URL, json={"seat_ids": [402]}, cookies=mine)).json()
+        taken = await c.post(URL, json={"seat_ids": [410]}, cookies=session(c, other))
+        assert taken.status_code == 201
+        before = r_pttl("lock:seat:77:402")
+        c.redis_log.reset()
+        r = await c.post(URL, json={"seat_ids": [402, 403, 410]}, cookies=mine)
+        released = [cmd[3] for cmd in c.redis_log.commands if cmd[0] == "EVAL" and cmd[3].startswith("lock:seat:")]
+        assert r_call("GET", "lock:seat:77:402") == first["hold_token"]
+        assert 0 < r_pttl("lock:seat:77:402") <= before
+        assert r_call("EXISTS", "lock:seat:77:403") == 0
+        still = await c.get(f"/api/holds/{first['hold_token']}", cookies=mine)
+    assert (r.status_code, r.json()["error"]["code"], r.json()["error"]["details"]["unavailable_seats"]) == (409, "SEAT_UNAVAILABLE", ["C10"])
+    assert released == ["lock:seat:77:403"]
+    assert still.status_code == 200 and [s["seat_id"] for s in still.json()["seats"]] == [402]

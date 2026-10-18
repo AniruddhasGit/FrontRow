@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from tests.adm.kit import client, make_cinema, make_screen, sign_in, strip_request_id  # noqa: F401
 from tests.dbkit import owner_sql
-from tests.xct._support import mounted_routes, rg
+from tests.xct._support import mounted_routes, rg, zone_c
 
 GENERIC_405 = "That action is not available. Nothing was changed."
 
@@ -53,4 +53,4 @@ def test_only_seat_and_assignment_rows_are_ever_deleted_and_nothing_cascades(cli
 
 def test_no_pruning_or_scheduled_deletion_exists_in_the_code():
     assert rg(r"retention|prune|purge|vacuum_old|cron|crontab|APScheduler|schedule[.]every", "backend/app",
-              "backend/migrations", "scripts", ".github/workflows") == []
+              "backend/migrations", "scripts", *zone_c(".github/workflows")) == []

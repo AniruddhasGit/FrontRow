@@ -5,7 +5,7 @@ past or future, booked or empty - a seat's row_label, seat_number and seat_categ
 seat cannot be deleted. Adding a seat, moving its grid position, taking it in or out of service and
 renaming the hall stay permitted.
 
-THE LOCK: every seat write takes SELECT ... FOR UPDATE on its screen row first, unconditionally, so a
+THE LOCK: every seat write first takes a row lock (with_for_update) on its SCREEN row, unconditionally, so a
 seat added or retired in the same instant as a showtime creation is wholly inside that showtime's seat
 set or wholly outside it (P-ADM-14).
 """
@@ -181,7 +181,7 @@ def _seat_fields(raw: dict, *, partial: bool) -> dict:
                         ("seat_number", lambda v: need_int(v, "seat_number", maximum=INT4_MAX, wrong=SEAT_NUMBER)),
                         ("grid_row", lambda v: need_int(v, "grid_row", maximum=INT4_MAX, wrong=GRID)),
                         ("grid_col", lambda v: need_int(v, "grid_col", maximum=INT4_MAX, wrong=GRID)),
-                        ("seat_category_id", lambda v: need_int(v, "seat_category_id", wrong=CATEGORY))):
+                        ("seat_category_id", lambda v: need_int(v, "seat_category_id", wrong=CATEGORY, high=CATEGORY))):
         if name in raw:
             out[name] = check(raw[name])
         elif not partial:

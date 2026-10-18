@@ -1,7 +1,5 @@
-"""S-SEA-16 (P-HLD-11, FR-ADR-038/039): each seat's price is fixed when THAT seat enters the hold.
-
-Not here: the confirm charging 106665 with base_price_paise_applied 25000/25000/30000, the spy on the pricing
-function during confirm, and Redis-down-at-confirm (EP-PAY-01, lane PAY, is not mounted).
+"""S-SEA-16 (P-HLD-11, FR-ADR-038/039): each seat's price is fixed when THAT seat enters the hold, and the confirm
+charges the stored prices without calling the pricing function.
 """
 
 from __future__ import annotations
@@ -12,7 +10,7 @@ import re
 import pytest
 
 from app.domain.pricing import seat_price_paise
-from tests.sea.kit import SHOWTIME, SetClock, api, owner_sql, r_call, r_pttl, session, user, world77
+from tests.sea.kit import SHOWTIME, SetClock, api, confirm, owner_sql, r_call, r_pttl, session, user, world77
 from tests.xct._support import REPO
 
 pytestmark = pytest.mark.anyio
@@ -30,7 +28,7 @@ def test_the_rounding_rule_is_integer_half_up(base, uplift, expected):
     assert type(price) is int and price == expected
 
 
-async def test_an_admin_price_change_moves_nothing_already_held(world):
+async def test_an_admin_price_change_moves_nothing_already_held(world, monkeypatch):
     clock = SetClock()
     clock.set("2026-08-14T14:02:37.412+00:00")  # 19:32:37.412 IST; the app clock is UTC
     customer, admin, next_customer = user(world["db"]), user(world["db"], "admin"), user(world["db"])
@@ -50,6 +48,25 @@ async def test_an_admin_price_change_moves_nothing_already_held(world):
         clock.set("2026-08-14T14:03:45+00:00")  # 19:33:45 IST
         third = (await c.post(URL, json={"seat_ids": [418]}, cookies=mine)).json()
         other = (await c.post(URL, json={"seat_ids": [420]}, cookies=session(c, next_customer))).json()
+        # The confirm at 19:34:20 reads the stored prices and calls the pricing function zero times.
+        clock.set("2026-08-14T14:04:20+00:00")
+        calls = []
+        import app.domain.holds as holds_module
+        import app.domain.pricing as pricing_module
+
+        def spy(*args):
+            calls.append(args)
+            return seat_price_paise(*args)
+
+        monkeypatch.setattr(pricing_module, "seat_price_paise", spy)
+        monkeypatch.setattr(holds_module, "seat_price_paise", spy)
+        booked = await confirm(c, customer, token)
+        monkeypatch.undo()
+    assert booked.status_code == 201, booked.text
+    assert calls == []
+    assert owner_sql(world["db"], "SELECT amount_paise FROM payment") == [(106665,)]
+    assert owner_sql(world["db"], "SELECT seat_id, price_paise, base_price_paise_applied FROM booking_seat ORDER BY seat_id") == [
+        (416, 33333, 25000), (417, 33333, 25000), (418, 39999, 30000)]
     assert [s["price_paise"] for s in after_change["seats"]] == [33333, 33333] and after_change["total_paise"] == 66666
     assert [s["price_paise"] for s in third["seats"]] == [33333, 33333, 39999]
     assert third["total_paise"] == 106665 and third["expires_at"] == "2026-08-14T14:05:37.412Z"
@@ -73,3 +90,16 @@ def test_a_caller_skipping_the_rounding_gets_a_type_error_and_persists_nothing(w
     with pytest.raises(TypeError):
         seat_price_paise(25000.0, 3333)  # type: ignore[arg-type]
     assert owner_sql(world["db"], "SELECT count(*) FROM booking_seat WHERE showtime_id = 77")[0][0] == before
+
+
+async def test_redis_unreachable_at_confirm_is_503_and_nothing_is_charged(world):
+    """The stored prices live only in Redis: with Redis gone they cannot be read, and nothing is charged."""
+    from tests.sea.test_s_sea_15 import unreachable
+
+    customer = user(world["db"])
+    async with unreachable(world["db"]) as c:
+        r = await c.post("/api/bookings", json={"hold_token": "A" * 43, "showtime_id": 77},
+                         headers={"Idempotency-Key": "k-16"}, cookies=session(c, customer))
+    assert (r.status_code, r.json()["error"]["code"]) == (503, "DEPENDENCY_UNAVAILABLE")
+    assert owner_sql(world["db"], "SELECT count(*) FROM payment") == [(0,)]
+    assert owner_sql(world["db"], "SELECT count(*) FROM booking_seat WHERE showtime_id = 77") == [(0,)]

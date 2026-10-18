@@ -67,4 +67,15 @@ def test_name_and_uplift_in_one_request_write_two_rows_and_there_is_no_delete(cl
         ("seat_category.updated", {"name": "Two Row Cat"}, {"name": "Two Row Renamed"}),
         ("seat_category.uplift_changed", {"uplift_basis_points": 1250}, {"uplift_basis_points": 1500})]
     assert ("DELETE", "/api/admin/seat-categories/{seat_category_id}") not in mounted_routes(client.app)
-    assert client.delete(f"/api/admin/seat-categories/{cat}").status_code == 405
+    gone = client.delete(f"/api/admin/seat-categories/{cat}")
+    assert (gone.status_code, gone.json()["error"]["code"]) == (405, "METHOD_NOT_ALLOWED")
+
+
+def test_patch_validates_the_uplift_with_the_same_sentences(client):
+    sign_in(client)
+    cat = make_category(client.db, uplift=1250, name="Patch Me")
+    for value, message in ((-1, "The uplift cannot be negative. This system has no discounts."),
+                           (1250.5, "Enter the uplift in whole basis points. 100 basis points is 1 percent.")):
+        r = client.patch(f"/api/admin/seat-categories/{cat}", json={"version": 1, "uplift_basis_points": value})
+        assert (r.status_code, r.json()["error"]["code"], r.json()["error"]["message"]) == (422, "VALIDATION_FAILED", message)
+    assert owner_sql(client.db, "SELECT uplift_basis_points, version FROM seat_category WHERE id = %s", (cat,)) == [(1250, 1)]

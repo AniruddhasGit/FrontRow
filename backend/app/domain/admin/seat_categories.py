@@ -46,10 +46,12 @@ async def list_categories(conn: AsyncConnection, now: datetime, cutoff_minutes: 
 
 
 def _uplift(value: Any) -> int:
-    if not is_int(value):
+    if type(value) is not int:
         raise invalid("uplift_basis_points", UPLIFT_WHOLE)
     if value < 0:
         raise invalid("uplift_basis_points", UPLIFT_NEGATIVE)
+    if not is_int(value):
+        raise invalid("uplift_basis_points", UPLIFT_CEILING)  # past bigint: certainly past the ceiling
     return value
 
 

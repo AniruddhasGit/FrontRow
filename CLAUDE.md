@@ -311,6 +311,12 @@ Final image under **250 MB** with a multi-stage build, because ECR's free tier h
 *(reasoned from typical figures, not observed — this has never run in AWS.)* **Measure it in Phase 1
 and replace these numbers with real ones.**
 
+*Measured 2026-10-18 (Phase 5, local docker compose, not t3.micro):* api idle **70.3 MiB** of 200 (boto3 not yet
+loaded; importing it and its SQS + SES clients adds ~22 MB, so ~92 MiB after the first send); worker idle and polling
+**88.3 MiB** of 150. Image (council `JC-R7-01`: the budget is now **compressed**, under 150 MB per tag, at most 3 tags):
+**66.3 MB** compressed before boto3, **83.6 MB** with it (`docker save | gzip | wc -c`); `docker images` 286 → 340 MB,
+a trend only.
+
 ## Win condition — define victory, then stop
 
 A guest browses current movies, registers, picks a showtime, sees a live seat map, holds seats for 3

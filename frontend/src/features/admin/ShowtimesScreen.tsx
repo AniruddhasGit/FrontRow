@@ -31,13 +31,16 @@ const clock = (iso: string) => {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
 };
 
-export function ShowtimesScreen() {
-  const [halls, setHalls] = useState<Hall[]>([]);
-  const [hallId, setHallId] = useState("");
-  const [date, setDate] = useState("");
+// The first state, for the render harness (react-dom/server runs no effect). Production passes no seed.
+type Seed = { halls: Hall[]; hallId: string; date: string; day: Showtime[]; editing?: Showtime };
+
+export function ShowtimesScreen({ seed }: { seed?: Seed }) {
+  const [halls, setHalls] = useState<Hall[]>(seed?.halls ?? []);
+  const [hallId, setHallId] = useState(seed?.hallId ?? "");
+  const [date, setDate] = useState(seed?.date ?? "");
   const [hideStarted, setHideStarted] = useState(false);
-  const [day, setDay] = useState<Showtime[]>([]);
-  const [editing, setEditing] = useState<Showtime | null>(null);
+  const [day, setDay] = useState<Showtime[]>(seed?.day ?? []);
+  const [editing, setEditing] = useState<Showtime | null>(seed?.editing ?? null);
   const [message, setMessage] = useState("");
   useEffect(() => {
     void api<{ items: Hall[] }>("GET", "/api/admin/screens").then((r) => setHalls(r.items), (e) => setMessage(errorText(e)));

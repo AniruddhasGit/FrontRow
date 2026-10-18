@@ -51,6 +51,16 @@ export function keepDay(day: string | null, days: string[]): { day: string | nul
   return { day: null, cleared: true };
 }
 
+export const DATE_CLEARED = "The date filter was cleared. Nothing in this list is showing on that day.";
+
+/** What a listing response does to the filters: a selected day the new strip no longer offers drops back to
+ *  `Any date`, and the change is announced (P-BRW-04). The caller re-requests with the returned filters.
+ *  An EMPTY response has no strip to fall outside: the day stays, and the filtered empty state renders (S-BRW-06). */
+export function settleListing<F extends { date: string | null }>(filters: F, displayUntils: string[], nowMs: number): { filters: F; announce: string | null } {
+  if (displayUntils.length === 0 || !keepDay(filters.date, listingStrip(nowMs, displayUntils)).cleared) return { filters, announce: null };
+  return { filters: { ...filters, date: null }, announce: DATE_CLEARED };
+}
+
 export function dayLabel(isoDate: string): string {
   const t = new Date(`${isoDate}T00:00:00Z`);
   return `${WEEKDAYS[t.getUTCDay()]} ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`;

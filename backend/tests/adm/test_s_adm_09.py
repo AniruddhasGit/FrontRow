@@ -15,7 +15,7 @@ import psycopg
 
 from tests.adm.kit import (audit_rows, client, count, make_movie, make_screen, make_seats, one, sign_in)  # noqa: F401
 from tests.dbkit import owner_sql
-from tests.xct._support import rg
+from tests.xct._support import rg, zone_c
 
 
 def _hall(db, active=True):
@@ -139,7 +139,7 @@ def test_nothing_schedules_and_no_worker_or_job_creates_a_showtime():
     assert rg(r"INSERT INTO showtime|Showtime[(]|insert[(]showtime[)]", "backend/app/workers", "backend/app/jobs") == []
     assert {h[0] for h in rg(r"insert[(]showtime[)]", "backend/app")} == {"backend/app/domain/admin/showtimes.py"}
     assert rg(r"APScheduler|celery|crontab|cron.d|schedule[.]every|EventBridge", "backend/app", "backend/migrations",
-              "frontend/src", "scripts", ".github/workflows") == []
+              "frontend/src", "scripts", *zone_c(".github/workflows")) == []
 
 
 def test_ends_at_is_stored_never_derived_from_runtime(client):

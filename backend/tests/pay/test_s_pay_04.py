@@ -83,3 +83,29 @@ def test_the_assumed_values_appear_only_in_the_settings_module():
     hits = [f"{p.relative_to(APP)}:{n}" for p in APP.rglob("*.py") if p.name not in ("config.py", "settings.py")
             for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if pattern.search(line)]
     assert hits == []
+
+
+def test_a_successful_boot_prints_one_line_whose_payment_provider_field_reads_simulated():
+    import json
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    from tests.dbkit import BACKEND_DIR
+    from tests.xct.test_s_xct_29 import _boot_env, _free_port, _refused
+
+    port = _free_port()
+    proc = subprocess.Popen([sys.executable, "-m", "app", "api"], cwd=BACKEND_DIR, env=_boot_env(API_PORT=str(port)),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        end = time.monotonic() + 20  # a startup deadline only; no assertion depends on the time
+        while _refused(port) and time.monotonic() < end and proc.poll() is None:
+            time.sleep(0.1)
+        proc.send_signal(signal.SIGTERM)
+        out, _ = proc.communicate(timeout=20)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    lines = [json.loads(ln) for ln in out.splitlines() if ln.strip()]
+    assert [ln["payment_provider"] for ln in lines if "payment_provider" in ln] == ["simulated"], out

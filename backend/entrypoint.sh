@@ -3,6 +3,8 @@
 # FrontRow API container entrypoint  -  ZONE B (SRC-002 §6.2.2). Edited by the client.
 #
 #   frontrow-entrypoint api       start the API server (the image's default CMD)
+#   frontrow-entrypoint worker    start the queue consumer: the outbox relay and the receipt / reset emails (Phase 5).
+#                                 The SAME image as the api, a different command (SRC-003 OPEN-PROC-01: three processes).
 #   frontrow-entrypoint migrate   apply database migrations, then EXIT. Run by hand, as a one-off
 #                                 task, BEFORE updating the service. Never on boot (SRC-002 §7.8).
 #   frontrow-entrypoint seed      write the demonstration data (scripts/seed.py), then EXIT. A one-off
@@ -22,11 +24,14 @@ log() {
   # 4 random bytes as 8 hex characters. Without a fresh one per line, two entrypoint lines share an id.
   rid=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
   # The JSON line itself, in a fixed format, so CloudWatch can parse it like the application's lines.
-  printf '{"timestamp":"%s","level":"%s","logger":"entrypoint","message":"%s","request_id":"%s","service":"api","instance_id":null}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$1" "$2" "$rid"
+  printf '{"timestamp":"%s","level":"%s","logger":"entrypoint","message":"%s","request_id":"%s","service":"%s","instance_id":null}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$1" "$2" "$rid" "$service"
 # End of log().
 }
 
+# The command, reduced to safe characters, is the "service" field of the entrypoint's own lines: without it a
+# migration's line reads as the api's in CloudWatch (S-XCT-25: every migrate line carries service "migrate").
+service=$(printf '%s' "${1:-api}" | tr -cd 'A-Za-z0-9_-')
 # Dispatch on the command; with none given, start the API (the image's default CMD is `api`).
 case "${1:-api}" in
   # The API server.
@@ -40,6 +45,13 @@ case "${1:-api}" in
     # together then race on the same schema change (the migration tool takes no lock - GOTCHAS.md).
     exec python -m app api
     # End of the api branch (never reached: exec replaced the shell).
+    ;;
+  # The queue consumer. Long-running, like the api, and like the api it never touches the schema.
+  worker)
+    # `exec` for the same reason as the api: the worker must be PID 1 to receive SIGTERM, finish the message in hand
+    # and exit 0. Behind a shell, SIGKILL lands mid-send and the claim is left `sending` until it goes stale (15 min).
+    exec python -m app worker
+    # End of the worker branch (never reached: exec replaced the shell).
     ;;
   # The one-off migration command, run by hand before a service update. Never on boot.
   migrate)
@@ -71,7 +83,7 @@ case "${1:-api}" in
     # Without this, a typo in the task definition's command (e.g. "API") would fall through and the
     # task would exit with no explanation. EX_USAGE. The command is reduced to safe characters first:
     # a quote inside it would break the JSON line.
-    log "CRITICAL" "unknown command '$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')'; expected: api | migrate | seed"
+    log "CRITICAL" "unknown command '$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')'; expected: api | worker | migrate | seed"
     # EX_USAGE: distinct from a crash (1) and a bad configuration (78) in the stopped-task reason.
     exit 64
     # End of the unknown-command branch.

@@ -83,3 +83,11 @@ def test_the_tls_specification_carries_the_five_steps_and_the_zone_c_sentence():
 def test_the_tls_spec_is_found_through_the_queue_rows_spec_cell():
     (row,) = [r for r in prep_queue() if "TLS certificate" in strip_md(r["Item"])]
     assert [DEPLOY / f for f in spec_files(row["Spec"])] == [DEPLOY / "P2_TLS_CERTIFICATE.md"]
+
+
+def test_rg_fails_on_a_path_that_does_not_exist():
+    # A zero-hits sweep over a moved or mistyped tree must fail, never pass vacuously (verifier, round 3).
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        rg("anything", "backend/no-such-tree")

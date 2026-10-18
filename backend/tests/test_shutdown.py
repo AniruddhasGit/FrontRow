@@ -67,7 +67,9 @@ def _wait_listening(port: int, deadline_s: float = 15.0) -> None:
 
 def test_sigterm_drains_an_in_flight_request_and_exits_zero():
     port = _free_port()
-    env = dict(os.environ, **VALID_ENV, API_PORT=str(port), SHUTDOWN_DRAIN_TIMEOUT_SECONDS="10", PYTHONPATH=str(BACKEND_DIR))
+    env = dict(os.environ, **VALID_ENV, API_PORT=str(port), SHUTDOWN_DRAIN_TIMEOUT_SECONDS="10",
+               # A 10 s drain admits at most a 1000 ms queue send (boot check 14, S-TKT-06); the default 2000 is refused.
+               QUEUE_SEND_TIMEOUT_MS="1000", PYTHONPATH=str(BACKEND_DIR))
     proc = subprocess.Popen(
         [sys.executable, "-m", "tests.drain_harness"],
         cwd=BACKEND_DIR,

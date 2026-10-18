@@ -11,10 +11,11 @@
 #   runtime  LAST, so a plain `docker build .` produces the deployable image and never the test one
 #
 # Build:   docker build -f backend/Dockerfile -t frontrow-api .     (from the REPOSITORY ROOT - see below)
-# Measure: docker images frontrow-api   and   docker image inspect --format '{{.Size}}' frontrow-api
-#          The budget is under 250 MB (SRC-002 §5.4.2). The two commands report different numbers and
-#          WHICH ONE the budget means is an open question to the client (T-P1-08): on 2026-10-18 this image
-#          measured 286 MB by `docker images` (OVER the budget) and 66.6 MB by inspect (under it).
+# Measure: docker save frontrow-api | gzip | wc -c        <- THE BUDGET: under 150 MB per tag, at most 3 tags kept
+#          by an ECR lifecycle policy (council ruling JC-R7-01, 2026-10-18; docs/30 Deployment/P5_ECR_IMAGE_BUDGET.md).
+#          Compressed is what a push uploads. `docker images` is reported as a trend only.
+#          2026-10-18: 66.3 MB compressed before boto3, 83.6 MB with it (boto3 + botocore, Phase 5);
+#          `docker images` 286 MB -> 340 MB. botocore/data is NOT trimmed: trim only if compressed passes 150 MB.
 #
 # The build context is the repository root, not backend/: the seed command runs scripts/seed.py, and
 # scripts/ sits beside backend/ (SRC-002 §11). The root .dockerignore admits only backend/ and scripts/,

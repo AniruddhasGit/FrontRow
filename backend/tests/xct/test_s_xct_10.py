@@ -4,8 +4,8 @@ Covered: the routers registered in main.py carry their dependency at the router;
 outside api/deps.py; the role is read from the users row on every request; 401 / 403 bodies; a
 manager's PATCH on the admin router is 403 before the body is validated; the reporting router mounts
 no write route. The 401/403 clauses run through test routes mounted on routers built with the SAME
-dependency objects the product routers carry (app.api.deps), because no product route exists yet.
-NOT covered: the customer router (/api/me, /api/bookings, /api/holds) - no module exists for it.
+dependency objects the product routers carry (app.api.deps). The customer routes (/api/me, /api/bookings,
+/api/holds) are walked at the end: one router dependency each, declared by no handler.
 """
 
 from __future__ import annotations
@@ -182,3 +182,41 @@ def test_session_ttl_comes_from_configuration_not_a_literal(migrated_db, clock):
     decode_session_token(token, now=clock.now() + timedelta(seconds=59), settings=settings)
     with pytest.raises(ExpiredSession):
         decode_session_token(token, now=clock.now() + timedelta(seconds=60), settings=settings)
+
+
+# ---- the customer router: /api/me, /api/bookings, /api/holds (Phase 4) -----------------------------------
+
+
+def test_the_customer_routes_carry_one_router_dependency_and_no_handler_declares_another(valid_env):
+    from app.api import bookings, holds, me, receipts
+    from app.core.config import load_settings
+    from tests.adm.kit import routes
+
+    expected = {"/api/holds": holds.signed_in, "/api/showtimes/{showtime_id}/holds": holds.signed_in,
+                "/api/bookings": bookings.confirm_session, "/api/me": me.caller,
+                # EP-TKT-01/02 sit under /api/bookings/ with their own owner-only dependency (Phase 5).
+                "/api/bookings/by-reference": receipts.owned_reference}
+    assert [d.dependency for d in holds.router.dependencies] == [holds.signed_in]
+    assert [d.dependency for d in bookings.router.dependencies] == [bookings.confirm_session]
+    assert [d.dependency for d in me.router.dependencies] == [me.caller]
+    assert [d.dependency for d in receipts.router.dependencies] == [receipts.owned_reference]
+    application = create_app(load_settings(), probes=[ok_probe("postgres"), ok_probe("redis")])
+    seen = set()
+    for route in routes(application):
+        # The LONGEST matching prefix decides, so /api/bookings/by-reference is not held to /api/bookings's dependency.
+        matches = [p for p in expected if route.path.startswith(p)]
+        if matches:
+            prefix = max(matches, key=len)
+            dependency = expected[prefix]
+            seen.add(prefix)
+            calls = [d.call for d in route.dependant.dependencies]
+            assert calls.count(dependency) == 1, (route.path, calls)  # once, from the router - not per handler
+    assert seen == set(expected)
+
+
+def test_no_session_on_the_customer_router_is_401_auth_required(migrated_db, clock):
+    application = create_app(app_settings(migrated_db), clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    with TestClient(application) as c:
+        answers = [c.post("/api/bookings", json={}), c.get("/api/holds/" + "A" * 43), c.get("/api/me/bookings"),
+                   c.post("/api/showtimes/1/holds", json={"seat_ids": [1]})]
+    assert [(r.status_code, r.json()["error"]["code"]) for r in answers] == [(401, "AUTH_REQUIRED")] * 4

@@ -59,12 +59,13 @@ def test_no_request_model_declares_a_role_field():
     assert offenders == []
 
 
-def test_register_with_a_role_property_is_400_request_invalid(migrated_db, clock):
+def test_register_with_a_role_property_creates_a_customer(migrated_db, clock):
     # Registration rate-limits through Redis (the account lane's); a database number of its own.
     redis_url = re.sub(r"/\d+$", "/14", os.environ["TEST_REDIS_URL"])
     app_ = create_app(app_settings(migrated_db, REDIS_URL=redis_url), clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
     before = owner_sql(migrated_db, "SELECT count(*) FROM users")
     with TestClient(app_) as client:
         r = client.post("/api/auth/register", json={"email": "staff@example.invalid", "password": "long enough pw", "role": "staff"})
-    assert r.status_code == 400 and r.json()["error"]["code"] == "REQUEST_INVALID"
-    assert owner_sql(migrated_db, "SELECT count(*) FROM users") == before
+    assert r.status_code == 201  # the role is never read from the body (EP-ACC-01)
+    assert owner_sql(migrated_db, "SELECT count(*) FROM users")[0][0] == before[0][0] + 1
+    assert owner_sql(migrated_db, "SELECT role FROM users WHERE email = 'staff@example.invalid'") == [("customer",)]

@@ -120,7 +120,9 @@ def serve(settings: Settings, app: object) -> int:
     return 0
 
 
-def main() -> int:
+def main(service: str = "api") -> int:
+    """Boot one process: `api` (the default) or `worker`. Both take steps 1 and 2 above identically, so a bad value
+    stops either one the same way, and each refuses its own configuration (check 12)."""
     clock = SystemClock()
     try:
         settings = load_settings()
@@ -134,20 +136,34 @@ def main() -> int:
             # S-XCT-29 / S-SCP-03 require the variable's name there. stdout keeps the JSON-lines rule.
             also_stderr=True,
             missing_or_invalid=exc.names,
+            # Which process refused. Without it a worker's refusal reads as the api's in CloudWatch.
+            service=service,
         )
         return EXIT_CONFIG
     # A fresh id per boot. Every line this process writes carries it, so "which container said
     # this" survives a restart that reuses the same host. (P-XCT-17 also keys the Phase 4 hold
     # registry on it.)
     instance_id = new_request_id()
-    configure_logging(level=settings.LOG_LEVEL, service="api", instance_id=instance_id, now=clock.now)
+    configure_logging(level=settings.LOG_LEVEL, service=service, instance_id=instance_id, now=clock.now)
     # The resolved configuration, exactly once per boot, so an operator can read what the process
     # actually loaded (PRD S7.9). Every value whose NAME matches SECRET|PASSWORD|TOKEN|URL is
-    # [REDACTED] at the source; PAYMENT_PROVIDER is printed on purpose.
-    log.info("configuration resolved", extra={"settings": redacted(settings)})
+    # [REDACTED] at the source. payment_provider is ALSO a top-level field (S-PAY-04): one query on the
+    # field answers "are payments real here?" without parsing the nested settings object.
+    log.info("configuration resolved", extra={"settings": redacted(settings), "payment_provider": settings.PAYMENT_PROVIDER})
+    if service == "worker":
+        # The SQS/ElasticMQ consumer (Phase 5). Imported here so the api process never loads it.
+        from app.workers import run_worker
+
+        return run_worker(settings, clock)
     from app.main import create_app  # after logging, so import-time log lines are JSON too
 
-    return serve(settings, create_app(settings, clock=clock))
+    app = create_app(settings, clock=clock)
+    # The receipt fast path (P-TKT-04 step 3). Installed HERE, on the real process only, not in create_app: a test
+    # app built by create_app has no queue unless the test installs one, so no test sends to a real queue by accident.
+    from app.workers import receipt_port
+
+    app.state.receipt_queue = receipt_port(app.state, settings, clock)
+    return serve(settings, app)
 
 
 if __name__ == "__main__":

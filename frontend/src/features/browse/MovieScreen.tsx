@@ -17,11 +17,14 @@ const wallClock = () => Date.now();
 
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
 
-export function MovieScreen({ movieId, now = wallClock }: { movieId: string; now?: () => number }) {
-  const [film, setFilm] = useState<Film | null | "missing">(null);
-  const [date, setDate] = useState<string | null>(() => new URLSearchParams(window.location.search).get("date"));
-  const [listed, setListed] = useState<Listed | null>(null);
-  const [failed, setFailed] = useState(false);
+// The first state, for the render harness (react-dom/server runs no effect). Production passes no seed.
+type Seed = { film?: Film | "missing"; date?: string | null; listed?: Listed; failed?: boolean };
+
+export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: string; now?: () => number; seed?: Seed }) {
+  const [film, setFilm] = useState<Film | null | "missing">(seed?.film ?? null);
+  const [date, setDate] = useState<string | null>(() => (seed ? seed.date ?? null : new URLSearchParams(window.location.search).get("date")));
+  const [listed, setListed] = useState<Listed | null>(seed?.listed ?? null);
+  const [failed, setFailed] = useState(seed?.failed ?? false);
   const [attempt, setAttempt] = useState(0);
   const [announce, setAnnounce] = useState("");
   const first = useRef(true);

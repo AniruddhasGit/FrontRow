@@ -74,13 +74,16 @@ KEY_MAX = 255  # EP-PAY-01: the header is 1..255 characters
 
 async def confirm_session(request: Request, conn: AsyncConnection = Depends(db), settings: Settings = Depends(get_settings),
                           clock: Clock = Depends(get_clock)) -> CurrentUser:
-    """Any signed-in account; the 401 speaks this endpoint's sentence (P-PAY-01 exception 1)."""
+    """Any signed-in account; the 401 speaks this endpoint's sentence (P-PAY-01 exception 1). The caller is left on
+    request.state, so the handler declares no authorisation dependency of its own."""
     try:
-        return await current_user(request, conn, settings, clock)
+        user = await current_user(request, conn, settings, clock)
     except ApiError as exc:
         if exc.status == 401:
             raise ApiError(401, ErrorCode.AUTH_REQUIRED, bk.SIGN_IN) from None
         raise
+    request.state.caller = user
+    return user
 
 
 router = APIRouter(dependencies=[Depends(confirm_session)])
@@ -146,7 +149,8 @@ async def _head(conn: AsyncConnection, showtime_id: int):
 
 @router.post("/api/bookings", status_code=201, openapi_extra={"requestBody": {
     "required": True, "content": {"application/json": {"schema": ConfirmRequest.model_json_schema()}}}})
-async def confirm(request: Request, user: CurrentUser = Depends(confirm_session), conn: AsyncConnection = Depends(db)) -> Response:
+async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Response:
+    user: CurrentUser = request.state.caller
     key = _key(request)
     body = await _body(request)
     if not holds.well_formed(body.hold_token):
@@ -208,14 +212,19 @@ async def confirm(request: Request, user: CurrentUser = Depends(confirm_session)
             }
             await bk.complete_key(conn, record_id, booking_id=booking_id, body=response, now=now)
             observe("commit")
-        # ---- committed. Nothing below can undo the booking. ----
-        observe("release")
+        # ---- committed. Nothing below can undo the booking, so nothing below may turn it into an error: each
+        # failure from here on is logged and the 201 still goes out. The locks expire within the hold's TTL, the
+        # outbox row stays pending for the relay, and a replay with the same key returns the stored body. ----
         try:
+            observe("release")
             await holds.release_all(redis, hold)  # compare-and-delete each lock, the record, the index; then DEL the map
-        except (RedisError, OSError):
+        except Exception:  # noqa: BLE001
             log.warning("post-commit hold release failed; the locks expire within the hold's TTL", exc_info=True)
-        observe("queue send")
-        await _send_receipt(state, settings, clock, conn, outbox_id, booking_id)
+        try:
+            observe("queue send")
+            await _send_receipt(state, settings, clock, conn, outbox_id, booking_id)
+        except Exception:  # noqa: BLE001
+            log.warning("post-commit receipt send failed; the outbox row stays pending for the relay", exc_info=True)
         return Response(bk.canonical_json(response), status_code=201, media_type="application/json")
     except bk.Duplicate as dup:
         return _duplicate(dup, fingerprint, settings)
@@ -226,7 +235,9 @@ async def confirm(request: Request, user: CurrentUser = Depends(confirm_session)
         raise ApiError(402, ErrorCode.PAYMENT_FAILED, bk.PAYMENT_FAILED) from None
     except bk.SeatsTaken:
         # The guard working (P-PAY-11): expected, logged at info, never retried.
-        labels = await bk.sold_labels(conn, hold.showtime_id, hold)
+        # A violation means a committed row exists, so this read finds at least one seat. Should it ever find none,
+        # the hold's own seats are named rather than the refusal crashing into a 500.
+        labels = await bk.sold_labels(conn, hold.showtime_id, hold) or [hold.seats[i]["label"] for i in sorted(hold.seats)]
         log.info("seat taken at confirm", extra={"error_code": ErrorCode.SEAT_UNAVAILABLE.value, "unavailable_seats": labels})
         raise ApiError(409, ErrorCode.SEAT_UNAVAILABLE, bk.taken_message(labels), {"unavailable_seats": labels}) from None
     except ApiError:

@@ -1,6 +1,5 @@
-"""S-SEA-13 (P-HLD-08, EP-HLD-03, EP-HLD-04): give seats back - one, all, and after the hold has gone.
-
-Not here: the two release-versus-confirm orderings (EP-PAY-01, lane PAY, is not mounted).
+"""S-SEA-13 (P-HLD-08, EP-HLD-03, EP-HLD-04): give seats back - one, all, and after the hold has gone - and the
+two release-versus-confirm orderings (EP-PAY-01).
 """
 
 from __future__ import annotations
@@ -95,3 +94,43 @@ async def test_a_seat_outside_the_hold_and_a_hold_already_gone(world):
         422, "VALIDATION_FAILED", "That seat is not part of your hold.")
     assert (gone.status_code, gone.json()["error"]["code"]) == (409, "HOLD_EXPIRED")
     assert not [cmd for cmd in sent if "cache:seatmap:77" in cmd]
+
+
+# ---- release versus confirm (EP-PAY-01): no release is ever refused because a confirm is in flight ----------
+
+
+async def test_a_release_before_the_confirm_revalidates_ends_the_confirm_with_nothing_charged(world):
+    from tests.sea.kit import confirm, payments
+
+    customer = user(world["db"])
+    async with api(world["db"], _clock()) as c:
+        cookies = session(c, customer)
+        one = (await c.post(URL, json={"seat_ids": [402, 403]}, cookies=cookies)).json()
+        seat_back = await c.delete(f"/api/holds/{one['hold_token']}/seats/402", cookies=cookies)
+        partial = await confirm(c, customer, one["hold_token"])  # 403 alone is still held: it books
+        two = (await c.post(URL, json={"seat_ids": [404]}, cookies=cookies)).json()
+        all_back = await c.delete(f"/api/holds/{two['hold_token']}", cookies=cookies)
+        captures_before = list(c.application.state.payment_sleep.calls)
+        ended = await confirm(c, customer, two["hold_token"])
+        captures_after = list(c.application.state.payment_sleep.calls)
+    assert seat_back.status_code == 200 and partial.status_code == 201
+    assert [s["seat_id"] for s in partial.json()["seats"]] == [403]
+    assert (all_back.status_code, ended.status_code, ended.json()["error"]["code"]) == (204, 409, "HOLD_EXPIRED")
+    assert captures_after == captures_before  # zero payment attempts for the ended hold
+    assert payments(world["db"]) == 1  # the one booking above; nothing for the ended hold
+
+
+async def test_a_release_after_the_commit_deletes_nothing_and_is_hold_expired(world):
+    from tests.sea.kit import confirm, one
+
+    customer = user(world["db"])
+    async with api(world["db"], _clock()) as c:
+        cookies = session(c, customer)
+        hold = (await c.post(URL, json={"seat_ids": [402]}, cookies=cookies)).json()
+        booked = await confirm(c, customer, hold["hold_token"])
+        late_seat = await c.delete(f"/api/holds/{hold['hold_token']}/seats/402", cookies=cookies)
+        late_all = await c.delete(f"/api/holds/{hold['hold_token']}", cookies=cookies)
+    assert booked.status_code == 201
+    pairs = {(r.status_code, r.json()["error"]["code"]) for r in (late_seat, late_all)}
+    assert pairs == {(409, "HOLD_EXPIRED")}  # the commit removed the record; no confirm-specific code exists
+    assert one(world["db"], "SELECT count(*) FROM booking_seat WHERE showtime_id = 77 AND seat_id = 402") == 1

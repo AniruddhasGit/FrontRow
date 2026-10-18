@@ -1,6 +1,5 @@
-"""`python -m app api` starts the API server. This is what the entrypoint execs.
-
-The worker (`python -m app worker`) arrives in Phase 5. Migrations are deliberately NOT a command of
+"""`python -m app api` starts the API server; `python -m app worker` starts the queue consumer. The entrypoint execs
+one of the two. Migrations are deliberately NOT a command of
 this module: they are the entrypoint's separate `migrate` command (SRC-002 §7.8).
 """
 
@@ -12,13 +11,13 @@ from app.server import main
 
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else "api"
-    if command != "api":
+    if command not in ("api", "worker"):
         # One JSON line on stdout, not plain stderr: without it this is the one line of the process
         # that the "every line is JSON" check and a CloudWatch JSON query cannot parse.
         emit_fatal(
-            "unknown command; the only Phase 1 command is 'api'",
+            "unknown command; expected 'api' or 'worker'",
             SystemClock().now,
             command=command[:64],
         )
         sys.exit(64)  # EX_USAGE: distinct from a crash (1) and a bad configuration (78)
-    sys.exit(main())
+    sys.exit(main(command))

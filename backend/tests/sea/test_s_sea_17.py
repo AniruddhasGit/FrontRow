@@ -1,9 +1,9 @@
 """S-SEA-17 (P-HLD-12, FR-ADR-033): release this instance's holds at shutdown, and never depend on it.
 
-HERE: the registry, and the lifespan shutdown hook run exactly as uvicorn runs it after the drain - in-process.
-The REAL SIGTERM to a running container, the SIGKILL that skips the hook, and exit code 0 are the host drill
-backend/tests/sea/drill_live.py (stages `sigterm` and `sigkill`). Not here: a confirm in flight at SIGTERM
-(EP-PAY-01, lane PAY, is not mounted).
+HERE: the registry, the lifespan shutdown hook run exactly as uvicorn runs it after the drain - in-process - and a
+confirm in flight when a REAL SIGTERM reaches a REAL api process (tests/drain_harness.py) inside the test image.
+The SIGTERM to a running CONTAINER and the SIGKILL that skips the hook are the host drill
+backend/tests/sea/drill_live.py (stages `sigterm` and `sigkill`).
 """
 
 from __future__ import annotations
@@ -73,3 +73,52 @@ async def test_the_release_is_best_effort_per_key(world, monkeypatch):
         monkeypatch.setattr(locks, "release", flaky)
     assert r_call("EXISTS", "lock:seat:77:402") == 0 and r_call("EXISTS", "lock:seat:77:404") == 0
     assert r_call("GET", "lock:seat:77:403") == hold["hold_token"]
+
+
+
+def test_a_confirm_in_flight_when_sigterm_arrives_completes_and_commits(migrated_db, tmp_path):
+    """A REAL process (the real boot path, tests/drain_harness.py) and a REAL SIGTERM, inside the test image. The
+    confirm is observed in flight - its transaction open in pg_stat_activity during the simulated payment delay -
+    when the signal is sent; it still answers 201, its booking_seat row is committed, and the process exits 0."""
+    import os
+    import signal
+    import threading
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    from tests.dbkit import run_sql
+    from tests.sea.kit import live_api, live_cookie, one
+
+    # Starts in 2099 so the process's real clock is before the sales cut-off; no line of this test reads a clock.
+    world77(migrated_db, starts="2099-01-01T19:30:00+05:30")
+    cookies = live_cookie(migrated_db, user(migrated_db))
+    result: dict = {}
+    with live_api(migrated_db, tmp_path, PAYMENT_SIMULATED_DELAY_MS="3000") as (base, proc):
+        hold = httpx.post(f"{base}/api/showtimes/77/holds", json={"seat_ids": [402]}, cookies=cookies, timeout=10)
+        assert hold.status_code == 201, hold.text
+
+        def in_flight() -> None:
+            r = httpx.post(f"{base}/api/bookings", json={"hold_token": hold.json()["hold_token"], "showtime_id": 77},
+                           headers={"Idempotency-Key": "sigterm-1"}, cookies=cookies, timeout=30)
+            result["status"], result["body"] = r.status_code, r.text
+
+        worker = threading.Thread(target=in_flight)
+        worker.start()
+        dbname, open_tx = urlsplit(migrated_db.app_url).path.lstrip("/"), 0
+        for _ in range(200):
+            open_tx = run_sql(os.environ["TEST_ADMIN_DATABASE_URL"],
+                              "SELECT count(*) FROM pg_stat_activity WHERE datname = %s AND usename = 'frontrow_app' "
+                              "AND state = 'idle in transaction'", (dbname,))[0][0]
+            if open_tx:
+                break
+            threading.Event().wait(0.02)
+        assert open_tx == 1, "the confirm was never observed inside its transaction"
+        assert "status" not in result
+        proc.send_signal(signal.SIGTERM)
+        worker.join(timeout=30)
+        code = proc.wait(timeout=30)
+        log = proc.log()
+    assert result.get("status") == 201, (result, log)
+    assert code == 0, log
+    assert one(migrated_db, "SELECT count(*) FROM booking_seat WHERE showtime_id = 77 AND seat_id = 402") == 1

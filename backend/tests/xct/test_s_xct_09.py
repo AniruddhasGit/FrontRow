@@ -1,8 +1,8 @@
 """S-XCT-09 - nothing on a path to a booking is deletable.
 
 Covered: the ON DELETE RESTRICT census, booking.user_id, the refused user delete (23503), the no-prune
-scan, and the created_at census. NOT covered yet: the route walk ("exactly three DELETE routes"),
-because EP-ADM-21 and EP-HLD-03/04 belong to the admin and hold lanes.
+scan, the created_at census, the route walk (exactly three DELETE routes), and the two hold releases deleting
+no database row.
 """
 
 from __future__ import annotations
@@ -74,8 +74,7 @@ THE_THREE_DELETES = {"/api/admin/seats/{seat_id}", "/api/holds/{hold_token}/seat
 
 
 def test_no_delete_route_is_mounted_outside_the_three_the_criterion_permits(valid_env):
-    """Partial: the criterion wants EXACTLY these three; the two hold routes are Phase 4 (EP-HLD-03/04), so today
-    the walk can only show that nothing outside the three is mounted and that the seat delete is."""
+    """Exactly three DELETE routes: the admin seat delete and the two hold releases."""
     from app.core.config import load_settings
     from app.main import create_app
     from tests.test_health import ok_probe
@@ -83,5 +82,31 @@ def test_no_delete_route_is_mounted_outside_the_three_the_criterion_permits(vali
 
     application = create_app(load_settings(), probes=[ok_probe("postgres"), ok_probe("redis")])
     deletes = {p for m, p in mounted_routes(application) if m == "DELETE"}
-    assert "/api/admin/seats/{seat_id}" in deletes
-    assert deletes <= THE_THREE_DELETES, deletes - THE_THREE_DELETES
+    assert deletes == THE_THREE_DELETES, deletes ^ THE_THREE_DELETES
+
+
+def _row_counts(db) -> dict[str, int]:
+    tables = [r[0] for r in owner_sql(db, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
+                                          "AND table_type = 'BASE TABLE' ORDER BY 1")]
+    return {t: owner_sql(db, f'SELECT count(*) FROM "{t}"')[0][0] for t in tables}
+
+
+@pytest.mark.anyio
+async def test_the_two_hold_deletes_release_redis_keys_and_delete_no_database_row(migrated_db):
+    from tests.sea.kit import T0, SetClock, api, r_call, session, user, world77
+
+    world77(migrated_db)
+    customer = user(migrated_db)
+    clock = SetClock()
+    clock.set(T0)
+    async with api(migrated_db, clock) as c:
+        cookies = session(c, customer)
+        hold = (await c.post("/api/showtimes/77/holds", json={"seat_ids": [402, 403]}, cookies=cookies)).json()
+        before = _row_counts(migrated_db)
+        one_seat = await c.delete(f"/api/holds/{hold['hold_token']}/seats/402", cookies=cookies)
+        after_seat = _row_counts(migrated_db)
+        whole = await c.delete(f"/api/holds/{hold['hold_token']}", cookies=cookies)
+        after_whole = _row_counts(migrated_db)
+    assert (one_seat.status_code, whole.status_code) == (200, 204)
+    assert r_call("EXISTS", "lock:seat:77:402", "lock:seat:77:403") == 0  # the keys went
+    assert before == after_seat == after_whole and sum(before.values()) > 0  # no row did

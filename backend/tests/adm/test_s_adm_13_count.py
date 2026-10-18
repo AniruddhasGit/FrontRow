@@ -55,6 +55,8 @@ def test_the_read_and_the_write_are_evaluated_separately_and_never_compared(clie
     client.clock._now = AT_0900
     assert client.get("/api/admin/seat-categories").json()["affected_future_showtimes"] == 3
     client.clock.advance(600)  # 09:10:00Z - B's threshold 09:05 is now past
+    read = client.get("/api/admin/seat-categories").json()
+    assert set(read) == {"items", "affected_future_showtimes", "evaluated_at_utc"}  # no warning, no confirmation key
     r = client.patch(f"/api/admin/seat-categories/{cat}", json={"version": 1, "uplift_basis_points": 1500})
     assert r.status_code == 200
     body = r.json()

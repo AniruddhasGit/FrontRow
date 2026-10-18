@@ -1,9 +1,8 @@
 """S-XCT-49 (PRD P-XCT-32): the deployed seed run is specified as a one-off task on its own task definition
 family, and the build session creates none of it.
 
-NOT covered here (the row stays open on it): the entrypoint's `worker` command, which arrives with the worker
-in Phase 5 - so "alongside api, worker and migrate" and "0 'seed' hits in the worker branch" can only be
-asserted for the branches that exist.
+The worker command arrived in Phase 5, so "alongside api, worker and migrate" and "0 'seed' hits in the worker
+branch" are asserted against a branch that exists (a missing branch fails, never passes vacuously).
 """
 
 from __future__ import annotations
@@ -41,10 +40,10 @@ def _entrypoint(*argv: str, **env: str) -> subprocess.CompletedProcess:
 
 def test_the_entrypoint_has_a_seed_branch_and_the_api_branch_never_mentions_seed():
     branches = _branches()
-    assert {"api", "migrate", "seed"} <= set(branches), branches.keys()
+    assert {"api", "worker", "migrate", "seed"} == set(branches) - {"*"}, branches.keys()
     assert any("scripts/seed.py" in line for line in branches["seed"])
     for name in ("api", "worker"):
-        assert [ln for ln in branches.get(name, []) if "seed" in ln.lower()] == [], name
+        assert branches[name] and [ln for ln in branches[name] if "seed" in ln.lower()] == [], name
 
 
 def test_seed_exits_with_the_seeds_own_status_on_a_refusal():

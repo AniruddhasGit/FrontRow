@@ -1,0 +1,48 @@
+drill run_at 2026-10-18T18:50:08Z operator claude-build-session
+setup: database fr_drill_0bcf6b3c, image frontrow-api:p4-seats
+  drill api ready on :18000, instance registry (none yet)
+stage redproof (S-XCT-02, database layer)
+  [PASS] two live holders on (41, 312): A 201, eviction, B 201, A's hold record still present: (201, 201)
+  present: holder A insert exit 0; holder B insert exit 3 'ERROR:  duplicate key value violates unique constraint "uq_booking_seat__showtime_id_seat_id"\nDETAIL:  Key (showtime_id, seat_id)=(41, 312) already exists.'; rows 1
+  [PASS] constraint present: one row and B refused by uq_booking_seat__showtime_id_seat_id: uq_booking_seat__showtime_id_seat_id UNIQUE (showtime_id, seat_id)
+  constraint dropped; catalogue now: ''
+  [PASS] two live holders on (41, 312): A 201, eviction, B 201, A's hold record still present: (201, 201)
+  dropped: holder A insert exit 0; holder B insert exit 0 ''; rows 2
+  [PASS] constraint DROPPED: the seat is sold twice (2 rows) - the guard watched failing: 2
+  [PASS] restore verified by catalogue: uq_booking_seat__showtime_id_seat_id UNIQUE (showtime_id, seat_id)
+  [PASS] two live holders on (41, 312): A 201, eviction, B 201, A's hold record still present: (201, 201)
+  restored: holder A insert exit 0; holder B insert exit 3 'ERROR:  duplicate key value violates unique constraint "uq_booking_seat__showtime_id_seat_id"\nDETAIL:  Key (showtime_id, seat_id)=(41, 312) already exists.'; rows 1
+  [PASS] constraint restored: one row again: 1 row
+stage redis-stop (S-SEA-15, the container actually stopped)
+  [PASS] a hold before the outage: 201
+  [PASS] POST /api/showtimes/77/holds during the outage: 503 DEPENDENCY_UNAVAILABLE in 16 ms
+  [PASS] GET /api/holds/<token> during the outage: 503 DEPENDENCY_UNAVAILABLE in 531 ms
+  [PASS] DELETE /api/holds/<token> during the outage: 503 DEPENDENCY_UNAVAILABLE in 516 ms
+  [PASS] DELETE /api/holds/<token>/seats/402 during the outage: 503 DEPENDENCY_UNAVAILABLE in 516 ms
+  [PASS] /health/live during the outage: 200
+  [PASS] /health/ready during the outage: 503
+  [PASS] the holds taken before the outage are gone, before the next request: ''
+  [PASS] the next hold is 201 and is the only key: (201, 'lock:seat:77:404')
+stage sigterm (S-SEA-17, a real SIGTERM)
+  [PASS] the registry lists this instance's keys: (['instance:dbb5e1e7:holds'], ['lock:seat:77:404', 'lock:seat:77:410', 'lock:seat:77:411'])
+  [PASS] registry TTL within a second of the key's PTTL: (179604, 179468)
+  [PASS] exit code after SIGTERM: 0
+  [PASS] the log shows stop, drain, release, exit - in that order: ['stop signal received', 'drain complete; running shutdown hooks', "released this instance's seat holds", 'api stopped cleanly']
+  [PASS] this instance's keys are gone: EXISTS 0
+  [PASS] the hold record and the cap index are gone: gone
+  [PASS] a foreign token in the registry is left alone: another-holds-token
+  [PASS] the same customer re-takes the seat: 201
+stage sigkill (S-SEA-17: SIGKILL skips the release; Redis's TTL is the guarantee)
+  [PASS] after SIGKILL the key survives with a positive PTTL: 1366
+  [PASS] Redis alone removed it once its TTL passed: after 5 polls
+stage stress (S-SEA-18 / S-XCT-01 Stage A) - the warm-up waits out the login bucket
+  api container: RATE_LIMIT_* unset, so the Settings defaults apply: hold 20/user/min, 60/IP/min (any RATE_LIMIT_ in env: [])
+  stdout: {"operator": "claude-build-session", "run_at": "2026-10-18T19:01:00.629Z", "stage": "A", "base_url": "http://localhost:8000", "showtime_id": 41, "seat_id": 312, "n": 50, "winners": 1, "losers": 49, "loser_unavailable_seats": ["[\"B12\"]"], "other_statuses": [], "spread_ms": 26.1, "spread_limit_ms": 100, "distinct_users": 50, "warmup_elapsed_seconds": 601.0, "winner_confirm_status": 201, "unique_constraint_violations": 0, "booking_seat_rows": 1, "problems": []}
+  stderr: RATE_LIMIT_LOGIN_IP_PER_15MIN=30 | RATE_LIMIT_HOLD_IP_PER_MIN=60
+  exit 0
+  [PASS] exactly one 201 and 49 x 409 SEAT_UNAVAILABLE naming one seat: (1, 49, ['["B12"]'])
+  [PASS] the script proved its own concurrency (spread under the limit): 26.1
+  [PASS] distinct_users = 50 and no 429 or 500 in the window: []
+  winner confirm: 201 (EP-PAY-01 is lane PAY's); booking_seat rows: 1
+teardown: containers removed, database fr_drill_0bcf6b3c dropped
+RESULT: every check passed

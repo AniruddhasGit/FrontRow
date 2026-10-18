@@ -41,17 +41,18 @@ async def signed_in(request: Request, conn: AsyncConnection = Depends(db), setti
     """Any signed-in account. The 401 speaks this lane's sentence for every reason a session is missing or dead
     (P-HLD-05 rows 1 and 2)."""
     try:
-        return await current_user(request, conn, settings, clock)
+        user = await current_user(request, conn, settings, clock)
     except ApiError as exc:
         if exc.status == 401:
             raise ApiError(401, "AUTH_REQUIRED", holds.SIGN_IN) from None
         raise
+    request.state.caller = user  # the handlers read it here and declare no dependency of their own
+    return user
 
 
 router = APIRouter(prefix="/api", dependencies=[Depends(signed_in)])
 
 Id = Annotated[int, Path(gt=0, le=BIGINT_MAX)]
-Me = Annotated[CurrentUser, Depends(signed_in)]
 
 
 class HoldRequest(BaseModel):
@@ -89,10 +90,9 @@ class _Guard:
 
 
 @router.post("/showtimes/{showtime_id}/holds", status_code=201)
-async def create_hold(request: Request, showtime_id: Id, body: HoldRequest, user: Me,
-                      conn: AsyncConnection = Depends(db)) -> dict:
+async def create_hold(request: Request, showtime_id: Id, body: HoldRequest, conn: AsyncConnection = Depends(db)) -> dict:
     """EP-HLD-01: all or nothing, ascending seat-id order, the WHOLE hold returned."""
-    state = request.app.state
+    state, user = request.app.state, request.state.caller
     async with _Guard():
         await _limit(request, user)
         granted = await holds.acquire(state.redis, conn, settings=state.settings, now=state.clock.now(), user_id=user.id,
@@ -105,27 +105,27 @@ async def create_hold(request: Request, showtime_id: Id, body: HoldRequest, user
 # contract's paths are plain segments, so a `:path` convertor (which would answer 400) would change the published
 # route; the gap is reported rather than routed around.
 @router.get("/holds/{hold_token}")
-async def read_hold(request: Request, hold_token: str, user: Me) -> dict:
+async def read_hold(request: Request, hold_token: str) -> dict:
     """EP-HLD-02: a reloaded page restores itself. No query and no body: the server takes no client instant."""
-    token = _token(hold_token)
+    token, user = _token(hold_token), request.state.caller
     async with _Guard():
         await _limit(request, user)
         return await holds.read(request.app.state.redis, token, user.id)
 
 
 @router.delete("/holds/{hold_token}/seats/{seat_id}")
-async def release_seat(request: Request, hold_token: str, seat_id: Id, user: Me) -> dict:
+async def release_seat(request: Request, hold_token: str, seat_id: Id) -> dict:
     """EP-HLD-03: one seat back; the rest keeps its expires_at."""
-    token = _token(hold_token)
+    token, user = _token(hold_token), request.state.caller
     async with _Guard():
         await _limit(request, user)
         return await holds.release_seat(request.app.state.redis, token, user.id, seat_id)
 
 
 @router.delete("/holds/{hold_token}", status_code=204)
-async def release_hold(request: Request, hold_token: str, user: Me) -> Response:
+async def release_hold(request: Request, hold_token: str) -> Response:
     """EP-HLD-04: the whole hold back, 204 and no body."""
-    token = _token(hold_token)
+    token, user = _token(hold_token), request.state.caller
     async with _Guard():
         await _limit(request, user)
         await holds.release(request.app.state.redis, token, user.id)

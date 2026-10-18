@@ -91,3 +91,21 @@ def test_an_unknown_property_is_named_in_the_400(client):
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "REQUEST_INVALID"
     assert r.json()["error"]["details"] == {"field": "alpha"}
+
+
+def test_a_value_too_large_to_store_is_not_told_it_is_too_small(client):
+    """Round 3 verifier: 2**40 as a seat number was answered 'Enter a seat number of 1 or more.' and 2**70 as an
+    uplift 'Enter the uplift in whole basis points.' Too-large money values get the published ceiling sentence;
+    a too-large seat number, for which no sentence is published, gets the registry's own words."""
+    sign_in(client)
+    hall = make_screen(client.db)
+    seat = {"row_label": "A", "seat_number": 2**40, "grid_row": 1, "grid_col": 1, "seat_category_id": make_category(client.db)}
+    big_seat = client.post(f"/api/admin/screens/{hall}/seats", json={"seats": [seat]})
+    big_uplift = client.post("/api/admin/seat-categories", json={"name": "Huge", "uplift_basis_points": 2**70})
+    showtime = make_showtime(client.db, hall, make_movie(client.db), "2026-09-01T12:30:00Z", "2026-09-01T15:00:00Z")
+    big_price = client.patch(f"/api/admin/showtimes/{showtime}", json={"version": 1, "base_price_paise": 2**70})
+    assert (big_seat.status_code, big_seat.json()["error"]["message"]) == (422, "Some fields need attention.")
+    assert big_uplift.status_code == 422
+    assert big_uplift.json()["error"]["message"] == "That uplift is too large for this system to hold. Enter a smaller value."
+    assert big_price.status_code == 422
+    assert big_price.json()["error"]["message"] == "That base price is too large for this system to hold. Enter a smaller amount."

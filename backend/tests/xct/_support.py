@@ -37,7 +37,8 @@ def rg(pattern: str, *paths: str, ignore_case: bool = False, fixed: bool = False
     for p in paths:
         base = REPO / p
         if not base.exists():
-            continue
+            # As rg itself does (exit 2): a moved or mistyped path must never make a zero-hits check pass vacuously.
+            raise FileNotFoundError(f"rg: {p}: no such file or directory under {REPO}")
         for f in _files(base):
             try:
                 text = f.read_text(encoding="utf-8")
@@ -104,3 +105,9 @@ def mounted_routes(app) -> set[tuple[str, str]]:
 
     walk(app.routes)
     return pairs
+
+
+def zone_c(*paths: str) -> list[str]:
+    """Trees the CLIENT writes (Zone C, e.g. .github/workflows) that a criterion sweeps and that may not exist yet.
+    Only these may be absent; every other path given to rg() must exist."""
+    return [p for p in paths if (REPO / p).exists()]

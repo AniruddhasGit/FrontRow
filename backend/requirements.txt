@@ -16,3 +16,10 @@ alembic==1.20.0
 pyjwt==2.15.1
 # P-XCT-06 / P-ACC-03 / FR-ADR-050 name bcrypt for password hashing.
 bcrypt==5.0.0
+# Phase 5 (council ruling JC-R7-01, 2026-10-18). SRC-002 §4 names SQS and SES; boto3 is the AWS SDK for both (and the S3
+# presign path). ONE image for the api and the worker, so it is installed here - but it is imported LAZILY, only in the
+# SQS/SES adapters (app/workers/queue.py, app/domain/mail) and the presign path, so an api that never sends mail and the
+# Render copy never load it. botocore is pinned beside it: boto3 alone floats botocore within its minor version, and an
+# unpinned transitive dependency builds a different image on a different day. Size: see backend/Dockerfile's Measure note.
+boto3==1.43.100
+botocore==1.43.100

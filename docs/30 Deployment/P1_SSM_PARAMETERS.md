@@ -47,6 +47,7 @@ what a task actually loaded without decrypting anything.
 | `DATABASE_URL` | `postgresql://frontrow_app:<password>@<rds-endpoint>:5432/<db>`: the APPLICATION user, never the owner (prep-queue rows 20 and 24). Missing: exit 78. Wrong host: `/health/ready` 503 `postgres: unreachable`. |
 | `REDIS_URL` | `redis://<endpoint>:6379/0`, or `rediss://` with in-transit encryption. Missing: exit 78. Wrong: 503 `redis: unreachable`. |
 | `JWT_SECRET` | A long random string you generate; never one written anywhere else. Missing: exit 78. |
+| `RESEND_SECRET` | **Not set on the AWS deployment at all.** Read only when `MAIL_PROVIDER=resend`, which is the Render copy's mail transport (`SRC-005 D-2`); the AWS deployment uses `ses`. Listed here so the inventory is complete and so nobody stores it as plain text if it is ever used. |
 
 ## Plain environment variables
 

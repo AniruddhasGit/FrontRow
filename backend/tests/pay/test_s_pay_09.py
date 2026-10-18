@@ -90,5 +90,5 @@ def test_the_guard_is_one_total_unique_index_on_showtime_and_seat(world):
     n, indexdef = owner_sql(db, "SELECT count(*), max(indexdef) FROM pg_indexes WHERE tablename = 'booking_seat' AND "
                                 "indexname <> 'booking_seat_pkey' AND indexdef LIKE 'CREATE UNIQUE INDEX %'")[0]
     assert n == 1 and "(showtime_id, seat_id)" in indexdef and " WHERE " not in indexdef
-    with pytest.raises(psycopg.errors.InvalidTextRepresentation, match="invalid input syntax for type"):
+    with pytest.raises(psycopg.errors.InvalidTextRepresentation, match="invalid input syntax for type bigint"):
         owner_sql(db, "SELECT count(*) FROM booking_seat WHERE seat_id = 'F7'")

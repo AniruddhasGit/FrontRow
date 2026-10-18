@@ -71,6 +71,21 @@ SigningSecret = Annotated[str, StringConstraints(min_length=32), AfterValidator(
 REDACTED = "[REDACTED]"
 # A setting whose NAME matches this is never printed, at boot or anywhere else (S-XCT-29).
 SECRET_NAME = re.compile(r"SECRET|PASSWORD|TOKEN|URL")
+# The characters a browser-minted Idempotency-Key (a UUID) is drawn from. A fail prefix made only of these can
+# begin an ordinary customer's key by chance, and that customer's payment then fails on purpose (P-PAY-07).
+_UUID_ALPHABET = re.compile(r"[0-9a-f-]+")
+
+
+# Refuses a fail prefix a real Idempotency-Key could start with. The value IS named: it is a test switch, not a
+# secret, and S-PAY-04 requires the refusal to say which value was wrong and why.
+def _not_uuid_shaped(value: str) -> str:
+    # fullmatch: a prefix with even one character outside the alphabet ("FAIL_") can never begin a UUID.
+    if _UUID_ALPHABET.fullmatch(value):
+        # The variable, the value and the reason, in the one line the operator reads.
+        raise ValueError(f"PAYMENT_SIMULATOR_FAIL_KEY_PREFIX={value!r} is drawn entirely from [0-9a-f-], "
+                         "so a browser-minted Idempotency-Key could begin with it by chance")
+    # Safe: passes through unchanged.
+    return value
 
 
 # Raised when the environment cannot produce valid settings. Without one exception type, the boot path
@@ -120,7 +135,7 @@ class Settings(BaseSettings):
     JWT_SECRET: SigningSecret
     # The payment provider. The only permitted value is `simulated` (check 4); there is no fallback.
     PAYMENT_PROVIDER: str
-    # The mail transport: exactly `ses` or `stub` (check 13). A default to the stub sends nothing.
+    # The mail transport: exactly `ses`, `resend` or `stub` (check 13). A default to the stub sends nothing.
     MAIL_PROVIDER: str
     # The private poster bucket. Wrong: poster upload fails and the redirect points at nothing.
     S3_BUCKET_NAME: str
@@ -138,7 +153,7 @@ class Settings(BaseSettings):
     FORWARDED_ALLOW_IPS: str
     # The Idempotency-Key prefix that makes the simulated payment fail on purpose. A default would be
     # a prefix an ordinary customer could hit by accident. 1-32 characters (S7.9).
-    PAYMENT_SIMULATOR_FAIL_KEY_PREFIX: str = Field(min_length=1, max_length=32)
+    PAYMENT_SIMULATOR_FAIL_KEY_PREFIX: Annotated[str, Field(min_length=1, max_length=32), AfterValidator(_not_uuid_shaped)]
 
     # ---- WITH A DEFAULT, because the value is ruled and the default IS the ruled value (S7.9).
 
@@ -162,8 +177,9 @@ class Settings(BaseSettings):
     SEATMAP_POLL_INTERVAL_SECONDS: int = Field(3, ge=1)
     # The per-key cache stampede guard. Too short and two callers rebuild.
     CACHE_REBUILD_LOCK_TTL_MS: int = Field(2000, ge=1)
-    # The simulated payment's delay. It must never approach the hold (check 1).
-    PAYMENT_SIMULATED_DELAY_MS: int = Field(1500, ge=0)
+    # The simulated payment's delay. It must never approach the hold (check 1). Zero is refused (P-PAY-07: > 0):
+    # a delay of nothing makes the payment step indistinguishable from no payment step in every timing test.
+    PAYMENT_SIMULATED_DELAY_MS: int = Field(1500, gt=0)
     # Without a connect timeout an unreachable Redis hangs requests instead of returning 503.
     REDIS_CONNECT_TIMEOUT_MS: int = Field(500, ge=50, le=10_000)
     # Without a command timeout a Redis that accepts and never answers hangs the request.
@@ -225,6 +241,11 @@ class Settings(BaseSettings):
     WORKER_METRICS_PORT: Port = 8001
     # Minimum gap between two accepted receipt resends for one booking. ASSUMED.
     RECEIPT_RESEND_MIN_INTERVAL_SECONDS: int = Field(300, ge=1)
+    # The Resend HTTPS API key, read only when MAIL_PROVIDER=resend (the Render copy, SRC-005 D-2; check 15). Optional
+    # because the AWS deployment has no use for it and must not need it. Named RESEND_SECRET, not RESEND_API_KEY: the name
+    # is redacted by SECRET_NAME in the boot line, and S-SCP-03 refuses any setting named ..API_KEY (the shape of the
+    # excluded movie-API key), so the obvious name would fail a guard that exists for a different reason.
+    RESEND_SECRET: str | None = None
 
     # ---- RATE-LIMIT BUCKETS (S7.9 / S7.4). Every one is an estimate, replaced by Phase 7's load test.
 
@@ -265,8 +286,9 @@ class CrossFieldCheck(NamedTuple):
     variables: tuple[str, ...]
     # True when the configuration is acceptable.
     holds: Callable[[Settings], bool]
-    # What must be true, in the operator's words.
-    rule: str
+    # What must be true, in the operator's words. A callable when the sentence must carry the configured value and
+    # the bound computed from it (check 1, S-PAY-04): a fixed sentence makes the operator do the arithmetic.
+    rule: str | Callable[[Settings], str]
 
 
 # Without this helper check 3 would need a try/except inside a lambda, which Python cannot express.
@@ -283,7 +305,7 @@ def _zone_exists(name: str) -> bool:
     return True
 
 
-# THE CROSS-FIELD CHECKS RUN AT BOOT (PRD S7.9), in S7.9's own order. THIRTEEN, not twelve: S7.9's
+# THE CROSS-FIELD CHECKS RUN AT BOOT (PRD S7.9), in S7.9's own order (14 and 15 follow in LATER_CHECKS). THIRTEEN, not twelve: S7.9's
 # prose says twelve and is stale; an implementation built to twelve drops the mail-transport check
 # (13), after which a typo in MAIL_PROVIDER runs the deployment with no transport and receipts vanish.
 # Per-field types are not enough: each of these would otherwise be found in the deployed environment.
@@ -294,7 +316,9 @@ CROSS_FIELD_CHECKS: tuple[CrossFieldCheck, ...] = (
         "payment_delay_inside_hold",
         ("PAYMENT_SIMULATED_DELAY_MS", "SEAT_HOLD_TTL_SECONDS"),
         lambda s: s.PAYMENT_SIMULATED_DELAY_MS * 10 < s.SEAT_HOLD_TTL_SECONDS * 1000,
-        "PAYMENT_SIMULATED_DELAY_MS must be less than SEAT_HOLD_TTL_SECONDS x 1000 x 0.1",
+        # Integer division is exact here only when ttl x 1000 is a multiple of 10, which every whole second is.
+        lambda s: (f"PAYMENT_SIMULATED_DELAY_MS={s.PAYMENT_SIMULATED_DELAY_MS} must be less than SEAT_HOLD_TTL_SECONDS x 1000 / 10"
+                   f" = {s.SEAT_HOLD_TTL_SECONDS * 1000 // 10} ms"),
     ),
     # 2. A one-way door walked through by a typo.
     CrossFieldCheck(
@@ -374,12 +398,36 @@ CROSS_FIELD_CHECKS: tuple[CrossFieldCheck, ...] = (
         lambda s: 1024 <= s.API_PORT <= 65535 and 1024 <= s.WORKER_METRICS_PORT <= 65535 and s.API_PORT != s.WORKER_METRICS_PORT,
         "API_PORT and WORKER_METRICS_PORT must each be between 1024 and 65535 and must differ",
     ),
-    # 13. A mail transport nobody named: a typo makes check 8 never fire and receipts vanish.
+    # 13. A mail transport nobody named: a typo makes check 8 never fire and receipts vanish. `resend` is the Render
+    # copy's HTTPS transport (SRC-005 D-2); the AWS deployment uses `ses`.
     CrossFieldCheck(
         "mail_provider_named",
         ("MAIL_PROVIDER",),
-        lambda s: s.MAIL_PROVIDER in ("ses", "stub"),
-        "MAIL_PROVIDER must be exactly 'ses' or 'stub'",
+        lambda s: s.MAIL_PROVIDER in ("ses", "resend", "stub"),
+        "MAIL_PROVIDER must be exactly 'ses', 'resend' or 'stub'",
+    ),
+)
+
+# TWO MORE CHECKS, from sources after S7.9, kept in their own tuple so CROSS_FIELD_CHECKS stays exactly S7.9's
+# thirteen (S-XCT-29 asserts that count). load_settings runs both tuples, so they refuse a boot the same way.
+LATER_CHECKS: tuple[CrossFieldCheck, ...] = (
+    # 14. A hung fast-path queue send outlasting the drain: SIGKILL lands mid-request (P-TKT-04, S-TKT-06). Integer
+    # arithmetic (timeout x 10 <= drain x 1000) is "at most one tenth of the drain" without a float.
+    CrossFieldCheck(
+        "queue_send_inside_drain",
+        ("QUEUE_SEND_TIMEOUT_MS", "SHUTDOWN_DRAIN_TIMEOUT_SECONDS"),
+        lambda s: s.QUEUE_SEND_TIMEOUT_MS * 10 <= s.SHUTDOWN_DRAIN_TIMEOUT_SECONDS * 1000,
+        lambda s: (f"QUEUE_SEND_TIMEOUT_MS={s.QUEUE_SEND_TIMEOUT_MS} must be at most SHUTDOWN_DRAIN_TIMEOUT_SECONDS x 1000 / 10"
+                   f" = {s.SHUTDOWN_DRAIN_TIMEOUT_SECONDS * 1000 // 10} ms"),
+    ),
+    # 15. The Render copy (MAIL_PROVIDER=resend) has no worker: the API sends the receipt inside the bounded fast path,
+    # so the mail call must end before QUEUE_SEND_TIMEOUT_MS cancels it, or the claim is left `sending` until it
+    # goes stale. And without a key every receipt is refused at send time instead of at boot.
+    CrossFieldCheck(
+        "resend_needs_key_and_short_send",
+        ("MAIL_PROVIDER", "RESEND_SECRET", "SES_SEND_TIMEOUT_MS", "QUEUE_SEND_TIMEOUT_MS"),
+        lambda s: s.MAIL_PROVIDER != "resend" or bool((s.RESEND_SECRET or "").strip() and s.SES_SEND_TIMEOUT_MS < s.QUEUE_SEND_TIMEOUT_MS),
+        "MAIL_PROVIDER=resend requires RESEND_SECRET and SES_SEND_TIMEOUT_MS less than QUEUE_SEND_TIMEOUT_MS",
     ),
 )
 
@@ -422,11 +470,12 @@ def load_settings() -> Settings:
         # `from None`: the original exception carries pydantic's context, which can include input.
         raise _config_error(exc) from None
     # Every failing cross-field check, not just the first, so one restart shows them all.
-    failed = [c for c in CROSS_FIELD_CHECKS if not c.holds(settings)]
+    failed = [c for c in CROSS_FIELD_CHECKS + LATER_CHECKS if not c.holds(settings)]
     # A failure stops the boot exactly like a missing variable does.
     if failed:
         # Each line leads with the check's name and the rule, which names its variables.
-        raise ConfigError([f"{c.name}: {c.rule}" for c in failed], [v for c in failed for v in c.variables])
+        raise ConfigError([f"{c.name}: {c.rule(settings) if callable(c.rule) else c.rule}" for c in failed],
+                          [v for c in failed for v in c.variables])
     # Valid.
     return settings
 

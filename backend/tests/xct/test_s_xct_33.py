@@ -4,8 +4,7 @@ Covered: no migration code path in backend/app; alembic only inside the entrypoi
 migrate exits with the migration's status; the API against an UNMIGRATED database starts, is live and
 ready, and answers 500 at the first query that needs a table; every downgrade is one raise; the LOCK
 marker; no destructive operations; the application role is not a superuser; the docs/30 Deployment runbook
-strings. NOT covered: the entrypoint's `worker` command (Phase 5), so "exactly four commands, api, worker,
-migrate and seed" cannot hold yet - the entrypoint accepts api, migrate and seed.
+strings; the entrypoint accepts exactly four commands, api, worker, migrate and seed (the worker arrived in Phase 5).
 """
 
 from __future__ import annotations
@@ -50,6 +49,23 @@ def test_alembic_appears_in_the_entrypoint_only_inside_the_migrate_branch():
     hits = [i for i, ln in enumerate(text) if "alembic" in ln.lower()]
     assert hits and all(start < i < end for i in hits), hits
     assert any("exec alembic -c migrations/alembic.ini upgrade head" in text[i] for i in hits)
+
+
+def test_the_entrypoint_accepts_exactly_four_commands_and_a_fifth_is_refused_naming_them():
+    import subprocess
+
+    text = (BACKEND_DIR / "entrypoint.sh").read_text(encoding="utf-8").splitlines()
+    branches = {m.group(1) for ln in text if (m := re.fullmatch(r"\s*([a-z]+)\)", ln))}
+    assert branches == {"api", "worker", "migrate", "seed"}
+    r = subprocess.run(["sh", str(BACKEND_DIR / "entrypoint.sh"), "scheduler"], capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert "api | worker | migrate | seed" in r.stdout
+    # api and worker exec a long-running process and nothing else: no alembic, no second command.
+    for name in ("api", "worker"):
+        start = next(i for i, ln in enumerate(text) if ln.strip() == f"{name})")
+        end = next(i for i in range(start, len(text)) if text[i].strip() == ";;")
+        body = [ln.strip() for ln in text[start + 1:end] if ln.strip() and not ln.strip().startswith("#")]
+        assert body == [f"exec python -m app {name}"], body
 
 
 def test_migrate_exits_zero_on_success_and_non_zero_with_the_migrations_status_on_failure():

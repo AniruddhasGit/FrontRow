@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { navigate } from "../../router";
 import { get, query, type Film } from "./api";
 import { ChoiceGroup, DayStrip } from "./DayStrip";
-import { controlsFor, countLine, keepDay, listingStrip, runtimeName, type Reference } from "./logic";
+import { controlsFor, countLine, listingStrip, runtimeName, settleListing, type Reference } from "./logic";
 import { Poster } from "./Poster";
 import "./browse.css";
 
@@ -22,12 +22,20 @@ function fromUrl(): Filters {
   return { date: q.get("date"), language_id: q.get("language_id"), format_id: q.get("format_id"), cinema_id: q.get("cinema_id") };
 }
 
-export function ListingScreen({ now = wallClock }: { now?: () => number }) {
-  const [filters, setFilters] = useState<Filters>(fromUrl);
-  const [films, setFilms] = useState<Film[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [reference, setReference] = useState<Reference | null | undefined>(undefined);
-  const [announce, setAnnounce] = useState("");
+// The first state, for the render harness (react-dom/server runs no effect, so nothing is fetched there). A seeded
+// `movies` is settled exactly as a response is. Production passes no seed.
+type Seed = { filters?: Filters; movies?: Film[]; reference?: Reference | null; failed?: boolean };
+
+export function ListingScreen({ now = wallClock, seed }: { now?: () => number; seed?: Seed }) {
+  const [boot] = useState(() => {
+    const f = seed?.filters ?? fromUrl();
+    return seed?.movies ? settleListing(f, seed.movies.map((m) => m.display_until), now()) : { filters: f, announce: null };
+  });
+  const [filters, setFilters] = useState<Filters>(boot.filters);
+  const [films, setFilms] = useState<Film[] | null>(seed?.movies ?? null);
+  const [failed, setFailed] = useState(seed?.failed ?? false);
+  const [reference, setReference] = useState<Reference | null | undefined>(seed?.reference);
+  const [announce, setAnnounce] = useState(boot.announce ?? "");
   const [attempt, setAttempt] = useState(0);
   const first = useRef(true);
 
@@ -47,9 +55,9 @@ export function ListingScreen({ now = wallClock }: { now?: () => number }) {
       setFailed(false);
       setFilms(r.body.movies);
       // A filter that leaves the selected day outside the new strip drops it back to Any date (P-BRW-04).
-      const kept = keepDay(filters.date, listingStrip(now(), r.body.movies.map((m) => m.display_until)));
-      if (kept.cleared) {
-        setAnnounce("The date filter was cleared. Nothing in this list is showing on that day.");
+      const settled = settleListing(filters, r.body.movies.map((m) => m.display_until), now());
+      if (settled.announce) {
+        setAnnounce(settled.announce);
         setFilters((f) => ({ ...f, date: null }));
         return;
       }

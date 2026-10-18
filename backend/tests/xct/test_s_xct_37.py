@@ -21,6 +21,7 @@ PYTHON_ALLOWLIST = {
     "sqlalchemy": "SRC-002 §4 / AGENT_CONTRACT: the ORM Alembic needs (Phase 2)",
     "alembic": "SRC-002 §4 migrations (Phase 2)",
     "boto3": "SRC-002 §4: S3, SQS, SES clients (Phase 5)",
+    "botocore": "boto3's own core, pinned beside it so the image is reproducible (JC-R7-01, Phase 5)",
     "bcrypt": "PRD P-XCT-06 password hashing",
     "pyjwt": "SRC-002 §4 own JWT auth",
     "pytest": "test only",

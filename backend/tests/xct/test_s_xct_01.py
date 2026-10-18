@@ -1,8 +1,8 @@
-"""S-XCT-01 (P-XCT-01 Stage A): the properties of scripts/stress_seats.py that can be read off the script itself.
+"""S-XCT-01 (P-XCT-01 Stage A): scripts/stress_seats.py - its own properties, and the RUN.
 
-The RUN - fifty requests, one winner, the spread, the PostgreSQL count after the winner confirms - is evidence from
-the host drill (backend/tests/sea/drill_live.py, stage `stress`), recorded with its operator and instant. The
-confirm leg needs EP-PAY-01 (lane PAY), which is not mounted.
+The run is a real api process (tests/drain_harness.py, the real boot path) inside the test image, on this test's
+database and Redis, driven by the script exactly as the operator runs it, the winner confirmed through
+POST /api/bookings and the row counted in PostgreSQL.
 """
 
 from __future__ import annotations
@@ -36,3 +36,22 @@ def test_the_outcome_carries_every_field_the_criterion_names():
     for field in ("operator", "run_at", "base_url", "winners", "losers", "spread_ms", "distinct_users",
                   "unique_constraint_violations", "NOT CONCURRENT: spread {spread_ms} ms exceeds {limit_ms} ms"):
         assert field in text, field
+
+
+def test_fifty_customers_one_seat_exactly_one_winner_counted_in_postgresql(migrated_db, tmp_path):
+    """The RUN, in the test image: a real api process (tests/drain_harness.py, the real boot path) on this test's
+    database and Redis, and the script exactly as the operator runs it. Hold buckets at their configured 20 / 60;
+    only the LOGIN bucket is raised for the untimed warm-up (fifty sign-ins from one address)."""
+    from tests.sea.kit import live_api, one, run_stress, stress_customers, world77
+
+    world77(migrated_db, starts="2099-01-01T19:30:00+05:30")
+    stress_customers(migrated_db, 50)
+    with live_api(migrated_db, tmp_path, RATE_LIMIT_LOGIN_IP_PER_15MIN="60", BCRYPT_THREAD_POOL_SIZE="4") as (base, proc):
+        code, outcome, err = run_stress(base, migrated_db, "--showtime", "77", "--seat", "402", "--n", "50")
+        log = proc.log()
+    assert code == 0, (outcome, err, log)
+    assert (outcome["winners"], outcome["losers"], outcome["loser_unavailable_seats"]) == (1, 49, ['["C2"]'])
+    assert outcome["spread_ms"] < outcome["spread_limit_ms"] == 100
+    assert (outcome["distinct_users"], outcome["unique_constraint_violations"], outcome["winner_confirm_status"]) == (50, 0, 201)
+    assert outcome["other_statuses"] == [] and outcome["operator"] and outcome["run_at"].endswith("Z")
+    assert one(migrated_db, "SELECT count(*) FROM booking_seat WHERE showtime_id = 77 AND seat_id = 402") == 1

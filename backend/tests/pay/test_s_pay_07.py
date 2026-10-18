@@ -124,7 +124,9 @@ async def test_a_fault_after_commit_leaves_the_booking_and_the_retry_replays_it(
         h = await hold(c, u, FIVE)
         c.application.state.confirm_observer = _observer([], fail_at="release")
         r = await confirm(c, u, h["hold_token"])
-        assert r.status_code == 500
+        # The booking is committed, so a fault after COMMIT is logged and the answer is still the 201 (round 3: a
+        # 500 here would tell a customer who has paid that no payment was taken).
+        assert r.status_code == 201, r.text
         assert count(db, "SELECT count(*) FROM booking") == 1
         assert count(db, "SELECT count(*) FROM booking_seat") == 5
         assert count(db, "SELECT count(*) FROM payment WHERE state = 'captured'") == 1
@@ -134,7 +136,7 @@ async def test_a_fault_after_commit_leaves_the_booking_and_the_retry_replays_it(
         c.application.state.confirm_observer = None
         retry = await confirm(c, u, h["hold_token"])
     stored = owner_sql(db, "SELECT response_body FROM idempotency_record WHERE idempotency_key = %s", (KEY,))[0][0]
-    assert retry.status_code == 201 and retry.json() == stored
+    assert retry.status_code == 201 and retry.json() == stored and retry.content == r.content
     assert count(db, "SELECT count(*) FROM booking") == 1
 
 

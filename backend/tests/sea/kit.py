@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 
 import httpx
 import pytest
@@ -96,6 +96,10 @@ async def api(db, clock, client_addr: tuple[str, int] = ("127.0.0.1", 50000), **
         async with application.router.lifespan_context(application):
             log = CommandLog()
             log.wrap(application.state.redis)
+            from tests.pay.kit import Sleep
+
+            # The confirm's simulated-provider delay port: recorded, never slept (no test here spends real time).
+            application.state.payment_sleep = Sleep()
             transport = httpx.ASGITransport(app=application, client=client_addr)
             async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
                 client.application = application  # type: ignore[attr-defined]
@@ -199,3 +203,98 @@ def r_call(*args):
         return r.execute_command(*args)
     finally:
         r.close()
+
+
+async def confirm(client, user_id: int, token: str, key: str | None = None, showtime_id: int = SHOWTIME):
+    """POST /api/bookings (EP-PAY-01) for a hold on showtime 77, with a fresh Idempotency-Key unless one is given."""
+    from tests.pay.kit import confirm as pay_confirm
+
+    return await pay_confirm(client, user_id, token, key or uuid.uuid4().hex, showtime_id=showtime_id)
+
+
+def payments(db) -> int:
+    return one(db, "SELECT count(*) FROM payment")
+
+
+# ---- a REAL api process (the real boot path, uvicorn, SIGTERM) inside the test image ----------------------
+
+LIVE_SESSION_AT = "2099-01-01T00:00:00+00:00"  # a session minted here outlives the process's real clock
+
+
+@contextmanager
+def live_api(db, tmp_path, **env_overrides: str):
+    """tests/drain_harness.py as a subprocess on a free loopback port, against this test's database and Redis 12.
+    Yields (base_url, proc). Polls of the external process wait on an Event that is never set: a bounded pause,
+    not a clock read."""
+    import socket
+    import subprocess
+    import sys
+    import threading
+
+    from tests.conftest import VALID_ENV
+    from tests.dbkit import BACKEND_DIR
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {**os.environ, **VALID_ENV, "DATABASE_URL": db.app_url, "REDIS_URL": redis_url(), "API_PORT": str(port),
+           "SHUTDOWN_DRAIN_TIMEOUT_SECONDS": "20", "PYTHONPATH": str(BACKEND_DIR), **env_overrides}
+    log_path = tmp_path / "api.log"
+    out = open(log_path, "w")
+    proc = subprocess.Popen([sys.executable, "-m", "tests.drain_harness"], cwd=BACKEND_DIR, env=env, stdout=out,
+                            stderr=subprocess.STDOUT)
+    proc.log = lambda: log_path.read_text()[-3000:]  # type: ignore[attr-defined]
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(400):
+            try:
+                if httpx.get(f"{base}/health/live", timeout=1).status_code == 200:
+                    break
+            except httpx.TransportError:
+                assert proc.poll() is None, proc.log()
+                threading.Event().wait(0.05)
+        yield base, proc
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=10)
+        out.close()
+
+
+def live_cookie(db, user_id: int, role: str = "customer") -> dict[str, str]:
+    from datetime import datetime
+
+    token = issue_session_token(user_id=user_id, role=role, password_version=1,
+                                now=datetime.fromisoformat(LIVE_SESSION_AT), settings=app_settings(db))
+    return {SESSION_COOKIE: token}
+
+
+STRESS_PASSWORD = "stress-drill-only-" + "pw"  # local throwaway, never a seed default
+
+
+def stress_customers(db, n: int) -> None:
+    """customer-01@ .. customer-NN@ at the seed's domain, the addresses scripts/stress_seats.py signs in as."""
+    from app.core.config import Settings
+    from app.core.security import hash_password
+    from tests.conftest import VALID_ENV
+
+    hashed = hash_password(STRESS_PASSWORD, Settings(**VALID_ENV).BCRYPT_COST)
+    for i in range(1, n + 1):
+        owner_sql(db, "INSERT INTO users (email, password_hash, role, password_version) VALUES (%s, %s, 'customer', 1)",
+                  (f"customer-{i:02d}@demo.frontrow.invalid", hashed))
+
+
+def run_stress(base: str, db, *args: str):
+    """scripts/stress_seats.py as the operator runs it, against a loopback base URL. Returns (code, outcome, stderr)."""
+    import json
+    import subprocess
+    import sys
+
+    from tests.xct._support import REPO
+
+    env = {**os.environ, "STRESS_OPERATOR": "pytest p4-close lane", "SEED_DEFAULT_PASSWORD": STRESS_PASSWORD,
+           "RATE_LIMIT_LOGIN_IP_PER_15MIN": "60", "RATE_LIMIT_HOLD_IP_PER_MIN": "60"}
+    done = subprocess.run([sys.executable, str(REPO / "scripts/stress_seats.py"), "--base-url", base, "--database-url",
+                           db.app_url, *args], env=env, capture_output=True, text=True, timeout=300)
+    lines = [ln for ln in done.stdout.splitlines() if ln.startswith("{")]
+    return done.returncode, (json.loads(lines[-1]) if lines else None), done.stderr

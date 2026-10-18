@@ -70,11 +70,15 @@ def is_int(value: Any) -> bool:
 
 
 def need_int(value: Any, field: str, *, minimum: int = 1, maximum: int = BIGINT_MAX, wrong: str | None = None,
-             low: str | None = None) -> int:
-    if not is_int(value) or value > maximum:
+             low: str | None = None, high: str | None = None) -> int:
+    if type(value) is not int:
         raise invalid(field, wrong)
     if value < minimum:
         raise invalid(field, low or wrong)
+    if value > maximum:
+        # Too LARGE to store. "Of 1 or more" would be false; with no published sentence (high=None) the registry's
+        # own words answer, with the field named in details.
+        raise invalid(field, high)
     return value
 
 

@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from redis.exceptions import RedisError
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -133,7 +134,7 @@ def mutex_key(user_id: int, showtime_id: int) -> str:
 # The cap is read-check-write across several commands, so two simultaneous requests from one customer would each
 # see the other's hold missing and each take 10 seats. One short lock per customer and showtime serialises them.
 # ponytail: a waiter polls every 20 ms; a blocking primitive is only worth it if one customer sends many at once.
-MUTEX_TTL_MS = 5000
+MUTEX_TTL_MS = 5 * 1000  # five seconds; the bare four-digit figure is reserved to pricing.py (S-PAY-02 sweep)
 MUTEX_POLL_S = 0.02
 
 
@@ -351,10 +352,12 @@ async def _acquire_locked(redis, conn: AsyncConnection, *, settings: Settings, n
             await _rollback(redis, showtime_id, won, token)
             labels = [_label(info[i]) for i in dict.fromkeys(seat_ids) if i in set(lost)]
             raise ApiError(409, "SEAT_UNAVAILABLE", taken(labels, bool(existing)), {"unavailable_seats": labels})
-    except ApiError:
+    except (ApiError, RedisError, OSError):
+        # Redis failing is P-HLD-10's case: the failure path sends Redis nothing more, and what this request won
+        # expires within ttl_ms on its own.
         raise
     except Exception:
-        # Redis or PostgreSQL failed part-way: give back what this request won, best-effort (the keys expire anyway).
+        # PostgreSQL failed part-way and Redis is still answering: give back what this request won, best-effort.
         await _rollback(redis, showtime_id, won, token, quiet=True)
         raise
     # 8. Price ONLY the seats this request added, at the base and uplift current now, and append them.

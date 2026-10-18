@@ -1,8 +1,9 @@
-"""S-SEA-08 (P-HLD-03, EP-HLD-02): whether a hold is alive is Redis's answer, never a clock comparison.
+"""S-SEA-08 (P-HLD-03, EP-HLD-02, EP-PAY-01): whether a hold is alive is Redis's answer, never a clock comparison.
 
-The hold READ (GET /api/holds/{token}) is the liveness surface asserted here. Not here: the CONFIRM's 201 / 409
-(EP-PAY-01 is lane PAY's and is not mounted), and the repository-wide wall-clock sweep, which finds other
-lanes' sleeping polls in tests/adm, tests/xct and tests/test_shutdown.py - this module's own sweep covers tests/sea.
+Both liveness surfaces are asserted: the hold READ (GET /api/holds/{token}) and the CONFIRM (POST /api/bookings).
+Not here: a 43-character token carrying `/` (two path segments, so 404 - a contract gap), and the repository-wide
+wall-clock sweep, which finds other lanes' sleeping polls of external processes in tests/adm, tests/xct and
+tests/test_shutdown.py - this module's own sweep covers tests/sea.
 """
 
 from __future__ import annotations
@@ -114,3 +115,48 @@ async def test_the_read_takes_no_client_instant(world):
 
 def test_no_test_in_this_lane_reads_the_wall_clock():
     assert rg(r"time\.sleep\(|datetime\.now\(|datetime\.utcnow\(|time\.time\(", "backend/tests/sea") == []
+
+
+# ---- the confirm (EP-PAY-01) as the liveness surface ------------------------------------------------------
+
+
+async def test_the_confirm_is_201_while_the_keys_live_and_hold_expired_once_they_go(world):
+    from tests.sea.kit import confirm
+
+    customer = user(world["db"])
+    async with api(world["db"], _clock()) as c:
+        cookies = session(c, customer)
+        live = (await c.post(URL, json={"seat_ids": [402]}, cookies=cookies)).json()
+        ok = await confirm(c, customer, live["hold_token"])
+        deleted = (await c.post(URL, json={"seat_ids": [404]}, cookies=cookies)).json()
+        r_call("DEL", "lock:seat:77:404")
+        by_delete = await confirm(c, customer, deleted["hold_token"])
+    async with api(world["db"], _clock(), SEAT_HOLD_TTL_SECONDS="2") as c:
+        timed = (await c.post(URL, json={"seat_ids": [403]}, cookies=session(c, customer))).json()
+        polls = 0
+        while r_call("EXISTS", "lock:seat:77:403") == 1 and polls < 400:  # Redis's own TTL, never the app clock
+            polls += 1
+            await asyncio.sleep(0.025)
+        by_ttl = await confirm(c, customer, timed["hold_token"])
+    assert ok.status_code == 201, ok.text
+    for r in (by_delete, by_ttl):
+        assert (r.status_code, r.json()["error"]["code"], r.json()["error"]["message"]) == (409, "HOLD_EXPIRED", ENDED)
+
+
+async def test_the_confirm_ignores_the_injected_clock_at_and_past_expires_at(world):
+    """The assertion that proves no clock is compared: at expires_at and at expires_at + 1 s on the INJECTED clock,
+    with the keys still present in Redis, the confirm is 201 and never 409 HOLD_EXPIRED."""
+    from tests.sea.kit import confirm
+
+    customer = user(world["db"])
+    clock = _clock()
+    async with api(world["db"], clock) as c:
+        cookies = session(c, customer)
+        at = (await c.post(URL, json={"seat_ids": [402]}, cookies=cookies)).json()
+        past = (await c.post(f"/api/showtimes/88/holds", json={"seat_ids": [402]}, cookies=cookies)).json()
+        assert at["expires_at"] == past["expires_at"] == "2026-08-14T14:05:37.412Z"
+        clock.set("2026-08-14T14:05:37.412+00:00")
+        r_at = await confirm(c, customer, at["hold_token"])
+        clock.advance(1)
+        r_past = await confirm(c, customer, past["hold_token"], showtime_id=88)
+    assert (r_at.status_code, r_past.status_code) == (201, 201), (r_at.text, r_past.text)

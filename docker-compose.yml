@@ -15,6 +15,8 @@
 #   Frontend   http://localhost:8080/
 #   Postgres   localhost:55433   (5432 and 55432 on this host belong to other containers)
 #   Redis      localhost:56379
+#   ElasticMQ  no host port: the api, the worker and the tests reach it as http://elasticmq:9324 (Phase 5)
+#   Worker     docker compose logs -f worker      (the receipt emails it would send: MAIL_PROVIDER=stub, on stdout)
 # =====================================================================================================
 
 name: frontrow
@@ -32,6 +34,19 @@ configs:
       #!/bin/sh
       set -eu
       psql -v ON_ERROR_STOP=1 -v owner_password=local-dev-owner -v app_password=local-dev-app -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -f /frontrow/roles_local.sql
+  # The local queue and its dead letter queue, created at ElasticMQ's start. The two numbers mirror the ordering the
+  # SQS spec demands (docs/30 Deployment/P5_SQS_QUEUE.md): visibility 120 s < RECEIPT_CLAIM_STALE_SECONDS 900 s, and
+  # maxReceiveCount 9 > ceil(900 / 120) = 8, or the receipt reaches the DLQ before its stale claim can be retaken.
+  elasticmq_conf:
+    content: |
+      include classpath("application.conf")
+      queues {
+        frontrow-receipts {
+          defaultVisibilityTimeout = 120 seconds
+          deadLettersQueue { name = "frontrow-receipts-dlq", maxReceiveCount = 9 }
+        }
+        frontrow-receipts-dlq { }
+      }
 
 services:
   postgres:
@@ -71,6 +86,16 @@ services:
       retries: 10
     mem_limit: 64m
 
+  # SQS locally (SRC-002 §4: "ElasticMQ locally"). It speaks the SQS API, so app/workers/queue.py is the same code
+  # against both; only QUEUE_URL differs. Exact tag, like every other image here. No host port: only the api, the worker
+  # and the test container talk to it, all on the compose network, so a second compose project (-p) never collides.
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.14
+    configs:
+      - source: elasticmq_conf
+        target: /opt/elasticmq.conf
+    mem_limit: 128m
+
   api:
     build:
       # The repository root, so the image can carry scripts/seed.py (backend/Dockerfile header).
@@ -79,7 +104,8 @@ services:
       target: runtime
     image: frontrow-api:phase1
     command: ["api"]
-    environment:
+    # Anchored: the worker below runs the same image with the same configuration, so the two cannot drift apart.
+    environment: &app-env
       # The full inventory, with what each one does, is in .env.example.
       # frontrow_app, NEVER the owner or the superuser: building against the restricted role locally is
       # how a missing grant is found here instead of on RDS (GOTCHAS "Local Postgres gives you superuser").
@@ -97,9 +123,12 @@ services:
       CURRENCY_CODE: INR
       CURRENCY_MINOR_UNIT_RATIO: "100"
       # The rest of PRD S7.9's no-default list: without any one of them the api exits 78 at boot.
-      # Local placeholders only - nothing reads QUEUE_URL, S3 or SES until Phases 5 and 6, and the
-      # ElasticMQ service that QUEUE_URL will point at arrives with the worker (Phase 5).
+      # The elasticmq service above. In AWS: the SQS queue URL (row 9 of the prep queue).
       QUEUE_URL: http://elasticmq:9324/000000000000/frontrow-receipts
+      # ElasticMQ accepts any credentials but the SDK refuses to sign without some. Local throwaway values. In AWS
+      # these two are NEVER set: the task role supplies credentials, and a key pair here would be a secret in a file.
+      AWS_ACCESS_KEY_ID: local-elasticmq
+      AWS_SECRET_ACCESS_KEY: local-elasticmq
       PAYMENT_PROVIDER: simulated
       # stub: writes the message to stdout and sends nothing. Local development only (S7.9).
       MAIL_PROVIDER: stub
@@ -118,6 +147,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      elasticmq:
+        condition: service_started
     # The same constraints the task definition should apply (Zone C), so a local run fails the same
     # way a deployed one would: no writable filesystem, a hard memory ceiling.
     read_only: true
@@ -127,6 +158,29 @@ services:
     # Longer than SHUTDOWN_DRAIN_TIMEOUT_SECONDS, or `docker compose stop` SIGKILLs mid-drain. The same
     # ordering applies to the ECS stop timeout.
     stop_grace_period: 30s
+
+  # The queue consumer: the same image as the api, the `worker` command (SRC-003 OPEN-PROC-01, three processes).
+  worker:
+    image: frontrow-api:phase1
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    command: ["worker"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_started
+      elasticmq:
+        condition: service_started
+    read_only: true
+    # The architecture's budget for the worker on a t3.micro (docs/07 Architecture/for_llm/04_deployment.md).
+    mem_limit: 150m
+    # Longer than QUEUE_POLL_WAIT_SECONDS (20) + SES_SEND_TIMEOUT_MS (5 s): a long poll in flight is waited out on stop.
+    stop_grace_period: 30s
+    # No HEALTHCHECK applies: the image's checks /health/live, which the worker does not serve (it has no HTTP surface).
+    healthcheck:
+      disable: true
 
   frontend:
     build:
@@ -178,6 +232,11 @@ services:
       TEST_APP_PASSWORD: local-dev-app
       TEST_REDIS_URL: redis://redis:6379/15
       DATAMODEL_DIR: /docs/06 DataModel
+      # The ElasticMQ of this compose project, for the queue integration tests (tests/tkt/). Each test creates its own
+      # uniquely named queue, so two runs never read each other's messages.
+      TEST_QUEUE_ENDPOINT: http://elasticmq:9324
+      AWS_ACCESS_KEY_ID: local-elasticmq
+      AWS_SECRET_ACCESS_KEY: local-elasticmq
       # The M1 story tests (tests/xct/_support.py) read repository-root files too - .env.example,
       # docker-compose.yml, .gitignore, the manifests, docs/30 Deployment. They look here first.
       FRONTROW_REPO_ROOT: /repo
@@ -194,6 +253,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      elasticmq:
+        condition: service_started
     read_only: true
     tmpfs:
       - /tmp
