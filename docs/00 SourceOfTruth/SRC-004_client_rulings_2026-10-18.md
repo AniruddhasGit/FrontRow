@@ -128,3 +128,21 @@ public, anything that spends money, and secrets — those are OPS-lane matters o
   Until then both figures are reported every time: `docker images` (239 MB) and the compressed size
   ECR stores (56.5 MB + 21.0 MB). boto3 is expected to push the first figure over 250 MB, so this is
   said now, not in Phase 5.
+- **JC-R6-01a · JC-R6-01 covers only the API's send to the queue.** Once the reset message is on the
+  queue, an SES refusal or timeout leaves the message undeleted, and SQS redelivers it up to
+  `maxReceiveCount`. That retry reads the token from the message, so no stored copy is needed and R-3
+  holds. The `resets` queue has **no dead-letter queue**: after the last receive, or once retention
+  (1800 s or less) runs out, the message is gone, and the customer asks again. The outbox relay never
+  sends a `password_reset.send` row.
+
+---
+
+## ERRATUM 1 — 2026-10-18, build session, about JC-R6-01a (not client text)
+
+JC-R6-01a says "up to `maxReceiveCount`". SQS enforces `maxReceiveCount` only through a redrive
+policy, and a redrive policy must name a dead-letter queue, which the `resets` queue does not have.
+*(Reasoned from the SQS API, not observed.)* What actually bounds redelivery is the queue's
+**retention period, 1800 s or less**. The worker may also stop retrying on its own, by checking the
+message's `ApproximateReceiveCount` and deleting it once that passes a configured limit. Read
+JC-R6-01a with "up to `maxReceiveCount`" replaced by "until retention expires, or until the
+worker's own receive-count limit is reached".

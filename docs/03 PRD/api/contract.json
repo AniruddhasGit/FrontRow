@@ -434,7 +434,7 @@
       },
       "responses": {
         "202": {
-          "description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous through the transactional outbox and the worker",
+          "description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous: a queue message sent at request time carries the token (SRC-004 R-3, never relayed from the outbox) to the worker",
           "body": {
             "message": "string, the one shared sentence in P-ACC-07, whose stated lifetime is rendered from PASSWORD_RESET_TTL_SECONDS as a whole number of minutes and is never a literal"
           }

@@ -3792,13 +3792,13 @@ blank cell meant.
      "user_sees": "C12 was taken by another customer before your payment finished. Your booking was not made and you have not been charged."},
     {"from": "held_by_me_paying", "input": "CONFIRM_COMMIT", "to": "sold",
      "guard": "server: the booking, its booking_seat rows and the completed idempotency record committed together. The Redis keys are released after the commit with the compare-and-delete script, never before and never inside the transaction",
-     "user_sees": "FR-2K7M-9QXD"},
+     "user_sees": "FR-2K7M-9QXF"},
     {"from": "held_by_me_paying", "input": "INSTANCE_KILLED_PRECOMMIT", "to": "held_by_me",
      "guard": "the transaction rolls back, so there is no booking and no captured payment. The Redis keys live outside the process and survive with their original expires_at. A retry with the same Idempotency-Key finds no completed record and runs again",
      "user_sees": "We cannot complete your booking right now. You have not been charged. Try again in a few minutes. If you need help, quote a1b2c3d4."},
     {"from": "held_by_me_paying", "input": "INSTANCE_KILLED_POSTCOMMIT", "to": "sold",
      "guard": "the booking is committed and durable. The post-commit release never ran, so this seat keeps a residual lock until its TTL. That cannot oversell: the database refuses anyone else and the map shows sold, because sold wins over any lock per P-SEA-05. A retry with the same Idempotency-Key returns the original booking",
-     "user_sees": "FR-2K7M-9QXD"},
+     "user_sees": "FR-2K7M-9QXF"},
     {"from": "held_by_me_paying", "input": "SIGTERM_DRAIN", "to": "held_by_me_paying",
      "guard": "the drain finishes in-flight requests before it releases locks, so a confirm in flight completes and only holds that never became bookings are released. This depends on the ECS stop timeout exceeding the deregistration delay plus the drain timeout, which is a Zone C configuration. If it does not, SIGKILL arrives first and the case becomes INSTANCE_KILLED_PRECOMMIT",
      "user_sees": "(nothing - no message is shown; the request completes normally)"},
@@ -3983,7 +3983,7 @@ blank cell meant.
      "user_sees": "(nothing - the customer has left)"},
     {"from": "sold", "input": "TAB_REFRESHED", "to": "sold",
      "guard": "the restored selection is re-checked against the fresh map and this seat is dropped from it. For the buyer, the restored checkout page finds fr.last_booking_reference in sessionStorage for this showtime and redirects to the confirmation screen for it WITH NO REQUEST - SCR-PAY-01 owns that rule and does not replay EP-PAY-01. Were the confirm re-sent, the same Idempotency-Key would return the original booking, so no second booking exists on either route; the route that runs is the one that spends no rate-limit token",
-     "user_sees": "FR-2K7M-9QXD"},
+     "user_sees": "FR-2K7M-9QXF"},
     {"from": "sold", "input": "SIGN_OUT", "to": "sold",
      "guard": "ignored: the booking is committed and durable, and no session event can un-sell a booking_seat row (P-SEA-05). A residual key from the buyer's own hold is released if it is still present, which is harmless",
      "user_sees": "(nothing - no message is shown)"},
@@ -6108,13 +6108,13 @@ session's; it is one integer and it moves with the bucket if the bucket is recon
 
 **Worked example — `R-PAY-02`'s three cases, which must all return the original booking.** A customer
 confirms at `14:02:40Z` with `Idempotency-Key: 9f2c…`, and the booking commits at `14:02:41.6Z` as
-`FR-7K3M-QP42`, total `166146`.
+`FR-7K3M-QP4C`, total `166146`.
 
 | Case | When | What the server does | What is returned |
 |---|---|---|---|
-| **Refresh** | `14:02:45Z`, same key, same fingerprint | Insert violates the unique constraint; the winner is `completed` | The stored `response_body`: booking `FR-7K3M-QP42`, total `166146` |
+| **Refresh** | `14:02:45Z`, same key, same fingerprint | Insert violates the unique constraint; the winner is `completed` | The stored `response_body`: booking `FR-7K3M-QP4C`, total `166146` |
 | **Double-click** | `14:02:40.4Z`, same key, same fingerprint, winner still capturing | Insert violates; the winner is `in_progress` | `409` `IDEMPOTENCY_IN_FLIGHT`, `Retry-After: 3` |
-| **Slow retry** | `14:04:10Z`, after the hold expired, same key, same fingerprint | Insert violates; the winner is `completed`. **The expired hold is irrelevant — the booking already exists** | The stored `response_body`: booking `FR-7K3M-QP42`, total `166146` |
+| **Slow retry** | `14:04:10Z`, after the hold expired, same key, same fingerprint | Insert violates; the winner is `completed`. **The expired hold is irrelevant — the booking already exists** | The stored `response_body`: booking `FR-7K3M-QP4C`, total `166146` |
 
 In none of the three is a second `payment` row created, a second booking inserted, or a second capture
 performed.
@@ -6571,10 +6571,10 @@ trusts; the browser may format the input for display, and the server normalises 
 
 | Input, verbatim | Normalised | Result |
 |---|---|---|
-| `FR-ABCD-EFGH` | `ABCDEFGH` | resolves |
-| `fr abcd efgh` | `ABCDEFGH` | resolves |
-| `abcdefgh` | `ABCDEFGH` | resolves |
-| `  FR-abcd-EFGH  ` | `ABCDEFGH` | resolves |
+| `FR-ACDE-FHJD` | `ACDEFHJD` | resolves |
+| `fr acde fhjd` | `ACDEFHJD` | resolves |
+| `acdefhjd` | `ACDEFHJD` | resolves |
+| `  FR-acde-FHJD  ` | `ACDEFHJD` | resolves |
 | `FR-0BCD-EFGH` (a zero typed for the letter `O`) | `0BCDEFGH` | **does not resolve.** `0` is not in the alphabet. It is **not** mapped to `O`, because a system that guesses can admit the wrong person |
 | `FR-1BCD-EFGH` (a one typed for `I`) | `1BCDEFGH` | does not resolve, same reason |
 | `FR-ABCD-EFG` | `ABCDEFG` | does not resolve — 7 characters |
@@ -6702,7 +6702,8 @@ booking transaction**, immediately before commit. It commits with the booking or
 A separate relay step sends it to the queue. There is no post-commit send with no record.
 
 **This outbox is the whole product's queue, not this lane's.** The account lane's password-reset email
-travels through the same table, the same relay and the same worker. A vocabulary with one member and a
+travels through the same table and the same worker — but not the same relay: under `SRC-004 R-3` its
+queue message is sent at request time, because only that message may carry the token (below). A vocabulary with one member and a
 payload fixed at the receipt's four keys **cannot represent that message**: it could not be enqueued at
 all, it could not say which reset it is for, and `P-TKT-05`'s "delete a message whose `booking_id` does
 not resolve to a confirmed booking" would have silently destroyed it if one somehow got in. That is not
@@ -6720,12 +6721,17 @@ is not exactly the shape given for its topic is rejected at insert.
 | `receipt.send` | `booking_id`, `dispatch_seq`, `request_id`, `message_version` | lane E3's confirm transaction (`P-PAY-10` step 10 — the `outbox_message` insert; step 9 is the `receipt_dispatch` row it carries the `dispatch_seq` of) and `P-TKT-07`'s resend |
 | `password_reset.send` | `user_id`, `reset_token_id`, `request_id`, `message_version` | the account lane, on a password-reset request |
 
-**The reset token itself never travels in the queue.** The payload carries `reset_token_id` — the
-identity of a row — and never the token value. A token is a credential, and a queue message is at rest
-in a service the application does not own, is redelivered more than once, and is copied into a dead
-letter queue that nothing prunes and nobody watches (`P-TKT-11`). The worker reads what it needs from
-PostgreSQL. This is the same rule `FR-ADR-059` already imposes on customer data, and the same reason
-`receipt.send` carries no email address, no seat list and no amount.
+**The reset token travels in the queue message, and nowhere else** (`SRC-004 R-3`, which reverses this
+row's earlier rule that it never travelled in the queue). The `outbox_message` payload above carries
+`reset_token_id` — the identity of a row — and never the token value: **no database column, this payload
+included, ever holds the plaintext**, and PostgreSQL keeps only `token_sha256` (`P-ACC-07`). So the
+account lane sends the reset message to the queue **directly at request time**, its body being this
+payload plus the token; the relay never sends a `password_reset.send` row, and **a failed send is not
+retried** (`SRC-004 JC-R6-01`) — nothing stored can rebuild the token, and the customer asks again. A
+queue message is at rest in a service the application does not own and is redelivered more than once, so
+the message is never logged in full (the logger redacts the token field) and the queue's message
+retention is short (`SRC-004 R-3`). `receipt.send` still carries no email address, no seat list and no
+amount (`FR-ADR-059`).
 
 **Who may do it.** Nobody directly. The insert happens on lane E3's confirm path; the relay runs in
 the API process immediately after commit and in the worker's receive loop. No role and no endpoint
@@ -6764,7 +6770,10 @@ reaches it.
    This is what happens almost always. **A timeout is treated exactly as a failure** — step 4.
 4. **Recovery path.** If step 3 fails, or the process dies before it, the row stays `pending`. Before
    each poll of the queue, the worker selects `pending` rows older than a short threshold with
-   `SELECT ... FOR UPDATE SKIP LOCKED`, in a bounded batch, sends them and marks them `sent`. This runs
+   `SELECT ... FOR UPDATE SKIP LOCKED`, in a bounded batch, sends them and marks them `sent`.
+   **The selection is `topic = 'receipt.send'` only.** A `password_reset.send` row is never selected:
+   its message was sent at request time, nothing stored can rebuild its token, and the row stays
+   `pending` for good (`SRC-004 JC-R6-01`, `JC-R6-01a`). This runs
    on the worker's existing loop; **there is no scheduler and none may be added** (`SRC-003
    OPEN-PROC-01`).
 5. `sent` rows are kept forever as the record that the receipt was dispatched (`FR-ADR-012`). Nothing
@@ -6874,8 +6883,9 @@ within roughly 30 to 50 seconds of the crash. *(reasoned from the configured val
 queue's configuration, is what makes a duplicate receipt impossible. A failed send is retried through
 queue redelivery and eventually lands in the dead letter queue.
 
-**The worker branches on `topic` before it does anything else.** One queue carries both members of
-`P-TKT-04`'s vocabulary, so the first thing the receive loop does with a message is read its `topic`
+**The worker branches on `topic` before it does anything else.** The receive loop can meet both members of
+`P-TKT-04`'s vocabulary (the reset message travels on its own `resets` queue, which has no dead letter
+queue — `SRC-004 JC-R6-01a`), so the first thing it does with a message is read its `topic`
 and dispatch on it:
 
 | `topic` | What runs |
@@ -7146,7 +7156,7 @@ poster or any other image, because `OPEN-ATTRIB-01` is open and no licensed mate
 product; no PDF attachment (`FR-ADR-048` rejected it); no password, token or link that signs anybody
 in.
 
-**Worked example.** Booking `FR-ABCD-EFGH`, three Premium seats `F7`, `F8`, `F9` in `Hall 3`, showtime
+**Worked example.** Booking `FR-ACDE-FHJD`, three Premium seats `F7`, `F8`, `F9` in `Hall 3`, showtime
 stored as `2026-08-21T13:45:00Z`, total `84372` paise — the seeded figures worked through in
 `P-TKT-03`. The receipt renders the time as
 **21 Aug 2026, 7:15 pm (Asia/Kolkata)** and the amount as **₹843.72**. That is `S7.19`'s
@@ -7273,7 +7283,7 @@ rate limited per booking and does not state a value; `FR-ADR-058`'s table has no
 per-user bucket reuses `FR-ADR-058`'s booking-lookup bucket of 20 per minute.
 
 **Worked example — the resend a `pending` row refuses, and the `Retry-After` figure on the one it
-accepts.** Booking `FR-ABCD-EFGH` commits at `17:55:00` local. The `receipt_dispatch` row is written in
+accepts.** Booking `FR-ACDE-FHJD` commits at `17:55:00` local. The `receipt_dispatch` row is written in
 the same transaction: `dispatch_seq = 1`, `status = 'pending'`, `attempts = 0`. The worker is down.
 
 | When | Row state read under `FOR UPDATE` | Outcome |
@@ -7458,8 +7468,8 @@ has forgotten their password reaches none of them either**, and that one is not 
 anything.
 
 **The route that restores a session is the route that cannot help here.** A password reset writes a
-`password_reset.send` row into **the same `outbox_message` table**, relayed by **the same relay**,
-consumed by **the same worker**, and sent through **the same SES identity** (`P-TKT-04`, `P-TKT-12`)
+`password_reset.send` row into **the same `outbox_message` table**, sends its queue message at request
+time (`SRC-004 R-3`), is consumed by **the same worker**, and sent through **the same SES identity** (`P-TKT-04`, `P-TKT-12`)
 that has just failed to deliver the receipt. When SES is the failing component, account recovery fails
 with it — and `P-ACC-07`'s deliberately uniform `202` means the customer cannot tell that it did.
 **The four routes are not four independent routes; three of them and the fix for the fourth all
@@ -7586,13 +7596,14 @@ carries, and it is the sole route back into an account whose address is taken pe
 **Who may do it.** The worker process alone. No customer-facing endpoint sends mail directly.
 
 **Preconditions.** The message carries `user_id`, `reset_token_id`, `request_id`, `message_version`
-(`P-TKT-04`). **The token itself is never in the queue** — it is a credential, and the worker reads
-what it needs from the row.
+(`P-TKT-04`) **and the plaintext token**, which rides in this queue message and nowhere else
+(`SRC-004 R-3`): the row holds only `token_sha256`, so the link the worker renders takes its token from
+the message. The worker never logs the message body in full.
 
 **Happy path.**
 1. Read the `password_reset_token` row by `reset_token_id`.
 2. **Claim it**, by the same mechanism the receipt uses and for the same reason — SQS is at-least-once
-   and the outbox relay can re-send. The claim is a conditional update on the token row itself, and it
+   (the relay never re-sends this topic, `SRC-004 R-3`, but SQS redelivery alone can deliver it twice). The claim is a conditional update on the token row itself, and it
    carries the **stale branch** exactly as `P-TKT-05`'s receipt claim does:
 
    ```sql
@@ -7663,11 +7674,12 @@ per request, and it already has the right lifetime — the row is the thing the 
 | 3 | `email_sent_at` is already set | a duplicate delivery. Zero rows, the message is deleted and nothing is sent. **This holds forever** — `email_sent_at` is never cleared, so a redelivery arriving a day after a failed queue delete still sends nothing | *(nothing)* |
 | 3a | `email_claimed_at` is set and newer than `RECEIPT_CLAIM_STALE_SECONDS`, `email_sent_at` null | another delivery is running this job now. Zero rows, the message is deleted, one `INFO` line | *(nothing)* |
 | 4 | SES refuses the send, **or the call does not answer within `SES_SEND_TIMEOUT_MS`** | the claim is **released explicitly** — `UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL` — the message is **not** deleted, and SQS redelivers, which the next delivery claims immediately rather than waiting out the age threshold. **This is the fast path of the one reclaim mechanism, not a second one**; `email_sent_at` is untouched because on a refusal nothing was sent. **On a timeout the outcome is unknown**, exactly as in `P-TKT-05`, so the retry may deliver a second copy — which is harmless here in a way it is not for a receipt, because both copies carry the **same single-use token** and are therefore the same link rather than a second one (`P-ACC-07`) | *(nothing on screen — the customer is not on the site)* |
-| 5 | The send fails `maxReceiveCount` times | the message reaches the dead letter queue, and **nothing watches it** (`S7.14`). The customer asked for a reset link and never receives one, and no one is told | *(nothing — this is the account-recovery twin of `OPEN-EMAILFAIL-01`, and it is stated rather than hidden)* |
+| 5 | The send fails on every redelivery | the `resets` queue has **no dead letter queue** (`SRC-004 JC-R6-01a`). After the last receive, or once the queue's retention (1800 s or less) runs out, the message is **gone** — no copy of the token survives anywhere. The customer asked for a reset link, never receives one, no one is told, and the customer asks again. *(`maxReceiveCount` belongs to an SQS redrive policy, which needs a dead letter queue to name; with none, the retention is the bound in practice — reasoned from the SQS API, not observed)* | *(nothing — this is the account-recovery twin of `OPEN-EMAILFAIL-01`, and it is stated rather than hidden)* |
 | 6 | The worker dies between the claim and the send | `email_claimed_at` is set, `email_sent_at` is **null**, and no email went out. Nothing survives to release the claim, so the age branch in the claim's own `WHERE` clause does it: after `RECEIPT_CLAIM_STALE_SECONDS` the next redelivery reclaims the row and sends. **This is the case the previous statement could not express**, and it is the one that lost accounts | *(nothing — the link simply arrives late)* |
 
 **Server-side validation.** `reset_token_id`: integer, positive, existing. `user_id`: must match the
-token row's owner — a mismatch is a defect in the producer and the message is dead-lettered, not sent.
+token row's owner — a mismatch is a defect in the producer: the message is logged at `ERROR`, not sent
+and not deleted, and is dropped as exception 5 (the `resets` queue has no dead letter queue).
 
 **What the email carries.** The customer's address as the recipient; a subject naming the product and
 the action; one sentence saying a reset was requested; the link, carrying the token; the expiry in
@@ -7715,7 +7727,8 @@ sent to.**
 `P-TKT-05` records against these numbers apply here unchanged, because it is the same variable: the
 threshold must exceed the visibility timeout or a redelivery would reclaim a live claim and send a
 second credential email, and eight redeliveries are spent before the reclaim, so a `maxReceiveCount`
-of eight or fewer sends the message to the dead letter queue first and the link is never sent
+of eight or fewer drops the message first — the `resets` queue has no dead letter queue
+(`SRC-004 JC-R6-01a`) — and the link is never sent
 (`FR-ADR-059`, and both are Zone C values the client sets). *(reasoned from the configured values,
 not observed.)*
 
@@ -8383,8 +8396,17 @@ recovers by re-sending a credential that already went out. `E4 P-TKT-12` carries
 its stale branch and the worked example of the crash; this row's job is to declare the columns it
 depends on. **`used_at` is a third and separate thing**: it records the customer spending the token
 (`P-ACC-08`) and has nothing to do with the send.
-6. The server writes the reset email to the transactional outbox in the same transaction
-   (`FR-ADR-031`). The worker sends it through SES. The response does not wait for the send.
+6. The server writes a `password_reset.send` row to the transactional outbox in the same transaction
+   (`FR-ADR-031`); its payload carries `reset_token_id` and **no token** (`E4 P-TKT-04`). **After the
+   commit the server sends the reset message to the queue itself**, its body being that payload plus the
+   plaintext token: under `SRC-004 R-3` the token rides in the queue message only (the logger redacts
+   it, the queue's retention is short) and no database column, the outbox payload included, ever holds
+   it. The relay therefore never sends a `password_reset.send` row. **If that send fails it is not
+   retried** (`SRC-004 JC-R6-01`): nothing stored can rebuild the token, the outbox row stays
+   `pending`, and the customer, who sees the same `202`, asks again. The worker sends the email through
+   SES (`E4 P-TKT-12`); **an SES refusal or timeout is retried by queue redelivery from the message
+   itself**, and with no dead letter queue on `resets` the message is gone after the last receive
+   (`SRC-004 JC-R6-01a`). The response does not wait for the SES send.
 7. The server returns `202` with the same body as step 2.
 
 **The link.** `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>`. `PUBLIC_BASE_URL` is a required
@@ -15390,7 +15412,7 @@ reference, seat, and price in paise.
 retention ................... 7 days      (free-tier: backup storage up to the 20 GB provisioned size)
 mistake at .................. 14:00:00 Asia/Kolkata
 point-in-time recovery to ... 13:59:00 Asia/Kolkata
-recovered figure checked .... booking FR-K7M2-QX9B, seats C12 C13, total 56248 paise
+recovered figure checked .... booking FR-K7M2-QX9C, seats C12 C13, total 56248 paise
 ```
 
 **Needed by Phase 2** — the first phase that creates data worth losing. Announced now rather than on
@@ -17686,7 +17708,7 @@ become true. There is no apology, no exclamation mark and no figure of speech an
 **Accessibility.** On arrival, focus moves to the confirmation heading, which is the page's only `h1`.
 Focus order then runs heading → reference → copy control → facts → resend control, matching visual
 order. The reference element carries an accessible name that spells the characters separated by
-spaces, so a screen reader reads `F R, A B C D, E F G H` character by character rather than attempting
+spaces, so a screen reader reads `F R, A C D E, F H J D` character by character rather than attempting
 a word. The copy confirmation, the resend outcomes and the error banner are announced through a live
 region — an error that is only red has not been reported (`FR-ADR-051`). The copy and resend controls
 have a hit area of at least `--fr-tap-min`. Every interactive element takes the standard focus ring
@@ -17712,7 +17734,7 @@ and every fact needed at a door, without signing in.
 | Plain-text part | none | the authoritative part; every fact appears here | — |
 | HTML part | none | the same content, minimal markup, no external resource of any kind | no remote image, no web font, no tracking pixel |
 | Reference | none — a monospaced face is requested in the HTML part and is not guaranteed | rendered `FR-XXXX-XXXX` | re-formatted from the stored 8 characters at send time (`P-TKT-06`) |
-| Link to the booking page | none | `<PUBLIC_BASE_URL>/bookings/FR-ABCD-EFGH`, from configuration. **In the plain-text part the URL follows the sentence that introduces it on the same line, as the verbatim body below publishes it; in the HTML part the anchor text is the published sentence below and never the bare URL**  *(corrected 2026-08-22: this clause said the URL stands on its own line, which the verbatim body four hundred lines below has never done. The body is the copy of record and a byte-exact acceptance criterion is written against it, so the rule is aligned to the body rather than the body to the rule.)*, because a URL read aloud by a screen reader is unusable and `Click here` names nothing | signing in is required to open it; the link carries no token |
+| Link to the booking page | none | `<PUBLIC_BASE_URL>/bookings/FR-ACDE-FHJD`, from configuration. **In the plain-text part the URL follows the sentence that introduces it on the same line, as the verbatim body below publishes it; in the HTML part the anchor text is the published sentence below and never the bare URL**  *(corrected 2026-08-22: this clause said the URL stands on its own line, which the verbatim body four hundred lines below has never done. The body is the copy of record and a byte-exact acceptance criterion is written against it, so the rule is aligned to the body rather than the body to the rule.)*, because a URL read aloud by a screen reader is unusable and `Click here` names nothing | signing in is required to open it; the link carries no token |
 
 **States.**
 
@@ -17728,7 +17750,7 @@ and every fact needed at a door, without signing in.
 **Copy.** Subject:
 
 ```
-Your FrontRow booking FR-ABCD-EFGH
+Your FrontRow booking FR-ACDE-FHJD
 ```
 
 Plain-text body, verbatim, with the bracketed values substituted:
@@ -17736,7 +17758,7 @@ Plain-text body, verbatim, with the bracketed values substituted:
 ```
 Your booking is confirmed.
 
-Booking reference: FR-ABCD-EFGH
+Booking reference: FR-ACDE-FHJD
 
 Film      DEMO MOVIE 01
 Hall      Hall 3
@@ -17746,7 +17768,7 @@ Paid      Rs 843.72
 
 Show this reference at the entrance. A person will check it.
 
-You can see this booking again at https://example.invalid/bookings/FR-ABCD-EFGH
+You can see this booking again at https://example.invalid/bookings/FR-ACDE-FHJD
 
 This booking is final. There is no cancellation and no refund.
 ```
@@ -18109,7 +18131,7 @@ to 1, so the customer lands where they started rather than on page 3 of a view t
   as the page changes is announced afresh on every press.
 - Each booking row is one link with an accessible name that carries what a person needs to identify it
   without entering it: `DEMO MOVIE 01, 20 Aug 2026, 2:00 pm, Hall 3, seats C12 and C13, reference
-  FR-ABCD-EFGH`. The showtime is `S7.19`'s **date-with-time** form, the same function and the same
+  FR-ACDE-FHJD`. The showtime is `S7.19`'s **date-with-time** form, the same function and the same
   form the row renders visually — **an accessible name is a string a customer reads and is governed by
   `S7.19` exactly as visible copy is.** It previously read `20 August 2026 at 14:00`, which broke two
   of that section's rules at once: the month spelled in full is not one of the five forms, and a
@@ -18159,7 +18181,7 @@ the receipt, and for the same reason.
 
 **Who owns what, stated because two sections meet here.** `E4 P-TKT-12` owns the **sending
 behaviour** — the queue message, the claim on the token row, the single-send guarantee, every retry
-and dead-letter path. **This screen owns the words**, and nothing else. `P-TKT-12` enumerates what the
+and the drop that ends them (the `resets` queue has no dead letter queue, `SRC-004 JC-R6-01a`). **This screen owns the words**, and nothing else. `P-TKT-12` enumerates what the
 email carries; the strings below are those items written out. Where a string here and a description
 there disagree, this is the screen spec and `P-TKT-12` is the owning P-row, so `P-TKT-12` wins on
 behaviour and this row wins on the words (`S1.2`).
@@ -18180,7 +18202,7 @@ copy defect; it is a customer who cannot tell a genuine reset from a fraudulent 
 |---|---|---|---|
 | Sender address | none — `SES_SENDER_ADDRESS`, required, no default (`FR-ADR-060`) | whatever identity the client has verified in SES | the process refuses to start if it is unset (`FR-ADR-053`) |
 | Sender display name | none | `FrontRow` — the same name the receipt sends under, so both messages sort together in a mailbox | — |
-| Recipient | none | the account's own address, read from the user row the token belongs to. **Never an address taken from the request body** | `P-TKT-12` dead-letters a message whose `user_id` does not own the token |
+| Recipient | none | the account's own address, read from the user row the token belongs to. **Never an address taken from the request body** | `P-TKT-12` refuses to send a message whose `user_id` does not own the token |
 | Subject | none | names the product and the action, and **carries no token, no reference and no address** — a subject line is the part most likely to be shown on a lock screen | — |
 | Plain-text part | none | **the authoritative part.** Every sentence below appears in it | — |
 | HTML part | none | the same sentences in the same order, minimal markup | **no remote image, no web font, no tracking pixel, no external resource of any kind** |
@@ -21160,7 +21182,7 @@ same disclosure reason as sign-in (`P-ACC-07`).
     "body": {"email": "string, 3..254, trimmed, valid shape, required"}
   },
   "responses": {
-    "202": {"description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous through the transactional outbox and the worker", "body": {"message": "string, the one shared sentence in P-ACC-07, whose stated lifetime is rendered from PASSWORD_RESET_TTL_SECONDS as a whole number of minutes and is never a literal"}},
+    "202": {"description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous: a queue message sent at request time carries the token (SRC-004 R-3, never relayed from the outbox) to the worker", "body": {"message": "string, the one shared sentence in P-ACC-07, whose stated lifetime is rendered from PASSWORD_RESET_TTL_SECONDS as a whole number of minutes and is never a literal"}},
     "422": {"description": "The address is missing or malformed"},
     "429": {"description": "More than 5 requests from this IP in an hour; carries Retry-After"},
     "503": {"description": "Redis is unreachable and the rate limiter fails closed"},
@@ -26427,7 +26449,8 @@ Two departures, both flagged rather than assumed:
   intact — but `FR-ADR-059`'s enumeration is exhaustive as written and this is a fourth key.
 - **A second topic, `password_reset.send`, with the payload `user_id`, `reset_token_id`, `request_id`,
   `message_version`** (`P-TKT-04`). `FR-ADR-059`'s enumeration describes the receipt message and the
-  account lane's reset email uses the same outbox, the same relay and the same worker. **Adjudicated in
+  account lane's reset email uses the same outbox and the same worker (its queue message is sent at
+  request time, not by the relay — `SRC-004 R-3`). **Adjudicated in
   the merge pass**, because the alternative was a reset email that cannot be enqueued, cannot say which
   reset it is for, and would have been deleted by `P-TKT-05`'s booking check — breaking the only route
   back into a locked-out account. `FR-ADR-059`'s actual rule is honoured rather than bent: the payload

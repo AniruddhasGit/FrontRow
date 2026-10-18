@@ -1567,7 +1567,7 @@ reference, seat, and price in paise.
 retention ................... 7 days      (free-tier: backup storage up to the 20 GB provisioned size)
 mistake at .................. 14:00:00 Asia/Kolkata
 point-in-time recovery to ... 13:59:00 Asia/Kolkata
-recovered figure checked .... booking FR-K7M2-QX9B, seats C12 C13, total 56248 paise
+recovered figure checked .... booking FR-K7M2-QX9C, seats C12 C13, total 56248 paise
 ```
 
 **Needed by Phase 2** — the first phase that creates data worth losing. Announced now rather than on

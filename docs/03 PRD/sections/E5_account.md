@@ -681,8 +681,17 @@ recovers by re-sending a credential that already went out. `E4 P-TKT-12` carries
 its stale branch and the worked example of the crash; this row's job is to declare the columns it
 depends on. **`used_at` is a third and separate thing**: it records the customer spending the token
 (`P-ACC-08`) and has nothing to do with the send.
-6. The server writes the reset email to the transactional outbox in the same transaction
-   (`FR-ADR-031`). The worker sends it through SES. The response does not wait for the send.
+6. The server writes a `password_reset.send` row to the transactional outbox in the same transaction
+   (`FR-ADR-031`); its payload carries `reset_token_id` and **no token** (`E4 P-TKT-04`). **After the
+   commit the server sends the reset message to the queue itself**, its body being that payload plus the
+   plaintext token: under `SRC-004 R-3` the token rides in the queue message only (the logger redacts
+   it, the queue's retention is short) and no database column, the outbox payload included, ever holds
+   it. The relay therefore never sends a `password_reset.send` row. **If that send fails it is not
+   retried** (`SRC-004 JC-R6-01`): nothing stored can rebuild the token, the outbox row stays
+   `pending`, and the customer, who sees the same `202`, asks again. The worker sends the email through
+   SES (`E4 P-TKT-12`); **an SES refusal or timeout is retried by queue redelivery from the message
+   itself**, and with no dead letter queue on `resets` the message is gone after the last receive
+   (`SRC-004 JC-R6-01a`). The response does not wait for the SES send.
 7. The server returns `202` with the same body as step 2.
 
 **The link.** `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>`. `PUBLIC_BASE_URL` is a required
@@ -1914,7 +1923,7 @@ to 1, so the customer lands where they started rather than on page 3 of a view t
   as the page changes is announced afresh on every press.
 - Each booking row is one link with an accessible name that carries what a person needs to identify it
   without entering it: `DEMO MOVIE 01, 20 Aug 2026, 2:00 pm, Hall 3, seats C12 and C13, reference
-  FR-ABCD-EFGH`. The showtime is `S7.19`'s **date-with-time** form, the same function and the same
+  FR-ACDE-FHJD`. The showtime is `S7.19`'s **date-with-time** form, the same function and the same
   form the row renders visually — **an accessible name is a string a customer reads and is governed by
   `S7.19` exactly as visible copy is.** It previously read `20 August 2026 at 14:00`, which broke two
   of that section's rules at once: the month spelled in full is not one of the five forms, and a
@@ -1964,7 +1973,7 @@ the receipt, and for the same reason.
 
 **Who owns what, stated because two sections meet here.** `E4 P-TKT-12` owns the **sending
 behaviour** — the queue message, the claim on the token row, the single-send guarantee, every retry
-and dead-letter path. **This screen owns the words**, and nothing else. `P-TKT-12` enumerates what the
+and the drop that ends them (the `resets` queue has no dead letter queue, `SRC-004 JC-R6-01a`). **This screen owns the words**, and nothing else. `P-TKT-12` enumerates what the
 email carries; the strings below are those items written out. Where a string here and a description
 there disagree, this is the screen spec and `P-TKT-12` is the owning P-row, so `P-TKT-12` wins on
 behaviour and this row wins on the words (`S1.2`).
@@ -1985,7 +1994,7 @@ copy defect; it is a customer who cannot tell a genuine reset from a fraudulent 
 |---|---|---|---|
 | Sender address | none — `SES_SENDER_ADDRESS`, required, no default (`FR-ADR-060`) | whatever identity the client has verified in SES | the process refuses to start if it is unset (`FR-ADR-053`) |
 | Sender display name | none | `FrontRow` — the same name the receipt sends under, so both messages sort together in a mailbox | — |
-| Recipient | none | the account's own address, read from the user row the token belongs to. **Never an address taken from the request body** | `P-TKT-12` dead-letters a message whose `user_id` does not own the token |
+| Recipient | none | the account's own address, read from the user row the token belongs to. **Never an address taken from the request body** | `P-TKT-12` refuses to send a message whose `user_id` does not own the token |
 | Subject | none | names the product and the action, and **carries no token, no reference and no address** — a subject line is the part most likely to be shown on a lock screen | — |
 | Plain-text part | none | **the authoritative part.** Every sentence below appears in it | — |
 | HTML part | none | the same sentences in the same order, minimal markup | **no remote image, no web font, no tracking pixel, no external resource of any kind** |
@@ -2237,7 +2246,7 @@ same disclosure reason as sign-in (`P-ACC-07`).
     "body": {"email": "string, 3..254, trimmed, valid shape, required"}
   },
   "responses": {
-    "202": {"description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous through the transactional outbox and the worker", "body": {"message": "string, the one shared sentence in P-ACC-07, whose stated lifetime is rendered from PASSWORD_RESET_TTL_SECONDS as a whole number of minutes and is never a literal"}},
+    "202": {"description": "Accepted. The body and wording are identical for a known and an unknown address. The send is asynchronous: a queue message sent at request time carries the token (SRC-004 R-3, never relayed from the outbox) to the worker", "body": {"message": "string, the one shared sentence in P-ACC-07, whose stated lifetime is rendered from PASSWORD_RESET_TTL_SECONDS as a whole number of minutes and is never a literal"}},
     "422": {"description": "The address is missing or malformed"},
     "429": {"description": "More than 5 requests from this IP in an hour; carries Retry-After"},
     "503": {"description": "Redis is unreachable and the rate limiter fails closed"},

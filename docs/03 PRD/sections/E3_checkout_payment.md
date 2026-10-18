@@ -801,13 +801,13 @@ session's; it is one integer and it moves with the bucket if the bucket is recon
 
 **Worked example — `R-PAY-02`'s three cases, which must all return the original booking.** A customer
 confirms at `14:02:40Z` with `Idempotency-Key: 9f2c…`, and the booking commits at `14:02:41.6Z` as
-`FR-7K3M-QP42`, total `166146`.
+`FR-7K3M-QP4C`, total `166146`.
 
 | Case | When | What the server does | What is returned |
 |---|---|---|---|
-| **Refresh** | `14:02:45Z`, same key, same fingerprint | Insert violates the unique constraint; the winner is `completed` | The stored `response_body`: booking `FR-7K3M-QP42`, total `166146` |
+| **Refresh** | `14:02:45Z`, same key, same fingerprint | Insert violates the unique constraint; the winner is `completed` | The stored `response_body`: booking `FR-7K3M-QP4C`, total `166146` |
 | **Double-click** | `14:02:40.4Z`, same key, same fingerprint, winner still capturing | Insert violates; the winner is `in_progress` | `409` `IDEMPOTENCY_IN_FLIGHT`, `Retry-After: 3` |
-| **Slow retry** | `14:04:10Z`, after the hold expired, same key, same fingerprint | Insert violates; the winner is `completed`. **The expired hold is irrelevant — the booking already exists** | The stored `response_body`: booking `FR-7K3M-QP42`, total `166146` |
+| **Slow retry** | `14:04:10Z`, after the hold expired, same key, same fingerprint | Insert violates; the winner is `completed`. **The expired hold is irrelevant — the booking already exists** | The stored `response_body`: booking `FR-7K3M-QP4C`, total `166146` |
 
 In none of the three is a second `payment` row created, a second booking inserted, or a second capture
 performed.
