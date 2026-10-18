@@ -1,0 +1,53 @@
+/* Every value is a design token (FR-ADR-044). No hex code appears in this file. */
+body {
+  margin: 0;
+  background: var(--fr-surface-base);
+  color: var(--fr-ink);
+  font-family: var(--fr-font-body);
+  line-height: var(--fr-leading-body);
+}
+.shell {
+  max-width: var(--fr-measure);
+  margin: 0 auto;
+  padding: var(--fr-space-7) var(--fr-space-4);
+}
+.eyebrow {
+  margin: 0;
+  color: var(--fr-accent-ink);
+  font-weight: var(--fr-weight-bold);
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+  font-size: var(--fr-text-sm);
+}
+h1 {
+  margin: var(--fr-space-2) 0 var(--fr-space-4);
+  font-family: var(--fr-font-display);
+  font-size: var(--fr-text-2xl);
+  line-height: var(--fr-leading-tight);
+  color: var(--fr-ink-strong);
+}
+.lede {
+  color: var(--fr-ink-muted);
+  margin: 0 0 var(--fr-space-6);
+}
+.facts {
+  margin: 0;
+  border-top: var(--fr-stroke-hair) solid var(--fr-rule);
+}
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--fr-space-4);
+  padding: var(--fr-space-3) 0;
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+.facts dt {
+  font-weight: var(--fr-weight-medium);
+}
+.facts dd {
+  margin: 0;
+  color: var(--fr-ink-muted);
+}
+code {
+  font-family: var(--fr-font-mono);
+}

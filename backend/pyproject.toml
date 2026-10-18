@@ -1,0 +1,13 @@
+[project]
+name = "frontrow-backend"
+version = "0.1.0"
+description = "FrontRow API - Phase 1 skeleton (config, health, structured logging, graceful shutdown)"
+requires-python = "==3.12.*"
+# Dependencies are pinned in requirements.txt / requirements-dev.txt, which the Dockerfile installs.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# No .pytest_cache: the test image runs with a read-only filesystem in mind, and a cache directory
+# is a file written to disk that nobody asked for.
+addopts = "-p no:cacheprovider -q"

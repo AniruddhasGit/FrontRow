@@ -1,0 +1,102 @@
+# =====================================================================================================
+# LOCAL DEVELOPMENT ONLY  (SRC-002 §6.1.7).
+#
+# This file is NOT how FrontRow runs in AWS and must never be used as a template for it. In AWS the
+# API and the frontend run as ECS tasks on EC2, PostgreSQL is RDS and Redis is ElastiCache - all
+# built by hand by the client (Zone C, docs/30 Deployment/). Nothing here is a deployment artefact.
+#
+# The passwords below are local throwaway values for containers that only listen on this machine.
+# They are not secrets and must never be reused anywhere.
+#
+#   docker compose up -d --build
+#   API        http://localhost:8000/health/live   http://localhost:8000/health/ready
+#   Frontend   http://localhost:8080/
+#   Postgres   localhost:55433   (5432 and 55432 on this host belong to other containers)
+#   Redis      localhost:56379
+# =====================================================================================================
+
+name: frontrow
+
+services:
+  postgres:
+    # 16, matching the version the data model was proved against (docs/06 DataModel). RDS will be
+    # a 16.x too; a different major locally is how "works on my machine" starts.
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: frontrow
+      POSTGRES_PASSWORD: local-dev-only
+      POSTGRES_DB: frontrow
+    ports:
+      - "55433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frontrow -d frontrow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+
+  redis:
+    image: redis:7-alpine
+    # No persistence locally: Redis holds only expiring locks and caches in this design, never a
+    # record of truth (SRC-002 §8.1 - the database is the truth).
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 64m
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    image: frontrow-api:phase1
+    command: ["api"]
+    environment:
+      # The full inventory, with what each one does, is in .env.example.
+      DATABASE_URL: postgresql://frontrow:local-dev-only@postgres:5432/frontrow
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+      API_PORT: "8000"
+      SHUTDOWN_DRAIN_TIMEOUT_SECONDS: "20"
+      READINESS_CACHE_TTL_SECONDS: "3"
+    ports:
+      - "8000:8000"
+    # service_started, NOT service_healthy: the API must start even when a dependency is down, so
+    # that /health/live is 200 and /health/ready reports which one is missing. Waiting for healthy
+    # would hide exactly the failure /health/ready exists to show.
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+    # The same constraints the task definition should apply (Zone C), so a local run fails the same
+    # way a deployed one would: no writable filesystem, a hard memory ceiling.
+    read_only: true
+    # The architecture's budget for the api on a t3.micro (docs/07 Architecture/for_llm/04_deployment.md).
+    # Measured idle locally: ~50 MiB.
+    mem_limit: 200m
+    # Longer than SHUTDOWN_DRAIN_TIMEOUT_SECONDS, or `docker compose stop` SIGKILLs mid-drain. The same
+    # ordering applies to the ECS stop timeout.
+    stop_grace_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: frontrow-frontend:phase1
+    ports:
+      - "8080:8080"
+    read_only: true
+    # nginx needs a writable /tmp for its pid and temp files and nothing else.
+    tmpfs:
+      - /tmp
+    # The architecture's budget for the static frontend. Measured idle locally: ~2-3 MiB.
+    mem_limit: 15m
+
+volumes:
+  pgdata:

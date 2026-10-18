@@ -1,0 +1,9 @@
+# Runtime dependencies of the API image. Exact pins: an unpinned install builds a different image
+# on a different day, and "it worked last week" stops being a statement about the same code.
+# Every entry is implied by SRC-002 §4 (Python 3.12 + FastAPI, PostgreSQL, Redis). Nothing else may
+# be added without asking the client (SRC-002 §13.1).
+fastapi==0.143.3
+uvicorn==0.54.0
+pydantic-settings==2.16.0
+redis==8.1.0
+psycopg[binary]==3.3.6

@@ -479,3 +479,34 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
   `fingerprints.json` and the ADR ledger's `included_in_datamodel` column are **not** written, and
   the schema has only ever been applied as a superuser.
 - **Session closed 2026-08-23_0336 by ani87** → handoff: `handoffs/HANDOFF_2026-08-23_0336_ani87.md`
+
+## 2026-10-18 — `GOAL_14` Phase 1 skeleton: built, and every runtime DoD proof run against docker compose
+
+- **Phase 1 only** (`SRC-002 §12.2`). `backend/` (FastAPI): config validation, `/health/live`,
+  `/health/ready`, JSON logs with an 8-hex request id, one error envelope, a SIGTERM drain with the
+  shutdown-hook list Phase 4 hangs lock release on. `frontend/` (Vite + React + TS) is one static
+  page served by nginx. `docker-compose.yml` is **local only**. No data model, no auth, no movie.
+- **Test-first.** RED: 4 collection errors with an empty `app` package. GREEN: **49 passed** in the
+  Python 3.12 Linux test image (`docker build --target test backend`). Two defects found by the gate
+  were each pinned by a failing test first: a 405 on a health path went unlogged, and uvicorn's
+  ANSI `color_message` leaked into the JSON.
+- **Proved by stopping containers, not by asserting code paths:** ready 200 with both up · 503
+  `redis: unreachable` with Redis stopped · 503 `postgres: unreachable` with Postgres stopped · live
+  200 with both stopped · missing `DATABASE_URL` → exit 78, one JSON line naming it · 26/26 log lines
+  valid JSON with a request id, 0 on stderr · SIGTERM 1 s into a 5 s request: the request completed
+  200 and the process exited 0 after 3742 ms · read-only root FS, `docker diff` = 0 paths.
+- **Image budget, worst number first:** the api image was **276 MB** by `docker images` on bookworm,
+  **over the 250 MB budget**. Dropping pip from the venv brought it to 258 MB, and moving to
+  `python:3.12.15-slim-trixie` brought it to **239 MB** (56.5 MB compressed). **Margin: 11 MB.**
+  Phase 2's SQLAlchemy + Alembic and Phase 5's boto3 will not fit under that reading. Filed as an
+  open question on which size the budget means.
+- **Memory measured (idle, local Docker Desktop, NOT a t3.micro):** api ~50 MiB, frontend ~3 MiB.
+  Under load: unmeasured until Phase 7.
+- **Zone C:** ten specifications in `docs/30 Deployment/` (`ZONE_C_PHASE1_INDEX.md` plus nine `P1_*.md`).
+  Prep-queue rows 1–4, 6, 7, 12, 13, 15 and 18 now link them. **Rows 5 (RDS) and 8 (ElastiCache) are
+  needed by Phase 1 for a healthy api target**, because readiness checks both. The client chooses
+  between building them now and deploying to watch the 503. No Zone C artefact was written. Nothing
+  was created in AWS.
+- **Not done here:** the engineering-ledger Status flip (another lane owns that file) · the
+  reviewer's confirmation of the Zone B comments (the author may not confirm them) · `/tt` (this lane
+  may not commit).

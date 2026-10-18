@@ -13,15 +13,42 @@ operating it teaches DevOps.
 
 ---
 
-## Status — 2026-08-14
+## Status — 2026-10-18
 
-**Stage 0.** The repository spine, the two frozen sources and the root canon exist.
+**Phase 1 code exists** (`goals/GOAL_14_phase-1-skeleton.txt`): the repo skeleton, configuration
+validation, `/health/live` and `/health/ready`, JSON logging with request ids, graceful shutdown, and
+a local `docker-compose.yml`. **Nothing else.** No data model, no auth, no movie. The client deploys
+this to ECS before Phase 2 begins (`SRC-002 §12.2`). The Zone C specifications for that deploy are in
+`docs/30 Deployment/ZONE_C_PHASE1_INDEX.md`.
 
-**No ADRs are filed. No derivation document exists. No application code exists — and none should
-yet.** The derivation chain reaches code at `06 DataModel`, not before.
+## Run Phase 1 locally
 
-**40 decisions are open** — 30 the client's own questions, 10 raised while drafting the
-Constitution. They gate everything.
+Needs Docker. **`docker-compose.yml` is for local development only.**
+
+```
+docker compose up -d --build
+```
+
+| What | URL |
+|---|---|
+| API liveness | <http://localhost:8000/health/live> → `{"status":"live"}` |
+| API readiness | <http://localhost:8000/health/ready> → 200, or 503 naming `postgres` / `redis` |
+| Frontend | <http://localhost:8080/> |
+| PostgreSQL | `localhost:55433` (user `frontrow`, local-only password in the compose file) |
+| Redis | `localhost:56379` |
+
+Things to try, and what you should see:
+
+- `docker compose stop redis`, wait 4 s, then call `/health/ready`: **503** `redis: unreachable`. `/health/live` stays **200**.
+- `docker run --rm frontrow-api:phase1` with no variables set: **exit 78** and one JSON line naming `DATABASE_URL` and `REDIS_URL`.
+- `docker compose stop api`, then `docker compose logs api`: the log ends with `stop signal received` followed by `api stopped cleanly`, and the exit code is 0.
+
+Tests run inside the same Python 3.12 image as production:
+
+```
+docker build --target test -t frontrow-api-test backend
+docker run --rm frontrow-api-test
+```
 
 ## How this repository works
 

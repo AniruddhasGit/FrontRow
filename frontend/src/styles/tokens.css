@@ -1,0 +1,329 @@
+/* COPY of docs/05 B DesignSystem/tokens.css - the source of record is THAT file, not this one.
+   Copied because the frontend image's build context is frontend/ only. If the two differ, the
+   docs copy wins and this file is re-copied. Do not edit here. (GOAL_14, Phase 1) */
+/* ============================================================================
+   FrontRow design tokens — the source of record.
+
+   This is real CSS. `frontend/src/` imports this file once, at the root, and
+   every `.module.css` consumes these custom properties (FR-ADR-044). A value
+   that is not here does not exist: a hex code typed into a component file is a
+   defect against that record.
+
+   Identity: "half-light" — an auditorium between the trailers and the film.
+   Two hue families, and each one means one literal thing:
+     screen-light  a cold cyan. Everything that is YOURS and LIVE — your held
+                   seats, the countdown, the focus ring, the screen bar.
+     house-light   a warm brass. Everything the ROOM offers you — the primary
+                   action, the brand, someone else's live hold.
+   Everything else is neutral. See DESIGN-SYSTEM.md.
+
+   HOW TO READ THE TRAILING COMMENTS
+   ---------------------------------
+   Every colour token carries a machine-readable annotation that contrast.py
+   parses. It is not documentation; it is the input to the check.
+
+       ground     a background other things sit on
+       text       a foreground held to 4.5:1  (WCAG 2.2 1.4.3)
+       text-lg    a foreground held to 3.0:1  (large text only — unused here on
+                  purpose: a token does not know what size it will be set at)
+       ui         a non-text boundary or graphic held to 3.0:1 (1.4.11)
+       decor      exempt, and must say why in why:"..."
+
+       on:a,b     the grounds this foreground is allowed to sit on. contrast.py
+                  takes the cross product with both themes and measures it.
+       grey:g     membership of a greyscale separation group
+       glyph:m    the non-colour mark this state carries (FR-ADR-045)
+       edge:t     the border token that makes this fill readable against the
+                  seat-map field when lightness alone does not
+
+   Adding a colour without an annotation fails the ANNOTATED check. That is the
+   point: a colour cannot enter this system unmeasured.
+
+   Every figure about these colours lives in CONTRAST.md, which is generated.
+   Do not write a ratio here by hand — CONSTITUTION.md Art VII.1.
+
+       py "docs/05 B DesignSystem/contrast.py"            regenerate
+       py "docs/05 B DesignSystem/contrast.py" --check     verify
+       py "docs/05 B DesignSystem/contrast.py" --selftest  red-proof the checks
+
+   Light is the bare :root. Dark is declared twice — once under
+   prefers-color-scheme for the reader who never touched a setting, once under
+   [data-theme="dark"] for the reader who did. contrast.py's DARK-IDENTICAL
+   check requires the two to stay value-for-value the same, because the day they
+   drift is the day one of them stops being tested.
+   ============================================================================ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---------------------------------------------------------------------
+     STRUCTURE — theme-independent. Spacing, type, radius, motion, metrics.
+     --------------------------------------------------------------------- */
+  /* @block structural */
+
+  /* Spacing. A 4px base. Nothing between steps: a one-off gap is a decision
+     nobody wrote down, and on a seat map it is the difference between a grid
+     and a smear. */
+  --fr-space-1: 4px;
+  --fr-space-2: 8px;
+  --fr-space-3: 12px;
+  --fr-space-4: 16px;
+  --fr-space-5: 24px;
+  --fr-space-6: 32px;
+  --fr-space-7: 48px;
+
+  /* Radius. Small everywhere. A seat is a seat, not a pill. */
+  --fr-radius-sm: 3px;
+  --fr-radius-md: 8px;
+  --fr-radius-lg: 14px;
+  --fr-radius-pill: 999px;
+
+  /* Stroke widths. hair = a boundary. bold = a state, and a state you can see
+     with the colour removed. */
+  --fr-stroke-hair: 1px;
+  --fr-stroke-bold: 2px;
+
+  /* Type. System stacks only: a font file is a dependency and SRC-002 §13.1
+     requires the client's permission before one is added. The character comes
+     from the treatment, not from a licence — see DESIGN-SYSTEM.md.
+     mono is load-bearing, not decorative: FR-ADR-048 requires the booking
+     reference in a monospaced face, and every other number in this product
+     (times, rows, seat labels, money, the countdown) belongs to the same
+     voice. */
+  --fr-font-display: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
+
+  /* Type scale. Six steps, and the jump from xl to 2xl is deliberate: 2xl is
+     reserved for two things only — the display headline and the booking
+     reference at a door. */
+  --fr-text-xs: 0.75rem;
+  --fr-text-sm: 0.875rem;
+  --fr-text-md: 1rem;
+  --fr-text-lg: 1.25rem;
+  --fr-text-xl: 1.75rem;
+  --fr-text-2xl: 2.5rem;
+
+  --fr-leading-tight: 1.1;
+  --fr-leading-snug: 1.3;
+  --fr-leading-body: 1.5;
+
+  --fr-weight-regular: 400;
+  --fr-weight-medium: 500;
+  --fr-weight-bold: 700;
+  --fr-weight-black: 800;
+
+  --fr-track-tight: -0.02em;
+  --fr-track-caps: 0.12em;
+  --fr-track-ref: 0.16em;
+
+  /* Seat-map metrics. 24px is WCAG 2.2 2.5.8 Target Size (Minimum). A
+     220-seat hall at this pitch is wider than a 375px phone, so the map
+     scrolls inside its own container and the page body never does
+     (FR-ADR-044, FR-ADR-045). Shrinking the seat to make it fit is how a
+     product fails a criterion to win an argument with a layout. */
+  --fr-seat-size: 24px;
+  --fr-seat-gap: 4px;
+  --fr-seat-band-gap: 16px;
+  --fr-seat-gutter: 28px;
+  --fr-tap-min: 44px;
+
+  --fr-page-max: 44rem;
+  --fr-measure: 34rem;
+
+  /* A movie poster is 2:3. Every poster slot reserves that box before the
+     image arrives, so a listing does not reflow when it loads. */
+  --fr-poster-ratio: 2 / 3;
+
+  /* Motion. fast = a press. base = a panel. change = the one long one: a seat
+     that changed under the reader's finger on a poll (FR-ADR-045) holds its
+     mark for this long, because a silent repaint is a lie about what happened.
+     All three collapse to 1ms under prefers-reduced-motion, below. */
+  --fr-motion-fast: 120ms;
+  --fr-motion-base: 200ms;
+  --fr-motion-change: 900ms;
+  --fr-ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------------------------------------------------------------------
+     PALETTE — light. "House lights up": a warm bone stub, ink on paper.
+     --------------------------------------------------------------------- */
+  /* @block palette-light */
+
+  /* Grounds */
+  --fr-surface-base: #FAF6EF;            /* @ground the page */
+  --fr-surface-raised: #FFFFFF;          /* @ground cards, sheets, the checkout panel */
+  --fr-surface-inset: #EDE6DA;           /* @ground recessed: the seat-map field, inputs, the poster box */
+  --fr-surface-accent: #E39B2E;          /* @ground the primary action. House light. */
+  --fr-surface-danger: #FBE6E0;          /* @ground the error banner */
+  --fr-surface-notice: #16212B;          /* @ground the simulated-payment slab. Identical in both themes on purpose. */
+
+  /* Seat fills. Four states, one lightness staircase, one distinct mark each.
+     Order outward from the field is deliberate and is the same in both themes:
+     available (nearest, the map at rest) then sold (the settled mass) then
+     held-other (live, it may come back) then mine (loudest, it is yours). */
+  --fr-seat-available: #E0D6C5;          /* @ground @grey:seat glyph:outline edge:seat-edge-available */
+  --fr-seat-sold: #A7ACB1;               /* @ground @grey:seat glyph:hatch */
+  --fr-seat-held-other: #AA7E45;         /* @ground @grey:seat glyph:bar */
+  --fr-seat-mine: #1D667B;               /* @ground @grey:seat glyph:check edge:seat-edge-mine */
+
+  /* Foregrounds */
+  --fr-ink-strong: #14110C;              /* @text on:surface-base,surface-raised */
+  --fr-ink: #2B2620;                     /* @text on:surface-base,surface-raised,surface-inset */
+  --fr-ink-muted: #5A5348;               /* @text on:surface-base,surface-raised,surface-inset */
+  --fr-ink-on-accent: #1C1204;           /* @text on:surface-accent */
+  --fr-ink-on-danger: #7A2110;           /* @text on:surface-danger */
+  --fr-ink-on-notice: #E9F2F7;           /* @text on:surface-notice */
+  --fr-accent-ink: #7E4C0D;              /* @text on:surface-base,surface-raised */
+  --fr-danger-ink: #97270F;              /* @text on:surface-base,surface-raised */
+  --fr-screen-ink: #0B5A6E;              /* @text on:surface-base,surface-raised */
+  --fr-seat-ink: #1C1A16;                /* @text on:seat-available,seat-sold,seat-held-other */
+  --fr-seat-ink-mine: #EAF6FA;           /* @text on:seat-mine */
+
+  /* Non-text boundaries and graphics */
+  --fr-focus-ring: #0A6A82;              /* @ui on:surface-base,surface-raised,surface-inset */
+  --fr-rule: #807463;                    /* @ui on:surface-base,surface-raised,surface-inset */
+  --fr-control-edge: #7B7264;            /* @ui on:surface-base,surface-raised,surface-inset */
+  --fr-seat-edge-available: #7E7465;     /* @ui on:surface-inset */
+  --fr-seat-edge-mine: #12586B;          /* @ui on:surface-inset */
+  --fr-screen-bar: #223039;              /* @ui on:surface-inset */
+  --fr-countdown-fill: #0F6A80;          /* @ui on:surface-raised */
+  --fr-countdown-urgent: #A82E0E;        /* @ui on:surface-raised */
+
+  /* Exempt, with reasons. contrast.py fails a @decor with no why:"...", so
+     this list cannot quietly grow. */
+  --fr-screen-glow: #C9E4EC;             /* @decor why:"the projector falloff under the SCREEN bar. It is a gradient stop on the seat-map field, carries no state, and nothing is ever read on top of it." */
+  --fr-rule-quiet: #DCD3C4;              /* @decor why:"the cosmetic divider between list rows. Removing it loses no information — the meaning-bearing rule is --fr-rule, which is held to 3:1." */
+  --fr-poster-empty-mark: #D8CEBE;       /* @decor why:"the perforation motif drawn in the missing-poster box. The words in that box use --fr-ink-muted on --fr-surface-inset, which is measured." */
+
+  /* Elevation and scrim. Not hex, so not contrast-measured — an alpha shadow
+     has no fixed pair. Kept in the palette blocks because a shadow that works
+     on paper is invisible on ink. */
+  --fr-shadow-card: 0 1px 2px rgba(20, 17, 12, 0.10), 0 2px 8px rgba(20, 17, 12, 0.06);
+  --fr-shadow-sheet: 0 8px 32px rgba(20, 17, 12, 0.18);
+  --fr-scrim: rgba(20, 17, 12, 0.55);
+}
+
+/* ---------------------------------------------------------------------------
+   PALETTE — dark, for the reader who never touched a setting.
+   Guarded with :not([data-theme="light"]) so an explicit light choice wins.
+   "Half-light": the room with the house lights down, the screen the only
+   source. Deep blue-black ink, brass where the room is, cyan where the screen
+   reaches.
+   --------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* @block palette-dark-auto */
+    --fr-surface-base: #0D1117;
+    --fr-surface-raised: #151C25;
+    --fr-surface-inset: #080B10;
+    --fr-surface-accent: #E8A93F;
+    --fr-surface-danger: #2B1310;
+    --fr-surface-notice: #16212B;
+
+    --fr-seat-available: #1F242B;
+    --fr-seat-sold: #42474D;
+    --fr-seat-held-other: #88673D;
+    --fr-seat-mine: #32B5CA;
+
+    --fr-ink-strong: #F4F7FA;
+    --fr-ink: #DDE4EC;
+    --fr-ink-muted: #A2ADBA;
+    --fr-ink-on-accent: #1C1204;
+    --fr-ink-on-danger: #FFC3B0;
+    --fr-ink-on-notice: #E9F2F7;
+    --fr-accent-ink: #EAB05A;
+    --fr-danger-ink: #FF9C7E;
+    --fr-screen-ink: #6ED4EA;
+    --fr-seat-ink: #F2F5F8;
+    --fr-seat-ink-mine: #04222B;
+
+    --fr-focus-ring: #5FD8F0;
+    --fr-rule: #707D89;
+    --fr-control-edge: #78848F;
+    --fr-seat-edge-available: #626E7D;
+    --fr-seat-edge-mine: #8CE4F6;
+    --fr-screen-bar: #D2ECF4;
+    --fr-countdown-fill: #4FC9E0;
+    --fr-countdown-urgent: #FF8A63;
+
+    --fr-screen-glow: #123543;
+    --fr-rule-quiet: #232C36;
+    --fr-poster-empty-mark: #1B232C;
+
+    --fr-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.40);
+    --fr-shadow-sheet: 0 8px 32px rgba(0, 0, 0, 0.62);
+    --fr-scrim: rgba(3, 6, 10, 0.66);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   PALETTE — dark, chosen. Value-for-value identical to the block above, and
+   contrast.py's DARK-IDENTICAL check keeps it that way.
+   --------------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+  /* @block palette-dark-explicit */
+  --fr-surface-base: #0D1117;
+  --fr-surface-raised: #151C25;
+  --fr-surface-inset: #080B10;
+  --fr-surface-accent: #E8A93F;
+  --fr-surface-danger: #2B1310;
+  --fr-surface-notice: #16212B;
+
+  --fr-seat-available: #1F242B;
+  --fr-seat-sold: #42474D;
+  --fr-seat-held-other: #88673D;
+  --fr-seat-mine: #32B5CA;
+
+  --fr-ink-strong: #F4F7FA;
+  --fr-ink: #DDE4EC;
+  --fr-ink-muted: #A2ADBA;
+  --fr-ink-on-accent: #1C1204;
+  --fr-ink-on-danger: #FFC3B0;
+  --fr-ink-on-notice: #E9F2F7;
+  --fr-accent-ink: #EAB05A;
+  --fr-danger-ink: #FF9C7E;
+  --fr-screen-ink: #6ED4EA;
+  --fr-seat-ink: #F2F5F8;
+  --fr-seat-ink-mine: #04222B;
+
+  --fr-focus-ring: #5FD8F0;
+  --fr-rule: #707D89;
+  --fr-control-edge: #78848F;
+  --fr-seat-edge-available: #626E7D;
+  --fr-seat-edge-mine: #8CE4F6;
+  --fr-screen-bar: #D2ECF4;
+  --fr-countdown-fill: #4FC9E0;
+  --fr-countdown-urgent: #FF8A63;
+
+  --fr-screen-glow: #123543;
+  --fr-rule-quiet: #232C36;
+  --fr-poster-empty-mark: #1B232C;
+
+  --fr-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.40);
+  --fr-shadow-sheet: 0 8px 32px rgba(0, 0, 0, 0.62);
+  --fr-scrim: rgba(3, 6, 10, 0.66);
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion. Deliberately NOT expressed by overriding a duration token: a
+   token can be overridden back by a component, and this rule may not be opted
+   out of. It also has to be a rule rather than a token because a token
+   redeclared here would land in whichever @block was last opened, and
+   contrast.py would count it as a theme-only token — which is exactly the kind
+   of quiet drift the DARK-IDENTICAL check exists to catch.
+
+   The seat "changed" mark is the one thing that does not disappear here. It is
+   information, not decoration: it says a seat moved under the reader's finger
+   on the last poll. Under reduced motion it stops being a pulse and becomes a
+   static ring held for --fr-motion-change. COMPONENTS.md says how.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
