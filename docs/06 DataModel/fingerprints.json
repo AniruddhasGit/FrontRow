@@ -1,0 +1,421 @@
+{
+  "_GENERATED": "GENERATED FILE - DO NOT EDIT.  Source of record: datamodel.json.  Regenerate with:  py generate.py   A hand-edit is reverted by the next run and caught by  py generate.py --check.",
+  "what_this_is": "Drift detectors for a code session. files: SHA-256 of the spec of record and of every generated file. tables: per-table structural fingerprints an ORM test can recompute. fingerprints.json is excluded from hashing itself.",
+  "algorithm": "sha256 over the UTF-8 bytes with CRLF normalised to LF. A table's sha256 is over the line 'table <name>' followed by its signature lines, joined by LF, signature lines sorted in byte order. Types are the PostgreSQL spellings schema.sql emits. Citations and notes are excluded on purpose: prose is not drift.",
+  "excluded": [
+    "fingerprints.json - a file cannot carry its own digest",
+    "checks/verify_invariants.sql and every other hand-written file - not generated"
+  ],
+  "files": {
+    "datamodel.json": "ad34b5af8232f6ab0d15a225a531dfcc54199a67746c765ed6ee53651771890b",
+    "TRACEABILITY.tsv": "64c78a4bed7a7a3ba6a48865334ccc354ceb7dbec1b14a5c1e2eaf6020cdd4d9",
+    "schema.sql": "11d9b59e98f143bdb56fdf1c79e7444a2348417f4805c82e61dd96c3f37698af",
+    "seed/expected_summary.json": "5c443e2989c59d42dbef9d8af1f901f585a96c65fb0407ec82cbee75f3e2b4d3"
+  },
+  "schema_structure_sha256": "4e960ab3faeff1831d9392bdf3c46ad970c7dc39276508e3eaf7d31a8bd05bb0",
+  "roles_and_grants": [
+    "role frontrow_owner",
+    "role frontrow_app",
+    "grant GRANT USAGE ON SCHEMA public TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON audit_log TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON booking TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON certification TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON cinema TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON format TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON genre TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON idempotency_record TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON language TO frontrow_app",
+    "grant GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app",
+    "grant GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON showtime TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON showtime_seat TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON users TO frontrow_app",
+    "grant GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app"
+  ],
+  "tables": {
+    "audit_log": {
+      "sha256": "58d876fb984d057452b1a2baaabcac068c6979b5ea87ff25400634466ad59b04",
+      "columns": 10,
+      "signature": [
+        "column action text NOT NULL",
+        "column actor_role text NOT NULL",
+        "column actor_user_id bigint NOT NULL",
+        "column after jsonb NULL",
+        "column before jsonb NULL",
+        "column entity_id bigint NOT NULL",
+        "column entity_type text NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column occurred_at timestamptz NOT NULL",
+        "column request_id text NOT NULL",
+        "foreign_key fk_audit_log__actor_user_id (actor_user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_audit_log__occurred_at (occurred_at)",
+        "primary_key (id)"
+      ]
+    },
+    "booking": {
+      "sha256": "f2dffac550b4af4f5fde71d28c82b1a6214fdf3df0ef434d0e3653b10857938b",
+      "columns": 9,
+      "signature": [
+        "check ck_booking__reference_charset (reference ~ '^[23456789ACDEFHJKMNPQRTVWXY]{8}$')",
+        "column cancelled_at timestamptz NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column payment_id bigint NOT NULL",
+        "column reference text NOT NULL",
+        "column showtime_id bigint NOT NULL",
+        "column status text NOT NULL",
+        "column total_paise bigint NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_booking__payment_id (payment_id) -> payment (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_booking__showtime_id (showtime_id) -> showtime (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_booking__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_booking__payment_id (payment_id)",
+        "index ix_booking__showtime_id (showtime_id)",
+        "primary_key (id)",
+        "unique uq_booking__reference (reference)"
+      ]
+    },
+    "booking_seat": {
+      "sha256": "da87ed37111c2136ba039d985be264a596ca6397401e7e554f3b1a85c6f775a1",
+      "columns": 9,
+      "signature": [
+        "column base_price_paise_applied bigint NOT NULL",
+        "column booking_id bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column price_paise bigint NOT NULL",
+        "column seat_category_id bigint NOT NULL",
+        "column seat_id bigint NOT NULL",
+        "column showtime_id bigint NOT NULL",
+        "column uplift_basis_points_applied bigint NOT NULL",
+        "foreign_key fk_booking_seat__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_booking_seat__seat_category_id (seat_category_id) -> seat_category (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_booking_seat__seat_id (seat_id) -> seat (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_booking_seat__showtime_id (showtime_id) -> showtime (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_booking_seat__booking_id (booking_id)",
+        "primary_key (id)",
+        "unique uq_booking_seat__showtime_id_seat_id (showtime_id, seat_id)"
+      ]
+    },
+    "certification": {
+      "sha256": "dba215152ae0be05599888f0ccffe24da9f6417cf5d8b4c9088a5fbbd1177101",
+      "columns": 5,
+      "signature": [
+        "check ck_certification__1 (char_length(btrim(name)) BETWEEN 1 AND 60)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL",
+        "column name text NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "primary_key (id)",
+        "unique uq_certification__name_ci (lower(trim(name)))"
+      ]
+    },
+    "cinema": {
+      "sha256": "3e7599706aed71422ade4a51d268b09889325ac8482e5d4fe08c1c4177c16c9d",
+      "columns": 5,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column name text NOT NULL",
+        "column timezone text NOT NULL",
+        "column version integer NOT NULL",
+        "primary_key (id)",
+        "unique uq_cinema__name_ci (lower(trim(name)))"
+      ]
+    },
+    "format": {
+      "sha256": "e60e25197d7e7c5076c2b61632ea2b6eb72e5be143c7d6125e89d5f359bcb7d4",
+      "columns": 5,
+      "signature": [
+        "check ck_format__1 (char_length(btrim(name)) BETWEEN 1 AND 60)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL",
+        "column name text NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "primary_key (id)",
+        "unique uq_format__name_ci (lower(trim(name)))"
+      ]
+    },
+    "genre": {
+      "sha256": "e9b3be067f77d2783c356616246038303be53e77bf41c3e8f361326872a1bb15",
+      "columns": 5,
+      "signature": [
+        "check ck_genre__1 (char_length(btrim(name)) BETWEEN 1 AND 60)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL",
+        "column name text NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "primary_key (id)",
+        "unique uq_genre__name_ci (lower(trim(name)))"
+      ]
+    },
+    "idempotency_record": {
+      "sha256": "4c03b5ba623ff331a9b8cb06660a3096f703947cab0548f351cf410090d65185",
+      "columns": 9,
+      "signature": [
+        "check ck_idempotency_record__status (status IN ('in_progress', 'completed'))",
+        "column booking_id bigint NULL",
+        "column completed_at timestamptz NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column idempotency_key text NOT NULL",
+        "column request_fingerprint text NOT NULL",
+        "column response_body jsonb NULL",
+        "column status text NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_idempotency_record__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_idempotency_record__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_idempotency_record__user_id_idempotency_key (user_id, idempotency_key)"
+      ]
+    },
+    "language": {
+      "sha256": "f1144470fc6e2c3dcc3b8c0a42d57a2b104a17764abdf4abe15d234677c5ec0f",
+      "columns": 5,
+      "signature": [
+        "check ck_language__1 (char_length(btrim(name)) BETWEEN 1 AND 60)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL",
+        "column name text NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "primary_key (id)",
+        "unique uq_language__name_ci (lower(trim(name)))"
+      ]
+    },
+    "manager_screen_assignment": {
+      "sha256": "d7ed1c1b7ac37e3a20e080c8113cf02608b3a0e12768ddd257c35eb61cd76ecd",
+      "columns": 4,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column screen_id bigint NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_manager_screen_assignment__screen_id (screen_id) -> screen (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_manager_screen_assignment__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_manager_screen_assignment__user_id (user_id)",
+        "primary_key (id)",
+        "unique uq_manager_screen_assignment__user_id_screen_id (user_id, screen_id)"
+      ]
+    },
+    "movie": {
+      "sha256": "07d13351282b7f7c3766cb8006f1e52d5809b0c5944b6a5bf1a891649d872651",
+      "columns": 12,
+      "signature": [
+        "column certification_id bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column display_from timestamptz NULL",
+        "column display_until timestamptz NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column language_id bigint NOT NULL",
+        "column poster_object_key text NULL",
+        "column published_at timestamptz NULL",
+        "column runtime_minutes integer NOT NULL",
+        "column synopsis text NOT NULL",
+        "column title text NOT NULL",
+        "column version integer NOT NULL",
+        "foreign_key fk_movie__certification_id (certification_id) -> certification (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie__language_id (language_id) -> language (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)"
+      ]
+    },
+    "movie_genre": {
+      "sha256": "bafb2ff713842a968c7288a33698a85f2f5a530b09f55d5661c1559a33c0253d",
+      "columns": 2,
+      "signature": [
+        "column genre_id bigint NOT NULL",
+        "column movie_id bigint NOT NULL",
+        "foreign_key fk_movie_genre__genre_id (genre_id) -> genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie_genre__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (movie_id, genre_id)"
+      ]
+    },
+    "outbox_message": {
+      "sha256": "09092cf9ac41097859e479d5509ecfeebf1148eca7cc0f9c59c42ff28d26c6d0",
+      "columns": 8,
+      "signature": [
+        "check ck_outbox_message__1 (topic IN ('receipt.send', 'password_reset.send'))",
+        "check ck_outbox_message__2 (status IN ('pending', 'sent'))",
+        "check ck_outbox_message__payload_keys_exact ((topic <> 'receipt.send' OR (payload ?& ARRAY['booking_id', 'dispatch_seq', 'message_version', 'request_id'] AND payload - 'booking_id' - 'dispatch_seq' - 'message_version' - 'request_id' = '{}'::jsonb)) AND (topic <> 'password_reset.send' OR (payload ?& ARRAY['message_version', 'request_id', 'reset_token_id', 'user_id'] AND payload - 'message_version' - 'request_id' - 'reset_token_id' - 'user_id' = '{}'::jsonb)))",
+        "column attempts integer NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column last_error text NULL",
+        "column payload jsonb NOT NULL",
+        "column sent_at timestamptz NULL",
+        "column status text NOT NULL",
+        "column topic text NOT NULL",
+        "index ix_outbox_message__status_created_at (status, created_at)",
+        "primary_key (id)"
+      ]
+    },
+    "password_reset_token": {
+      "sha256": "7ce10f7fb68afe43739df264d004e243419c9d17443da18494f2d2fcd7f1727d",
+      "columns": 8,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column email_claimed_at timestamptz NULL",
+        "column email_sent_at timestamptz NULL",
+        "column expires_at timestamptz NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column token_sha256 text NOT NULL",
+        "column used_at timestamptz NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_password_reset_token__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_password_reset_token__token_sha256 (token_sha256)",
+        "index ix_password_reset_token__user_id (user_id)",
+        "primary_key (id)"
+      ]
+    },
+    "payment": {
+      "sha256": "f933854b4b3a18c2b94ef1be3b9169cf02e785d8fda78388c08d558a52265932",
+      "columns": 8,
+      "signature": [
+        "check ck_payment__state (state IN ('pending', 'authorized', 'captured', 'failed'))",
+        "column amount_paise bigint NOT NULL",
+        "column authorized_at timestamptz NULL",
+        "column captured_at timestamptz NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column idempotency_key text NOT NULL",
+        "column pending_at timestamptz NOT NULL",
+        "column state text NOT NULL",
+        "index ix_payment__state (state)",
+        "primary_key (id)"
+      ]
+    },
+    "receipt_dispatch": {
+      "sha256": "39ccb37c07e7cb2d996eecc56dd5d6f4f55bb20c60a3ff316ed109777db2b392",
+      "columns": 9,
+      "signature": [
+        "check ck_receipt_dispatch__1 (status IN ('pending', 'sending', 'sent', 'failed', 'suppressed'))",
+        "check ck_receipt_dispatch__2 (dispatch_seq >= 1)",
+        "column attempts integer NOT NULL",
+        "column booking_id bigint NOT NULL",
+        "column claimed_at timestamptz NULL",
+        "column dispatch_seq integer NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column last_error text NULL",
+        "column sent_at timestamptz NULL",
+        "column ses_message_id text NULL",
+        "column status text NOT NULL",
+        "foreign_key fk_receipt_dispatch__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_receipt_dispatch__booking_id (booking_id)"
+      ]
+    },
+    "screen": {
+      "sha256": "3e7721ef3353def633c760a5884fd728b8173e55f556cc7cd3800fcf109b11a7",
+      "columns": 6,
+      "signature": [
+        "column cinema_id bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL DEFAULT true",
+        "column name text NOT NULL",
+        "column version integer NOT NULL",
+        "foreign_key fk_screen__cinema_id (cinema_id) -> cinema (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_screen__name_ci (cinema_id, lower(trim(name)))"
+      ]
+    },
+    "seat": {
+      "sha256": "18e034b042f7f24a06536efe7b4d3a61dc467944ea2b261931e7724734ca5f2a",
+      "columns": 9,
+      "signature": [
+        "check ck_seat__row_label_upper (row_label = upper(btrim(row_label)))",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column grid_col integer NOT NULL",
+        "column grid_row integer NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column is_active boolean NOT NULL DEFAULT true",
+        "column row_label text NOT NULL",
+        "column screen_id bigint NOT NULL",
+        "column seat_category_id bigint NOT NULL",
+        "column seat_number integer NOT NULL",
+        "foreign_key fk_seat__screen_id (screen_id) -> screen (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_seat__seat_category_id (seat_category_id) -> seat_category (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_seat__screen_id_grid_row_grid_col (screen_id, grid_row, grid_col)",
+        "unique uq_seat__screen_id_row_label_seat_number (screen_id, row_label, seat_number)"
+      ]
+    },
+    "seat_category": {
+      "sha256": "846b136aa5999b9bc67a274b0aeb7162cd7437e4cc06497e861b0e700e9e7cba",
+      "columns": 6,
+      "signature": [
+        "check ck_seat_category__1 (uplift_basis_points >= 0)",
+        "check ck_seat_category__2 (char_length(btrim(name)) BETWEEN 1 AND 40)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column name text NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column uplift_basis_points bigint NOT NULL",
+        "column version integer NOT NULL",
+        "primary_key (id)",
+        "unique uq_seat_category__name_ci (lower(trim(name)))"
+      ]
+    },
+    "showtime": {
+      "sha256": "ff27da2d2d973e95e659eccd48eac8a2811eecc4b6c6fbde8623defb36e25dbe",
+      "columns": 9,
+      "signature": [
+        "column base_price_paise bigint NOT NULL",
+        "column ends_at timestamptz NOT NULL",
+        "column format_id bigint NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column movie_id bigint NOT NULL",
+        "column screen_id bigint NOT NULL",
+        "column seat_count_at_creation integer NOT NULL",
+        "column starts_at timestamptz NOT NULL",
+        "column version integer NOT NULL",
+        "foreign_key fk_showtime__format_id (format_id) -> format (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_showtime__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_showtime__screen_id (screen_id) -> screen (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_showtime__screen_id_starts_at (screen_id, starts_at)",
+        "index ix_showtime__starts_at (starts_at)",
+        "primary_key (id)"
+      ]
+    },
+    "showtime_seat": {
+      "sha256": "ea78e71ae0e7ba83242f7eb0d586e46dacccb951737b2b393c07df70fbff5ae1",
+      "columns": 2,
+      "signature": [
+        "column seat_id bigint NOT NULL",
+        "column showtime_id bigint NOT NULL",
+        "foreign_key fk_showtime_seat__seat_id (seat_id) -> seat (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_showtime_seat__showtime_id (showtime_id) -> showtime (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (showtime_id, seat_id)",
+        "unique uq_showtime_seat__showtime_id_seat_id (showtime_id, seat_id)"
+      ]
+    },
+    "users": {
+      "sha256": "9fa4b5b3808f8f321d206f19a26f9190d18b9a986d0ee21390cb84e4e4fb8df3",
+      "columns": 7,
+      "signature": [
+        "check ck_users__role (role IN ('customer', 'manager', 'admin'))",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column email text NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column last_signed_in_at timestamptz NULL",
+        "column password_hash text NOT NULL",
+        "column password_version integer NOT NULL",
+        "column role text NOT NULL",
+        "primary_key (id)",
+        "unique uq_users__email_ci (lower(email))"
+      ]
+    }
+  }
+}

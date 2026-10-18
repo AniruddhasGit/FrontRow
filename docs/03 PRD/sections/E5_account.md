@@ -1274,7 +1274,7 @@ assertion 3 proves the scoping is by identity rather than by the data simply bei
 
 **Server-side validation.** The reference is normalised for lookup as `FR-ADR-015` specifies:
 case-insensitive, hyphens and whitespace ignored, the `FR` prefix optional. **Nothing is silently
-corrected** — a character outside the 30-character alphabet is not mapped to anything and the lookup
+corrected** — a character outside the 26-character alphabet is not mapped to anything and the lookup
 simply fails with row 2.
 
 ---
@@ -2389,7 +2389,7 @@ to adjudicate rather than invented inline.
 ```
 
 ```newerrorcode
-{"code":"NOT_FOUND","http":404,"when":"an addressed resource does not exist, or exists and is not the caller's","raised_by":["EP-ACC-08"],"why_needed":"FR-ADR-052 has no not-found code. On this epic it does specific security work: a booking reference belonging to another customer must produce exactly the same response as one that does not exist, because a distinguishable 403 would turn the endpoint into an oracle for probing the 30^8 reference space that FR-ADR-015 relies on. Like VALIDATION_FAILED, this is almost certainly needed project-wide."}
+{"code":"NOT_FOUND","http":404,"when":"an addressed resource does not exist, or exists and is not the caller's","raised_by":["EP-ACC-08"],"why_needed":"FR-ADR-052 has no not-found code. On this epic it does specific security work: a booking reference belonging to another customer must produce exactly the same response as one that does not exist, because a distinguishable 403 would turn the endpoint into an oracle for probing the 26^7 reference space (SRC-004 R-5; FR-ADR-015 as amended). Like VALIDATION_FAILED, this is almost certainly needed project-wide."}
 ```
 
 ```newerrorcode

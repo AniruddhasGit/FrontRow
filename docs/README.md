@@ -31,10 +31,10 @@ misses. `goals/README.md` carries the real execution order.
 | 05 | **Bible** | Epics, stories, and binary acceptance criteria. The scope arbiter. `FrontRow_Bible.csv` · `BIBLE_COLUMN_DICTIONARY.md` · `CENSUS_2026-08-22.md`. | **written** |
 | 05 B | **DesignSystem** | Tokens and real CSS. Every contrast figure computed, not claimed. Where the seat map is designed. | **written** |
 | 06 | **DataModel** | A **package, not a document**: `datamodel.json` is the spec of record; `schema.sql` and `TRACEABILITY.tsv` are generated from it. Holds the unique constraint the whole product rests on. | **part written** |
-| 07 | **Architecture** | `for_llm/` to orient a cold session · `for_humans/` to decide from, including the accepted weaknesses. | empty |
-| 08 | **SIT** | Positive cases — exactly one per acceptance criterion, each citing the story it proves. | empty |
-| 09 | **NegativeTesting** | The cases that try to break it. Weighted hard at one thing: **two customers and one seat.** | empty |
-| 10 | **EngineeringLedger** | Derived from the Bible — one row per unit of work, with `Milestone` and `Status`. **`/ss` reads this to report the frontier.** | empty |
+| 07 | **Architecture** | `for_llm/` to orient a cold session · `for_humans/` to decide from, including the accepted weaknesses. | part written |
+| 08 | **SIT** | Positive cases — exactly one per acceptance criterion, each citing the story it proves. | part written |
+| 09 | **NegativeTesting** | The cases that try to break it. Weighted hard at one thing: **two customers and one seat.** | part written |
+| 10 | **EngineeringLedger** | Derived from the Bible — one row per unit of work, with `Milestone` and `Status`. **`/ss` reads this to report the frontier.** | part written |
 | 11 | **Journeys** | Persona journeys, each walk naming the seam it crosses. `JOURNEY_INDEX.md` · five walks · `DEFECTS_FOUND.tsv` · `DEFECTS_RESOLUTION.tsv`. | written |
 | 12 | **DesignReview** | The pre-code audit: fresh agents attack every document above before a line is written. | empty |
 | 13 | **Fixes for Design Review** | What the audit found, and its repair. | empty |

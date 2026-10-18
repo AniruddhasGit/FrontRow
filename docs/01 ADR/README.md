@@ -104,9 +104,13 @@ section cited in `notes`, and **derive the cell from the citations actually pres
 document**, never by assertion. `NOT_APPLICABLE` is legal but must be justified in `notes` — a
 decision that lands in no derived document at all is usually a decision that was not needed.
 
-**Every cell currently reads `NOT_INCLUDED`, and that is correct.** `02 BRD`, `03 PRD`, `05 Bible`
-and `06 DataModel` do not exist yet. A cell reading `INCLUDED` today would be a false claim about a
-document nobody has written.
+**State as of 2026-10-18.** All four target documents exist and all four columns have been derived:
+`included_in_brd` 55 `INCLUDED` / 18 `NOT_INCLUDED`, `included_in_prd` 73 / 0,
+`included_in_bible` 66 / 7, `included_in_datamodel` 29 / 44. **`included_in_datamodel` is checked
+mechanically**: `docs/06 DataModel/consistency_check.py` rule `ledger-datamodel` re-derives it on
+every run from the `FR-ADR-nnn` citations on schema objects in `datamodel.json` (rows keyed on
+`adr_id`) and fails on any mismatch, so an edit to either side that is not mirrored in the other is
+caught. The other three columns are derived but not yet re-checked by a script.
 
 ---
 

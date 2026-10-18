@@ -33,7 +33,19 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 MODEL = os.path.join(HERE, "datamodel.json")
 BIBLE = os.path.join(ROOT, "docs", "05 Bible", "FrontRow_Bible.csv")
 PRD_SECTIONS = os.path.join(ROOT, "docs", "03 PRD", "sections")
+LEDGER = os.path.join(ROOT, "docs", "01 ADR", "ADR_DECISION_RELEASE_LEDGER.tsv")
 NL = chr(10)
+
+# Reserved rows the client has RULED, and the one constraint each ruling files.
+# name -> (table, exact expression, ruling that must be cited).  SRC-004 R-4 and
+# R-5, received 2026-10-18.  OPEN-SEATALPHA-01 ("I allowed") and
+# OPEN-RESETTOKEN-01 ("never in the database") are ruled as ABSENCES, so they
+# add no entry here and keep their prohibitions in r_reserved_not_decided.
+RULED_CHECKS = {
+    "ck_seat__row_label_upper": ("seat", "row_label = upper(btrim(row_label))", "SRC-004 R-4"),
+    "ck_booking__reference_charset": (
+        "booking", "reference ~ '^[23456789ACDEFHJKMNPQRTVWXY]{8}$'", "SRC-004 R-5"),
+}
 
 # The fifteen relations the Bible's SQL already names.  This list is INHERITED,
 # not chosen: 200 acceptance criteria query these names.  A rename is a
@@ -329,21 +341,33 @@ def r_reserved_not_decided(model):
     bad = []
     by_name = dict((t["name"], t) for t in model["tables"])
 
-    # OPEN-REFCHAR-01 - the reference alphabet is reserved and irreversible.
+    # A reserved row the client has RULED may be expressed as a constraint - but
+    # only as the exact constraint its ruling files, citing that ruling, on the
+    # ruled table.  Any OTHER constraint on the same subject still decides
+    # something nobody ruled, and still fails.  Unruled rows are unchanged below.
     for t in model["tables"]:
         for ck in t.get("checks", []):
             expr = ck["expression"].lower()
-            if "reference" in expr and ("~" in expr or "similar to" in expr):
-                bad.append("%s: a CHECK constrains the booking-reference alphabet "
-                           "(OPEN-REFCHAR-01)" % ck.get("name", t["name"]))
-
-    # OPEN-SEATLABEL-01 / OPEN-SEATALPHA-01 - row_label normalisation and alphabet.
-    for t in model["tables"]:
-        for ck in t.get("checks", []):
-            if "row_label" in ck["expression"].lower():
-                bad.append("%s: a CHECK constrains row_label "
-                           "(OPEN-SEATLABEL-01 / OPEN-SEATALPHA-01)"
-                           % ck.get("name", t["name"]))
+            subject = None
+            # Any CHECK on booking.reference, regex or not (a char_length() bound
+            # decides the length as surely as a regex does), and a regex on a
+            # reference anywhere else.
+            if "reference" in expr and (t["name"] == "booking" or "~" in expr
+                                        or "similar to" in expr):
+                subject = "booking-reference alphabet (OPEN-REFCHAR-01)"
+            elif "row_label" in expr:
+                subject = "row_label (OPEN-SEATLABEL-01 / OPEN-SEATALPHA-01)"
+            if subject is None:
+                continue
+            ruled = RULED_CHECKS.get(ck.get("name"))
+            if not (ruled and ruled[0] == t["name"] and ruled[1] == ck["expression"]
+                    and ruled[2] in (ck.get("cite") or "")):
+                bad.append("%s: a CHECK constrains the %s that is not the exact ruled "
+                           "constraint" % (ck.get("name", t["name"]), subject))
+    for name, (table, expr, ruling) in sorted(RULED_CHECKS.items()):
+        have = [ck for ck in by_name.get(table, {}).get("checks", []) if ck.get("name") == name]
+        if not have:
+            bad.append("%s.%s is missing - %s rules it" % (table, name, ruling))
 
     # OPEN-HOLDRECOVER-01 - a live hold is Redis-only and has no row.
     for name in by_name:
@@ -351,13 +375,18 @@ def r_reserved_not_decided(model):
             bad.append("%s: holds have no database row (OPEN-HOLDRECOVER-01), and a "
                        "table would put the seat guarantee in two places" % name)
 
-    # OPEN-RESETTOKEN-01 - the flow is unbuildable as specified; do not make one
-    # resolution cheap by providing somewhere for the plaintext to live.
-    for c in by_name.get("password_reset_token", {}).get("columns", []):
-        n = c["name"].lower()
-        if n == "token" or "token_plain" in n or "plaintext" in n:
-            bad.append("password_reset_token.%s stores the token itself "
-                       "(OPEN-RESETTOKEN-01, reserved: secrets)" % c["name"])
+    # OPEN-RESETTOKEN-01 - RULED by SRC-004 R-3: the plaintext rides in the queue
+    # message only, and no database column ever holds it.  The ruling makes this
+    # check permanent rather than retiring it.
+    # On ANY table: the plaintext must not move to the outbox or anywhere else.
+    # Only the digest (token_sha256) and a foreign key (*_id) are token-named.
+    for t in model["tables"]:
+        for c in t["columns"]:
+            n = c["name"].lower()
+            if ("token" in n or "plaintext" in n) and n != "token_sha256"                     and not n.endswith("_id"):
+                bad.append("%s.%s is shaped to store a token itself "
+                           "(OPEN-RESETTOKEN-01, SRC-004 R-3: never in the database)"
+                           % (t["name"], c["name"]))
 
     # OPEN-DUPREF-01 - nothing rules what happens when a reference is presented
     # twice, so a redemption column would answer it.
@@ -367,7 +396,10 @@ def r_reserved_not_decided(model):
             bad.append("booking.%s answers OPEN-DUPREF-01" % c["name"])
 
     return ("reserved-not-decided", not bad,
-            "; ".join(bad) or "no reserved question answered by a constraint")
+            "; ".join(bad) or
+            "no unruled reserved question answered by a constraint; %d ruled CHECK(s) "
+            "present exactly as filed (%s)"
+            % (len(RULED_CHECKS), ", ".join(sorted(RULED_CHECKS))))
 
 
 # Entity prefixes that appear before a dot in the documents.  This is NOT just
@@ -485,6 +517,148 @@ def r_actions_are_used(model):
                 % (len(orphan), ", ".join(orphan[:8])))
     return ("actions-cited", True,
             "every one of the %d declared audit actions is cited" % len(declared))
+
+
+CARD_DIGITS = re.compile(r"\b(4[0-9]{12}([0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b")
+
+
+@rule
+def r_seed_expectations(model):
+    """The seed expectations keep their status, their citations and their place.
+
+    seed_expectations is what generate.py derives seed/expected_summary.json
+    from.  Four things can go wrong in it quietly, and each is checked:
+
+      1. An ASSUMED input relabelled as ruled.  Hall sizes are OPEN-SCALE-02
+         "pick random", categories OPEN-SEAT-01 "you pick": the client said
+         "you pick" on those and nothing else (SRC-003), and an assumption that
+         loses its label is how 7 minutes became a requirement once already.
+      2. An ASSUMED value hardening into the SCHEMA - a CHECK or a DEFAULT that
+         carries a seeded category name, price, uplift, DEMO name or the seed's
+         row-letter alphabet.  The seed is demonstration data; the schema must
+         accept the client's real halls and real names unchanged.
+      3. An uncited expectation, invariant or gap.
+      4. Card-shaped data - a field name or a digit run - anywhere in the block.
+    """
+    se = model.get("seed_expectations")
+    if not se:
+        return ("seed-expectations", False, "datamodel.json has no seed_expectations block")
+    bad = []
+    want = [("screens", "ASSUMED", "OPEN-SCALE-02"),
+            ("seat_categories", "ASSUMED", "OPEN-SEAT-01"),
+            ("lookup_vocabulary", "ASSUMED", "OPEN-ATTRIB-01"),
+            ("base_price_paise", "ASSUMED", "P-XCT-30"),
+            ("manager_mapping", "PROVISIONAL", "SRC-003 C-1")]
+    for key, status, cite in want:
+        blk = se.get(key) or {}
+        if not str(blk.get("status", "")).startswith(status):
+            bad.append("%s.status must start %s" % (key, status))
+        if cite not in (str(blk.get("cite", "")) + " " + str(blk.get("status", ""))):
+            bad.append("%s must cite %s" % (key, cite))
+
+    tables = set(t["name"] for t in model["tables"])
+    te = set(k for k in se.get("table_expectations", {}) if not k.startswith("$"))
+    if te != tables:
+        bad.append("table_expectations covers %d of %d tables (missing %s, unknown %s)"
+                   % (len(te & tables), len(tables), sorted(tables - te)[:3],
+                      sorted(te - tables)[:3]))
+    for k, e in se.get("table_expectations", {}).items():
+        if not k.startswith("$") and not e.get("cite"):
+            bad.append("table_expectations.%s is uncited" % k)
+    for kind in ("invariants", "unspecified"):
+        for i, e in enumerate(se.get(kind, [])):
+            if not e.get("cite"):
+                bad.append("%s[%d] is uncited" % (kind, i))
+
+    hardened = [c["name"] for c in se.get("seat_categories", {}).get("rows", [])]
+    hardened += ["DEMO", se.get("row_letters", {}).get("letters", "") or "\0",
+                 str(se.get("base_price_paise", {}).get("value", "\0"))]
+    hardened += [str(c["uplift_basis_points"]) for c in
+                 se.get("seat_categories", {}).get("rows", []) if c["uplift_basis_points"]]
+    # Hall sizes and grid dimensions (OPEN-SCALE-02, ASSUMED).  Bare small numbers
+    # collide with unrelated constraints (a {8} in a regex, BETWEEN 1 AND 60), so
+    # they are checked only on the tables that describe a hall's geometry.
+    geometry = sorted(set(str(lay[k]) for lay in se.get("screens", {}).get("layouts", [])
+                          for k in ("seats", "rows", "cols")), key=int)
+    for t in model["tables"]:
+        blobs = [("CHECK " + ck.get("name", "?"), ck.get("expression", ""))
+                 for ck in t.get("checks", [])]
+        blobs += [("DEFAULT " + c["name"], str(c.get("default") or ""))
+                  for c in t["columns"]]
+        for where, text in blobs:
+            for v in hardened + (geometry if t["name"] in GEOMETRY_TABLES else []):
+                if v and re.search(r"(?<![A-Za-z0-9])" + re.escape(v) + r"(?![A-Za-z0-9])", text):
+                    bad.append("%s.%s carries the seeded value %r - ASSUMED never "
+                               "hardens into a constraint" % (t["name"], where, v))
+
+    blob = json.dumps(se, ensure_ascii=False)
+    if CARD_SHAPED.search(blob) or CARD_DIGITS.search(blob):
+        bad.append("card-shaped data in seed_expectations")
+    return ("seed-expectations", not bad,
+            "; ".join(bad[:5]) or
+            "%d table expectations, %d invariants, %d gaps - all cited; ASSUMED labels kept; "
+            "seeded names, row letters, base price and uplifts absent from every CHECK and "
+            "DEFAULT; hall sizes and grid dimensions (%s) absent from every CHECK and DEFAULT "
+            "on %s"
+            % (len(te), len(se.get("invariants", [])), len(se.get("unspecified", [])),
+               "/".join(geometry), ", ".join(sorted(GEOMETRY_TABLES))))
+
+
+GEOMETRY_TABLES = set(["screen", "seat", "showtime", "showtime_seat"])
+FR_ADR = re.compile(r"FR-ADR-\d{3}")
+
+
+def schema_adr_citations(model):
+    """{FR-ADR id: sorted [table.object]} over the schema objects in `tables`.
+
+    The same scope the ledger's existing `DataModel:` notes list: tables,
+    columns, constraints and indexes.  seed_expectations, meta and roles are
+    excluded - they are test-oracle inputs and prose, not schema the decision
+    landed in.
+    """
+    out = {}
+    for t in model["tables"]:
+        objs = [(t["name"], t)] + [("%s.%s" % (t["name"], c["name"]), c) for c in t["columns"]]
+        for kind in ("unique", "checks", "foreign_keys", "indexes"):
+            objs += [("%s.%s" % (t["name"], o.get("name", "?")), o) for o in t.get(kind, [])]
+        for label, o in objs:
+            text = " ".join(str(o.get(k) or "") for k in ("cite", "note", "why", "purpose"))
+            for a in FR_ADR.findall(text):
+                out.setdefault(a, set()).add(label)
+    return dict((k, sorted(v)) for k, v in out.items())
+
+
+@rule
+def r_ledger_datamodel(model):
+    """The ADR ledger's included_in_datamodel column is DERIVED, never asserted.
+
+    docs/01 ADR/README.md: "derive the cell from the citations actually present
+    in the target document, never by assertion".  A row (keyed on adr_id) reads
+    INCLUDED exactly when a schema object in datamodel.json cites that FR-ADR id.
+    NOT_APPLICABLE is accepted wherever NOT_INCLUDED would be (README: legal when
+    justified in notes).  A cited id with no ledger row is a dangling citation.
+    """
+    if not os.path.exists(LEDGER):
+        return ("ledger-datamodel", False, "ADR ledger not found at " + LEDGER)
+    with io.open(LEDGER, encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh, delimiter="\t"))
+    cited = schema_adr_citations(model)
+    ids = set(r["adr_id"] for r in rows)
+    bad = ["%s is cited by %s but has no ledger row" % (a, cited[a][0])
+           for a in sorted(set(cited) - ids)]
+    for r in rows:
+        have = r.get("included_in_datamodel", "")
+        want = "INCLUDED" if r["adr_id"] in cited else "NOT_INCLUDED"
+        if have == want or (want == "NOT_INCLUDED" and have == "NOT_APPLICABLE"):
+            continue
+        bad.append("%s reads %s, datamodel.json says %s%s"
+                   % (r["adr_id"], have or "(blank)", want,
+                      (" (cited by %s)" % ", ".join(cited[r["adr_id"]][:2]))
+                      if want == "INCLUDED" else ""))
+    return ("ledger-datamodel", not bad,
+            ("%d mismatch(es): %s" % (len(bad), "; ".join(bad[:6]))) if bad else
+            "%d ledger rows: %d INCLUDED, each cited by a schema object; the rest cited by none"
+            % (len(rows), len(cited)))
 
 
 # ------------------------------------------------------------------ driver
@@ -611,11 +785,60 @@ def selftest():
           lambda m: first_table(m, "booking").setdefault("checks", []).append(
               {"name": "ck_ref", "expression": "reference ~ '^[A-Z2-9]{8}$'", "cite": "x"}),
           "reserved-not-decided")
+    probe("CHECK char_length(reference) on booking",
+          lambda m: first_table(m, "booking")["checks"].append(
+              {"name": "ck_ref_len", "expression": "char_length(reference) = 9", "cite": "x"}),
+          "reserved-not-decided")
+    probe("add a seat_hold table (OPEN-HOLDRECOVER-01)",
+          lambda m: m["tables"].append(
+              {"name": "seat_hold", "columns": [{"name": "id", "type": "bigint",
+                                                  "nullable": False, "cite": "x"}]}),
+          "reserved-not-decided")
+    probe("add booking.admitted_at (OPEN-DUPREF-01)",
+          lambda m: first_table(m, "booking")["columns"].append(
+              {"name": "admitted_at", "type": "timestamptz", "nullable": True, "cite": "x"}),
+          "reserved-not-decided")
+    probe("add outbox_message.plaintext_token",
+          lambda m: first_table(m, "outbox_message")["columns"].append(
+              {"name": "plaintext_token", "type": "text", "nullable": True, "cite": "x"}),
+          "reserved-not-decided")
+    probe("CHECK banning the letter I in row_label",
+          lambda m: first_table(m, "seat")["checks"].append(
+              {"name": "ck_seat__no_i", "expression": "row_label !~ 'I'", "cite": "SRC-004 R-4"}),
+          "reserved-not-decided")
+    probe("drop the ruled row_label CHECK (SRC-004 R-4)",
+          lambda m: first_table(m, "seat").__setitem__(
+              "checks", [c for c in first_table(m, "seat")["checks"]
+                         if c["name"] != "ck_seat__row_label_upper"]),
+          "reserved-not-decided")
+    probe("harden a hall grid width into a seat CHECK",
+          lambda m: first_table(m, "seat")["checks"].append(
+              {"name": "ck_seat__grid_col_max", "expression": "grid_col <= 20", "cite": "x"}),
+          "seed-expectations")
+    probe("cite an ADR the ledger marks NOT_INCLUDED",
+          lambda m: first_table(m, "booking")["columns"][0].__setitem__(
+              "cite", first_table(m, "booking")["columns"][0]["cite"] + " · FR-ADR-001"),
+          "ledger-datamodel")
     probe("cite a column the Bible does not know",
           lambda m: first_table(m, "booking").__setitem__(
               "columns", [c for c in first_table(m, "booking")["columns"]
                           if c["name"] != "id"]),
           "bible-references")
+    probe("relabel the ASSUMED hall sizes as RULED",
+          lambda m: m["seed_expectations"]["screens"].__setitem__("status", "RULED"),
+          "seed-expectations")
+    probe("harden the seeded categories into a CHECK",
+          lambda m: first_table(m, "seat_category")["checks"].append(
+              {"name": "ck_seat_category__names",
+               "expression": "name IN ('Standard', 'Premium', 'Recliner')", "cite": "x"}),
+          "seed-expectations")
+    probe("strip the citation from a seed invariant",
+          lambda m: m["seed_expectations"]["invariants"][0].pop("cite"),
+          "seed-expectations")
+    probe("put a card-shaped number in a seed gap",
+          lambda m: m["seed_expectations"]["unspecified"].append(
+              {"what": "5" + "5" * 15, "cite": "x", "kind": "x"}),
+          "seed-expectations")
 
     print()
     print("VERDICT: %d of %d rules watched going red." % (proved, planted))

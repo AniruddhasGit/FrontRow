@@ -1,0 +1,850 @@
+{
+  "_GENERATED": "GENERATED FILE - DO NOT EDIT.  Source of record: datamodel.json.  Regenerate with:  py generate.py   A hand-edit is reverted by the next run and caught by  py generate.py --check.",
+  "what_this_is": "What a correct run of scripts/seed.py against an EMPTY, migrated database must produce. EXPECTATIONS, not seed data: nothing here is a row to insert. Every figure is derived from datamodel.json -> seed_expectations and every rule there cites P-XCT-30, P-XCT-32, S-XCT-44 or S-XCT-45.",
+  "status_law": "ASSUMED figures (hall sizes OPEN-SCALE-02, category names and uplifts OPEN-SEAT-01, the lookup vocabulary, the schedule) are demonstration inputs and NEVER harden into a constraint, a default or an application limit. PROVISIONAL figures (one cinema SRC-003 C-2, managers SRC-003 C-1) reverse with their ruling. null means no document states the figure.",
+  "cite": "P-XCT-30 (E8, 'Ship demonstration content that is obviously demonstration content') · P-XCT-32 · S-XCT-44 · S-XCT-45 · S-ADM-29 · FR-ADR-067 · SRC-003 OPEN-SEED-01",
+  "flags": {
+    "assumed": [
+      "hall sizes and grids - ASSUMED - hall sizes are OPEN-SCALE-02 'pick random'; the grids are P-XCT-30's derivation of them. Never a constraint.",
+      "seat categories - ASSUMED under SRC-003 OPEN-SEAT-01 'you pick' - names and uplifts alike. Never a constraint.",
+      "base price - ASSUMED - P-XCT-30 seed value. Integer minor unit; the ratio is CURRENCY_MINOR_UNIT_RATIO configuration and is not used here.",
+      "lookup vocabulary - ASSUMED - DEMO-prefixed placeholders under OPEN-SEAT-01 'you pick' extended, and OPEN-ATTRIB-01's standing constraint. Never a constraint.",
+      "schedule - ASSUMED / [JUDGMENT CALL] of P-XCT-30. SEED_CHANGEOVER_MINUTES = 20 is ASSUMED and is expressly NOT an answer to PROPOSED-TURNAROUND-01."
+    ],
+    "provisional": [
+      "cinema count - P-XCT-30 happy path step 1 · S-ADM-29 ('^DEMO CINEMA$') · SRC-003 C-2 (one cinema, PROVISIONAL) · SRC-003 OPEN-LOCALE-01 (zone, RULED)",
+      "managers and their mapping - PROVISIONAL - rests on the four-role ruling SRC-003 C-1"
+    ],
+    "one_way_doors_touched": [
+      "OPEN-SEATALPHA-01 and OPEN-SEATLABEL-01 were reserved and unruled when P-XCT-30 was written; SRC-004 R-4 (received 2026-10-18) now rules them: row_label stored upper(trim(input)), and the letter I PERMITTED - 'the seed's habit of skipping it is demonstration data and binds nothing'. So the I-skip binds what the SEED writes and is NOT a schema rule; the seed's upper-case letters already satisfy the ruled case rule. Whether the schema carries SRC-004's CHECK is the schema lane's, not this block's. Running the seed still freezes all six halls (P-ADM-14, P-XCT-30 exception 11).",
+      "booking.reference: the seed issues 11,003 references in Phase 2. SRC-004 R-5 (2026-10-18) rules the alphabet narrower (minus Z S B G) plus one trailing check character, which changes the alphabet P-TKT-01 and S-TKT-01 describe; the length stays 8 (7 random + 1 check). The seed must issue references through the same ruled generator as the application; a seed run made before that generator exists issues references that can never be re-cut in a deployed environment."
+    ]
+  },
+  "tables": {
+    "audit_log": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "P-XCT-30 'The seed writes no audit_log row' and exception 10 - the only exemption from P-XCT-03"
+    },
+    "booking": {
+      "rows": 11003,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 bookings · S-XCT-45"
+    },
+    "booking_seat": {
+      "rows": 58800,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 occupancy · S-XCT-45"
+    },
+    "certification": {
+      "rows": 2,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 lookup table · S-XCT-44"
+    },
+    "cinema": {
+      "rows": 1,
+      "basis": "stated by the document cited",
+      "cite": "P-XCT-30 step 1 · SRC-003 C-2 (PROVISIONAL)"
+    },
+    "format": {
+      "rows": 2,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 lookup table · S-XCT-44"
+    },
+    "genre": {
+      "rows": 4,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 lookup table · S-XCT-44"
+    },
+    "idempotency_record": {
+      "rows": null,
+      "basis": "UNSPECIFIED - no document states a figure; a gap stays a gap",
+      "cite": "none - no document states what the seed writes here",
+      "note": "The seed inserts directly into PostgreSQL with no request (P-XCT-30), so no Idempotency-Key header exists; whether it writes idempotency_record rows is unstated."
+    },
+    "language": {
+      "rows": 3,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 lookup table · S-XCT-44"
+    },
+    "manager_screen_assignment": {
+      "rows": 12,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 manager mapping · FR-ADR-011 · SRC-003 C-1 (PROVISIONAL)"
+    },
+    "movie": {
+      "rows": 8,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 step 6 · S-XCT-44"
+    },
+    "movie_genre": {
+      "rows": 16,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 'genres = {genre[i mod 4], genre[(i + 1) mod 4]} two per film, always distinct'"
+    },
+    "outbox_message": {
+      "rows": null,
+      "basis": "UNSPECIFIED - no document states a figure; a gap stays a gap",
+      "cite": "P-XCT-30 ('the seed also enqueues no receipt job') · S-XCT-45 (queue message count 0)",
+      "note": "Zero receipt.send rows is specified. No sentence states the whole table's count (password_reset.send is never mentioned for the seed), so the total is null rather than an inferred 0.",
+      "receipt_send_rows": 0
+    },
+    "password_reset_token": {
+      "rows": null,
+      "basis": "UNSPECIFIED - no document states a figure; a gap stays a gap",
+      "cite": "none - no document states a figure",
+      "note": "Nothing in P-XCT-30 or P-XCT-32 creates a reset token, but no sentence says zero; null rather than an inferred 0. OPEN-RESETTOKEN-01 is ruled by SRC-004 R-3 (the token rides in the queue message only, never in the database), which adds no seeded row here."
+    },
+    "payment": {
+      "rows": 11003,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "E3 P-PAY-07 ('one payment row per booking attempt'; the seed makes no failed attempt) · S-XCT-45 (every booking's payment is captured)",
+      "note": "S-XCT-45 asserts only that every seeded booking's payment is captured; the exact 1:1 count follows from P-PAY-07 rather than from a seed sentence."
+    },
+    "receipt_dispatch": {
+      "rows": 11003,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 · P-XCT-32 · E4 P-TKT-04 (one row per booking, suppressed) · S-XCT-45"
+    },
+    "screen": {
+      "rows": 6,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 step 2 · SRC-003 OPEN-SCALE-01"
+    },
+    "seat": {
+      "rows": 960,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 step 2 · SRC-003 OPEN-SCALE-02 (ASSUMED)"
+    },
+    "seat_category": {
+      "rows": 3,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 step 3 · SRC-003 OPEN-SEAT-01 (ASSUMED)"
+    },
+    "showtime": {
+      "rows": 720,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 schedule · S-XCT-45"
+    },
+    "showtime_seat": {
+      "rows": 115200,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-ADM-14 (one row per in-service seat at showtime creation) · P-XCT-30 · S-XCT-45"
+    },
+    "users": {
+      "rows": 63,
+      "basis": "derived by generate.py from the rule cited",
+      "cite": "P-XCT-30 step 7 · P-XCT-32 · FR-ADR-067"
+    }
+  },
+  "users_by_role": {
+    "admin": 1,
+    "manager": 12,
+    "customer": 50,
+    "guest": "no account (SRC-003 C-1)",
+    "email_domain_default": "demo.frontrow.invalid",
+    "cite": "P-XCT-30 step 7 · P-XCT-32 · FR-ADR-067 · FR-ADR-034 · SRC-003 C-1 · S-XCT-43 ('email NOT LIKE %.invalid' returns 0)"
+  },
+  "cinema": {
+    "rows": 1,
+    "name": "DEMO CINEMA",
+    "timezone": "Asia/Kolkata",
+    "cite": "P-XCT-30 happy path step 1 · S-ADM-29 ('^DEMO CINEMA$') · SRC-003 C-2 (one cinema, PROVISIONAL) · SRC-003 OPEN-LOCALE-01 (zone, RULED)"
+  },
+  "screens": [
+    {
+      "screen": 1,
+      "seats": 90,
+      "rows": 9,
+      "cols": 10,
+      "row_labels": "ABCDEFGHJ",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 5,
+          "row_labels": "ABCDE",
+          "seats": 50
+        },
+        {
+          "category": "Premium",
+          "rows": 3,
+          "row_labels": "FGH",
+          "seats": 30
+        },
+        {
+          "category": "Recliner",
+          "rows": 1,
+          "row_labels": "J",
+          "seats": 10
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 10800,
+      "booked_seats": 4320
+    },
+    {
+      "screen": 2,
+      "seats": 120,
+      "rows": 10,
+      "cols": 12,
+      "row_labels": "ABCDEFGHJK",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 5,
+          "row_labels": "ABCDE",
+          "seats": 60
+        },
+        {
+          "category": "Premium",
+          "rows": 3,
+          "row_labels": "FGH",
+          "seats": 36
+        },
+        {
+          "category": "Recliner",
+          "rows": 2,
+          "row_labels": "JK",
+          "seats": 24
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 14400,
+      "booked_seats": 7200
+    },
+    {
+      "screen": 3,
+      "seats": 150,
+      "rows": 10,
+      "cols": 15,
+      "row_labels": "ABCDEFGHJK",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 5,
+          "row_labels": "ABCDE",
+          "seats": 75
+        },
+        {
+          "category": "Premium",
+          "rows": 3,
+          "row_labels": "FGH",
+          "seats": 45
+        },
+        {
+          "category": "Recliner",
+          "rows": 2,
+          "row_labels": "JK",
+          "seats": 30
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 18000,
+      "booked_seats": 10800
+    },
+    {
+      "screen": 4,
+      "seats": 180,
+      "rows": 12,
+      "cols": 15,
+      "row_labels": "ABCDEFGHJKLM",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 6,
+          "row_labels": "ABCDEF",
+          "seats": 90
+        },
+        {
+          "category": "Premium",
+          "rows": 4,
+          "row_labels": "GHJK",
+          "seats": 60
+        },
+        {
+          "category": "Recliner",
+          "rows": 2,
+          "row_labels": "LM",
+          "seats": 30
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 21600,
+      "booked_seats": 8640
+    },
+    {
+      "screen": 5,
+      "seats": 200,
+      "rows": 10,
+      "cols": 20,
+      "row_labels": "ABCDEFGHJK",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 5,
+          "row_labels": "ABCDE",
+          "seats": 100
+        },
+        {
+          "category": "Premium",
+          "rows": 3,
+          "row_labels": "FGH",
+          "seats": 60
+        },
+        {
+          "category": "Recliner",
+          "rows": 2,
+          "row_labels": "JK",
+          "seats": 40
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 24000,
+      "booked_seats": 12000
+    },
+    {
+      "screen": 6,
+      "seats": 220,
+      "rows": 11,
+      "cols": 20,
+      "row_labels": "ABCDEFGHJKL",
+      "bands": [
+        {
+          "category": "Standard",
+          "rows": 6,
+          "row_labels": "ABCDEF",
+          "seats": 120
+        },
+        {
+          "category": "Premium",
+          "rows": 4,
+          "row_labels": "GHJK",
+          "seats": 80
+        },
+        {
+          "category": "Recliner",
+          "rows": 1,
+          "row_labels": "L",
+          "seats": 20
+        }
+      ],
+      "showtimes": 120,
+      "showtime_seat_rows": 26400,
+      "booked_seats": 15840
+    }
+  ],
+  "screen_name_pattern": "^SCREEN [1-6]$",
+  "seat_categories": [
+    {
+      "name": "Standard",
+      "uplift_basis_points": 0,
+      "price_paise": 24999,
+      "seats": 495,
+      "booked_seats": 46400,
+      "takings_paise": 1159953600
+    },
+    {
+      "name": "Premium",
+      "uplift_basis_points": 1250,
+      "price_paise": 28124,
+      "seats": 311,
+      "booked_seats": 11800,
+      "takings_paise": 331863200
+    },
+    {
+      "name": "Recliner",
+      "uplift_basis_points": 3333,
+      "price_paise": 33331,
+      "seats": 154,
+      "booked_seats": 600,
+      "takings_paise": 19998600
+    }
+  ],
+  "price_rule": "price_paise = (base_price_paise * (10000 + uplift_basis_points) + 5000) // 10000  (FR-ADR-038 · S-RPT-04 (formula verbatim) · S-XCT-44)",
+  "films": [
+    {
+      "title": "DEMO MOVIE 01",
+      "runtime_minutes": 90,
+      "language": "DEMO LANGUAGE A",
+      "certification": "DEMO RATING 1",
+      "genres": [
+        "DEMO GENRE 1",
+        "DEMO GENRE 2"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 02",
+      "runtime_minutes": 100,
+      "language": "DEMO LANGUAGE B",
+      "certification": "DEMO RATING 2",
+      "genres": [
+        "DEMO GENRE 2",
+        "DEMO GENRE 3"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 03",
+      "runtime_minutes": 110,
+      "language": "DEMO LANGUAGE C",
+      "certification": "DEMO RATING 1",
+      "genres": [
+        "DEMO GENRE 3",
+        "DEMO GENRE 4"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 04",
+      "runtime_minutes": 120,
+      "language": "DEMO LANGUAGE A",
+      "certification": "DEMO RATING 2",
+      "genres": [
+        "DEMO GENRE 4",
+        "DEMO GENRE 1"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 05",
+      "runtime_minutes": 130,
+      "language": "DEMO LANGUAGE B",
+      "certification": "DEMO RATING 1",
+      "genres": [
+        "DEMO GENRE 1",
+        "DEMO GENRE 2"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 06",
+      "runtime_minutes": 140,
+      "language": "DEMO LANGUAGE C",
+      "certification": "DEMO RATING 2",
+      "genres": [
+        "DEMO GENRE 2",
+        "DEMO GENRE 3"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 07",
+      "runtime_minutes": 150,
+      "language": "DEMO LANGUAGE A",
+      "certification": "DEMO RATING 1",
+      "genres": [
+        "DEMO GENRE 3",
+        "DEMO GENRE 4"
+      ],
+      "showtimes": 90
+    },
+    {
+      "title": "DEMO MOVIE 08",
+      "runtime_minutes": 160,
+      "language": "DEMO LANGUAGE B",
+      "certification": "DEMO RATING 2",
+      "genres": [
+        "DEMO GENRE 4",
+        "DEMO GENRE 1"
+      ],
+      "showtimes": 90
+    }
+  ],
+  "manager_assignments": [
+    {
+      "manager": "manager-01",
+      "screen": 1
+    },
+    {
+      "manager": "manager-02",
+      "screen": 1
+    },
+    {
+      "manager": "manager-03",
+      "screen": 2
+    },
+    {
+      "manager": "manager-04",
+      "screen": 2
+    },
+    {
+      "manager": "manager-05",
+      "screen": 3
+    },
+    {
+      "manager": "manager-06",
+      "screen": 3
+    },
+    {
+      "manager": "manager-07",
+      "screen": 4
+    },
+    {
+      "manager": "manager-08",
+      "screen": 4
+    },
+    {
+      "manager": "manager-09",
+      "screen": 5
+    },
+    {
+      "manager": "manager-10",
+      "screen": 5
+    },
+    {
+      "manager": "manager-11",
+      "screen": 6
+    },
+    {
+      "manager": "manager-12",
+      "screen": 6
+    }
+  ],
+  "schedule": {
+    "showtimes": 720,
+    "past": 360,
+    "from_today": 360,
+    "by_format": {
+      "DEMO FORMAT 1": 360,
+      "DEMO FORMAT 2": 360
+    },
+    "local_starts": [
+      "11:00",
+      "14:30",
+      "18:00",
+      "21:30"
+    ],
+    "longest_occupancy_minutes": 180,
+    "slot_spacing_minutes": [
+      210
+    ],
+    "timezone": "Asia/Kolkata"
+  },
+  "bookings": {
+    "booked_seats": 58800,
+    "bookings": 11003,
+    "booking_size_histogram": {
+      "1": 1123,
+      "2": 1277,
+      "3": 1102,
+      "4": 1139,
+      "5": 1145,
+      "6": 1099,
+      "7": 1041,
+      "8": 1057,
+      "9": 1001,
+      "10": 1019
+    },
+    "per_customer_min": 220,
+    "per_customer_max": 221,
+    "payment_state": "captured",
+    "receipt_dispatch_status": "suppressed",
+    "receipt_dispatch_attempts": 0,
+    "takings_paise_total": 1511815400,
+    "takings_note": "DERIVED here and published nowhere: the sum of FR-ADR-038 seat prices over the contiguous front-of-house fill. Unverified against any implementation - none exists. Integer minor unit."
+  },
+  "published_figure_checks": [
+    {
+      "figure": "showtimes",
+      "published": 720,
+      "derived": 720,
+      "agrees": true
+    },
+    {
+      "figure": "showtimes_per_screen",
+      "published": 120,
+      "derived": 120,
+      "agrees": true
+    },
+    {
+      "figure": "showtimes_per_film",
+      "published": 90,
+      "derived": 90,
+      "agrees": true
+    },
+    {
+      "figure": "past_showtimes",
+      "published": 360,
+      "derived": 360,
+      "agrees": true
+    },
+    {
+      "figure": "future_showtimes",
+      "published": 360,
+      "derived": 360,
+      "agrees": true
+    },
+    {
+      "figure": "total_seats",
+      "published": 960,
+      "derived": 960,
+      "agrees": true
+    },
+    {
+      "figure": "showtime_seat_rows",
+      "published": 115200,
+      "derived": 115200,
+      "agrees": true
+    },
+    {
+      "figure": "booked_seats",
+      "published": 58800,
+      "derived": 58800,
+      "agrees": true
+    },
+    {
+      "figure": "bookings",
+      "published": 11003,
+      "derived": 11003,
+      "agrees": true
+    },
+    {
+      "figure": "mean_booking_size_3dp",
+      "published": "5.344",
+      "derived": "5.344",
+      "agrees": true
+    },
+    {
+      "figure": "bookings_per_customer_min",
+      "published": 220,
+      "derived": 220,
+      "agrees": true
+    },
+    {
+      "figure": "bookings_per_customer_max",
+      "published": 221,
+      "derived": 221,
+      "agrees": true
+    },
+    {
+      "figure": "mean_occupancy_percent_2dp",
+      "published": "51.04",
+      "derived": "51.04",
+      "agrees": true
+    },
+    {
+      "figure": "lookup_rows",
+      "published": 11,
+      "derived": 11,
+      "agrees": true
+    },
+    {
+      "figure": "accounts",
+      "published": 63,
+      "derived": 63,
+      "agrees": true
+    },
+    {
+      "figure": "screen1_bands",
+      "published": [
+        5,
+        3,
+        1
+      ],
+      "derived": [
+        5,
+        3,
+        1
+      ],
+      "agrees": true
+    },
+    {
+      "figure": "price_paise_by_category",
+      "published": {
+        "Standard": 24999,
+        "Premium": 28124,
+        "Recliner": 33331
+      },
+      "derived": {
+        "Standard": 24999,
+        "Premium": 28124,
+        "Recliner": 33331
+      },
+      "agrees": true
+    },
+    {
+      "figure": "worked_example_k399_screen",
+      "published": 5,
+      "derived": 4,
+      "agrees": false,
+      "recorded_disagreement": "P-XCT-30 'Occupancy' worked example (E8 line ~2480) says the 400th showtime (k = 399) is on Screen 5. Under P-XCT-30's own ordering - k in ascending (day, slot, screen) order, the rule the k = 231 example confirms with 'screen 4's offset' = 3 - k = 399 = 16*24 + 2*6 + 3 is day 17, the 18:00 slot, Screen 4 (180 seats). Owned by the PRD (lane E8); named here, not edited."
+    },
+    {
+      "figure": "worked_example_k399_booked_seats",
+      "published": 80,
+      "derived": 72,
+      "agrees": false,
+      "recorded_disagreement": "Follows from the screen above: the example's floor(200 * 40 / 100) = 80 is right for Screen 5, but k = 399 is on Screen 4, where floor(180 * 40 / 100) = 72. The 40% occupancy is correct either way (399 mod 9 = 3). S1.5 transcribes worked examples into tests, so a test written from this one asserts 80 seats against a showtime that books 72."
+    },
+    {
+      "figure": "worked_example_k231_booked_seats",
+      "published": 126,
+      "derived": 126,
+      "agrees": true
+    },
+    {
+      "figure": "worked_example_k231_film_index",
+      "published": 0,
+      "derived": 0,
+      "agrees": true
+    },
+    {
+      "figure": "longest_occupancy_minutes",
+      "published": 180,
+      "derived": 180,
+      "agrees": true
+    },
+    {
+      "figure": "slot_spacing_minutes",
+      "published": 210,
+      "derived": 210,
+      "agrees": true
+    }
+  ],
+  "invariants": [
+    {
+      "id": "SEED-INV-01",
+      "assert": "no two booking_seat rows share (showtime_id, seat_id)",
+      "sql": "SELECT count(*) FROM (SELECT showtime_id, seat_id FROM booking_seat GROUP BY 1, 2 HAVING count(*) > 1) x  -- 0",
+      "cite": "SRC-001 §2.2 · FR-ADR-024 · the seat guarantee holds for seeded rows exactly as for sold ones"
+    },
+    {
+      "id": "SEED-INV-02",
+      "assert": "every seeded booking's payment is captured",
+      "sql": "SELECT count(*) FROM booking b LEFT JOIN payment p ON p.id = b.payment_id WHERE p.state IS DISTINCT FROM 'captured'  -- 0",
+      "cite": "S-XCT-45 · P-XCT-30 exception 4"
+    },
+    {
+      "id": "SEED-INV-03",
+      "assert": "booking.total_paise = payment.amount_paise = sum of its booking_seat.price_paise",
+      "sql": "SELECT count(*) FROM booking b JOIN payment p ON p.id = b.payment_id WHERE b.total_paise <> p.amount_paise OR b.total_paise <> (SELECT sum(bs.price_paise) FROM booking_seat bs WHERE bs.booking_id = b.id)  -- 0",
+      "cite": "S-PAY-10 · E3 P-PAY-04 · FR-ADR-039"
+    },
+    {
+      "id": "SEED-INV-04",
+      "assert": "every seeded booking has one receipt_dispatch row, suppressed, attempts 0",
+      "sql": "SELECT count(*) FROM booking b LEFT JOIN receipt_dispatch r ON r.booking_id = b.id WHERE r.status IS DISTINCT FROM 'suppressed' OR r.attempts <> 0  -- 0",
+      "cite": "S-XCT-45 ('suppressed with attempts = 0 and a null dispatch timestamp') · E4 P-TKT-04"
+    },
+    {
+      "id": "SEED-INV-05",
+      "assert": "the seed enqueues no receipt job",
+      "sql": "SELECT count(*) FROM outbox_message WHERE topic = 'receipt.send'  -- 0",
+      "cite": "P-XCT-30 · S-XCT-45"
+    },
+    {
+      "id": "SEED-INV-06",
+      "assert": "the seed writes no audit row",
+      "sql": "SELECT count(*) FROM audit_log  -- 0 on a freshly seeded database",
+      "cite": "P-XCT-30 exception 10"
+    },
+    {
+      "id": "SEED-INV-07",
+      "assert": "showtime_seat materialises every seat of every showtime, and seat_count_at_creation agrees",
+      "sql": "SELECT count(*) FROM showtime s WHERE s.seat_count_at_creation <> (SELECT count(*) FROM showtime_seat ss WHERE ss.showtime_id = s.id)  -- 0",
+      "cite": "P-ADM-14 · S-ADM-08"
+    },
+    {
+      "id": "SEED-INV-08",
+      "assert": "every showtime keeps free seats and none is empty: 0 < booked < seat_count_at_creation",
+      "sql": "SELECT count(*) FROM showtime s WHERE (SELECT count(*) FROM booking_seat bs WHERE bs.showtime_id = s.id) NOT BETWEEN 1 AND s.seat_count_at_creation - 1  -- 0",
+      "cite": "P-XCT-30 ('Occupancy never reaches 100% ... It never reaches 0 either') · S-XCT-45"
+    },
+    {
+      "id": "SEED-INV-09",
+      "assert": "every seat label within a screen is unique on the RAW columns",
+      "sql": "SELECT count(*) FROM (SELECT screen_id, row_label, seat_number FROM seat GROUP BY 1, 2, 3 HAVING count(*) > 1) x  -- 0",
+      "cite": "S-XCT-44 · uq_seat__screen_id_row_label_seat_number",
+      "reserved": "OPEN-SEATLABEL-01 - ruled by SRC-004 R-4 (upper(trim(input))); the seed writes upper-case letters, so the raw-column uniqueness check holds either way"
+    },
+    {
+      "id": "SEED-INV-10",
+      "assert": "the seed's row letters skip I (a SEED property, not a schema rule)",
+      "sql": "SELECT count(*) FROM seat WHERE row_label LIKE '%I%'  -- 0 on a freshly seeded database only",
+      "cite": "S-XCT-44 · P-XCT-30 exception 8",
+      "reserved": "OPEN-SEATALPHA-01 - ruled by SRC-004 R-4: I is PERMITTED; this is a seed-only property and must never become a CHECK"
+    },
+    {
+      "id": "SEED-INV-11",
+      "assert": "every seeded film is a DEMO placeholder sharing one poster",
+      "sql": "SELECT count(*) FROM movie WHERE title !~ '^DEMO MOVIE [0-9]{2}$'  -- 0; SELECT count(DISTINCT poster_object_key) FROM movie  -- 1",
+      "cite": "S-ADM-29 · S-XCT-42 · S-XCT-44"
+    },
+    {
+      "id": "SEED-INV-12",
+      "assert": "every lookup row is referenced by at least one visible film (formats via showtimes)",
+      "sql": "per-vocabulary anti-join returning 0 unreferenced rows",
+      "cite": "S-XCT-44 · P-XCT-30 'every one of the eleven lookup rows is referenced'"
+    },
+    {
+      "id": "SEED-INV-13",
+      "assert": "every seeded account sits on the reserved .invalid domain",
+      "sql": "SELECT count(*) FROM users WHERE email NOT LIKE '%.invalid'  -- 0",
+      "cite": "S-XCT-43 · FR-ADR-067 · P-XCT-32"
+    },
+    {
+      "id": "SEED-INV-14",
+      "assert": "manager-01 is assigned Screen 1 and not Screen 2 (the fixed subject of the S7.5 scope test)",
+      "sql": "manager_screen_assignment for manager-01 returns exactly the screen named SCREEN 1",
+      "cite": "P-XCT-30 manager mapping · E8 S7.5",
+      "status": "PROVISIONAL (SRC-003 C-1)"
+    },
+    {
+      "id": "SEED-INV-15",
+      "assert": "every film has exactly 90 showtimes; both formats are carried; 360 past and 360 from today",
+      "sql": "SELECT movie_id, count(*) FROM showtime GROUP BY 1  -- eight rows of 90",
+      "cite": "S-XCT-45"
+    },
+    {
+      "id": "SEED-INV-16",
+      "assert": "no two showtimes on one screen overlap; ends_at = starts_at + runtime + SEED_CHANGEOVER_MINUTES",
+      "sql": "self-join on screen_id with tstzrange overlap  -- 0 pairs",
+      "cite": "S-XCT-45 · P-ADM-08"
+    },
+    {
+      "id": "SEED-INV-17",
+      "assert": "a second run inserts nothing",
+      "sql": "row counts identical before and after a second run",
+      "cite": "P-XCT-30 preconditions · S-XCT-45"
+    },
+    {
+      "id": "SEED-INV-18",
+      "assert": "no card-shaped data anywhere in the seed or its fixtures",
+      "sql": "rg -nP '\\b(4[0-9]{12}([0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\\b' scripts/ backend/tests  -- 0 hits",
+      "cite": "S-XCT-44 · S-PAY-10 · P-XCT-30 exception 3 · CLAUDE.md 'No card data anywhere'"
+    }
+  ],
+  "unspecified": [
+    {
+      "what": "payment.idempotency_key is NOT NULL and no document says what value the seed writes for its 11,003 captured payments.",
+      "cite": "E3 P-PAY-07 · P-XCT-30 (silent)",
+      "kind": "non-reserved technical gap - the code goal decides and logs a [JUDGMENT CALL]"
+    },
+    {
+      "what": "booking.reference: the seed issues 11,003 references in Phase 2. SRC-004 R-5 (2026-10-18) rules the alphabet narrower (minus Z S B G) plus one trailing check character, which changes the alphabet P-TKT-01 and S-TKT-01 describe; the length stays 8 (7 random + 1 check). The seed must issue references through the same ruled generator as the application; a seed run made before that generator exists issues references that can never be re-cut in a deployed environment.",
+      "cite": "OPEN-REFCHAR-01 · SRC-004 R-5 · P-XCT-30 exception 5 (nothing is ever deleted in the deployed environment)",
+      "kind": "ONE-WAY DOOR - ordering hazard between a ruled answer and the seed; flagged, not decided here"
+    },
+    {
+      "what": "S-XCT-45 says a seeded dispatch row carries 'a null dispatch timestamp' without naming the column; receipt_dispatch has both claimed_at and sent_at, and dispatch_seq (NOT NULL, >= 1) has no stated seed value.",
+      "cite": "S-XCT-45 · E4 P-TKT-05",
+      "kind": "non-reserved technical gap"
+    },
+    {
+      "what": "booking.created_at for a seeded booking on a past showtime: the column defaults to now() (FR-ADR-018), so a seeded booking would read as made after its show unless the seed passes a value. No rule states which.",
+      "cite": "FR-ADR-018 · P-XCT-30 (silent) · S-ACC-12 (created_at is an ordering tie-breaker)",
+      "kind": "non-reserved technical gap"
+    },
+    {
+      "what": "booking_size cycles 1..10 literally while MAX_SEATS_PER_BOOKING may be configured below 10 (stricter is permitted). With a lower cap the seed writes bookings the application would refuse.",
+      "cite": "P-XCT-30 bookings · E8 S7.9 MAX_SEATS_PER_BOOKING",
+      "kind": "non-reserved technical gap"
+    },
+    {
+      "what": "S-ADM-29's lookup-name regex '^DEMO [A-Z]+ [0-9]+$' rejects 'DEMO LANGUAGE A/B/C', which P-XCT-30 and S-XCT-44 both name.",
+      "cite": "S-ADM-29 vs P-XCT-30 / S-XCT-44",
+      "kind": "cross-document defect - recorded here, owned by the Bible"
+    }
+  ]
+}

@@ -3568,7 +3568,7 @@
       ],
       "request": {
         "path_params": {
-          "reference": "string, 1..64, normalised to 8 characters of 23456789ABCDEFGHJKMNPQRSTVWXYZ; case-insensitive, hyphen-insensitive, whitespace-insensitive, optional leading FR"
+          "reference": "string, 1..64, normalised to 8 characters of 23456789ACDEFHJKMNPQRTVWXY; case-insensitive, hyphen-insensitive, whitespace-insensitive, optional leading FR"
         },
         "query": {},
         "headers": {},
