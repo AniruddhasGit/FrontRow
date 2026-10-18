@@ -510,3 +510,12 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 - **Not done here:** the engineering-ledger Status flip (another lane owns that file) · the
   reviewer's confirmation of the Zone B comments (the author may not confirm them) · `/tt` (this lane
   may not commit).
+
+## 2026-10-18/19 — Phases 3–5 built in workflow rounds 2–3; round 4 paused
+
+- Round 2 (`4efc975`): browse + holds/booking, hold-cap race fixed with a per-user mutex. Round 3 (`b558930`): Phase 4 close,
+  Phase 5 worker/mail (SQS/SES/Resend, boto3 lazy, 83.6 MB compressed), render test harness, 30 AC amendments.
+- Ledger 67/219 Done (from 29). Full suite 17 red, all on Blocked/Backlog rows; frontend 99/100; live drill every stage PASS.
+- Round 4 (Phases 6–8 + blocked fixes) stopped before any lane finished; relaunch kit in `handoffs/round4/`.
+- Render deploy blocked on the Render GitHub app's access to the FrontRow repo.
+- **Session closed 2026-10-19_0041 by ani87** → handoff: handoffs/HANDOFF_2026-10-19_0041_ani87.md
