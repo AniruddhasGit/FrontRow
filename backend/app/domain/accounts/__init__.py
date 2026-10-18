@@ -12,6 +12,7 @@ The functions are looked up on the `security` module at call time, so a test can
 
 from __future__ import annotations
 
+import enum
 import logging
 import secrets
 from typing import Any
@@ -28,6 +29,17 @@ from app.models import users
 
 log = logging.getLogger("app.accounts")
 
+
+class Role(enum.StrEnum):
+    """The four roles (SRC-003 C-1, PROVISIONAL; P-SCP-10). guest is the absence of a session and is never a
+    stored value; users.role holds one of the other three. There is no staff or door-scanner role."""
+
+    GUEST = "guest"
+    CUSTOMER = "customer"
+    MANAGER = "manager"
+    ADMIN = "admin"
+
+
 EMAIL_MAX_CHARS = 254
 UNAVAILABLE_SIGN_IN = "Sign-in is unavailable right now. Browsing still works. Try again shortly."
 UNAVAILABLE_REGISTER = "Registration is unavailable right now. Browsing still works. Try again shortly."
@@ -41,8 +53,11 @@ def _invalid(message: str, field: str, **details: Any) -> ApiError:
     return ApiError(422, "VALIDATION_FAILED", message, {"field": field, **details})
 
 
-def checked_email(raw: str | None) -> str:
-    """Trimmed and shape-checked (P-ACC-01 rows 1-3). Case is kept as entered; nothing else is mapped."""
+def checked_email(raw: Any) -> str:
+    """Trimmed and shape-checked (P-ACC-01 rows 1-3). Case is kept as entered; nothing else is mapped.
+    A value that is not a JSON string is not an email address at all: row 3's sentence."""
+    if raw is not None and not isinstance(raw, str):
+        raise _invalid("That is not a valid email address.", "email")
     email = (raw or "").strip()
     if not email:
         raise _invalid("Enter an email address.", "email")
@@ -54,9 +69,10 @@ def checked_email(raw: str | None) -> str:
     return email
 
 
-def check_new_password(password: str | None, min_length: int) -> str:
-    """P-ACC-01 rows 4-6 / P-ACC-03. Never trimmed. Characters for the floor, BYTES for the ceiling."""
-    if not password:
+def check_new_password(password: Any, min_length: int) -> str:
+    """P-ACC-01 rows 4-6 / P-ACC-03. Never trimmed. Characters for the floor, BYTES for the ceiling.
+    A value that is not a JSON string carries no password text: row 4's "Enter a password."."""
+    if not isinstance(password, str) or not password:
         raise _invalid("Enter a password.", "password")
     if len(password) < min_length:
         raise _invalid(f"Your password must be at least {min_length} characters. It does not have to contain "
@@ -110,13 +126,13 @@ async def register(conn: AsyncConnection, state: Any, settings: Settings, email:
     try:
         async with conn.begin():
             user_id = (await conn.execute(
-                insert(users).values(email=email, password_hash=password_hash, role="customer", password_version=1)
+                insert(users).values(email=email, password_hash=password_hash, role=Role.CUSTOMER.value, password_version=1)
                 .returning(users.c.id))).scalar_one()
     except IntegrityError as exc:
         if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) == _UNIQUE_EMAIL:
             raise ApiError(409, "EMAIL_ALREADY_REGISTERED", ALREADY_REGISTERED) from None  # a simultaneous twin won
         raise
-    return {"id": user_id, "email": email, "role": "customer", "password_version": 1}
+    return {"id": user_id, "email": email, "role": Role.CUSTOMER.value, "password_version": 1}
 
 
 async def sign_in(conn: AsyncConnection, state: Any, settings: Settings, email: str, password: str, now) -> dict[str, Any]:

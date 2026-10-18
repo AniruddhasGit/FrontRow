@@ -12,7 +12,9 @@
 #
 # THE INVENTORY IS COMPLETE (PRD S7.9 "How this inventory stays complete"). Every variable S7.9 lists
 # is declared here from Phase 1, including those a later phase is the first to read, because the
-# client's task definition is built from this list and `.env.example` must equal it. A required
+# client's task definition is built from this list and `.env.example` must equal it - plus the seed's own
+# three variables, which scripts/seed.py declares (SEED_VARIABLES) and nothing under backend/app reads
+# (S-XCT-48), so no api or worker container can refuse to boot over a value it has no use for. A required
 # variable that nothing reads yet still has no correct guess, which is why it has no default.
 #
 # THE COMMENT RULE (S-XCT-40). Every statement in this file has a comment line directly above it,
@@ -50,9 +52,14 @@ HttpUrl = Annotated[str, StringConstraints(pattern=r"^https?://")]
 # non-root user, P-XCT-18); above 65535 is not a port.
 Port = Annotated[int, Field(ge=1024, le=65535)]
 
+# Refuses the .env.example placeholders (every one starts CHANGE_ME). Without it a deployment whose
+# parameters were copied from .env.example boots with a value published in the repository.
 def _not_placeholder(value: str) -> str:
+    # By prefix, so a placeholder edited at the end ("CHANGE_ME_..._2") is still refused.
     if value.startswith("CHANGE_ME"):
+        # The message names the rule, never the value: the value may be a real secret mistyped.
         raise ValueError("is the placeholder from .env.example")
+    # Not a placeholder: the value passes through unchanged.
     return value
 
 
@@ -249,26 +256,6 @@ class Settings(BaseSettings):
     REPORTS_RATE_LIMIT_PER_USER_PER_MINUTE: int = Field(60, ge=1)
 
 
-# Read by scripts/seed.py ONLY, never by the API or the worker (S7.9). A separate model, so the API
-# never requires a variable it does not read and never holds the seed password.
-class SeedSettings(BaseSettings):
-    # The same reading rules as Settings.
-    model_config = SettingsConfigDict(case_sensitive=True, env_ignore_empty=True, env_file=None, extra="ignore")
-    # The one password on every seeded account. Required by the seed and by nothing else; never
-    # committed, printed or logged. Absent: the seed exits before writing anything.
-    SEED_DEFAULT_PASSWORD: str
-    # Minutes added to a film's runtime for showtime.ends_at. ASSUMED. Over 50 the seeded schedule
-    # overlaps itself at the 210-minute slot spacing.
-    SEED_CHANGEOVER_MINUTES: int = Field(20, ge=0, le=50)
-    # The domain every seeded address sits at. .invalid can never receive real mail (FR-ADR-067).
-    SEED_EMAIL_DOMAIN: str = "demo.frontrow.invalid"
-
-
-# The value .env.example ships for SEED_DEFAULT_PASSWORD. Refused by value, because the placeholder
-# must never become the deployed password (S7.9). The length bounds are S-XCT-48's, in Phase 2.
-SEED_PASSWORD_PLACEHOLDER = "CHANGE_ME_NOT_A_REAL_PASSWORD"
-
-
 # One cross-field check: a name the boot error prints, the variables it reads, the rule, and the
 # sentence an operator reads when it fails.
 class CrossFieldCheck(NamedTuple):
@@ -442,24 +429,6 @@ def load_settings() -> Settings:
         raise ConfigError([f"{c.name}: {c.rule}" for c in failed], [v for c in failed for v in c.variables])
     # Valid.
     return settings
-
-
-# The seed's own boot validation (S7.9 "Read by the seed script only"). Phase 2's seed calls it.
-def load_seed_settings() -> SeedSettings:
-    # The same field validation as the API.
-    try:
-        # SEED_DEFAULT_PASSWORD has no default, so an unset one fails here.
-        seed = SeedSettings()  # type: ignore[call-arg]
-    # Missing or ill-typed.
-    except ValidationError as exc:
-        # Same message rules: the name, never the value.
-        raise _config_error(exc) from None
-    # The committed placeholder must never become a real password; refused by value.
-    if seed.SEED_DEFAULT_PASSWORD == SEED_PASSWORD_PLACEHOLDER:
-        # The message names the variable and does not repeat the value.
-        raise ConfigError(["SEED_DEFAULT_PASSWORD is still the .env.example placeholder; set a real one"], ["SEED_DEFAULT_PASSWORD"])
-    # Valid.
-    return seed
 
 
 # The resolved configuration for the one boot log line, every secret-named value replaced.

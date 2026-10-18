@@ -1,0 +1,17 @@
+# Build context of backend/Dockerfile, which is built from the REPOSITORY ROOT (docker-compose.yml, and
+# `docker build -f backend/Dockerfile .`). The image needs backend/ and scripts/ and nothing else, so
+# everything else is excluded: without this the context is the whole repository - docs, frontend
+# node_modules, .git - sent to the builder on every build. The frontend image has its own context
+# (frontend/) and its own frontend/.dockerignore; this file does not apply to it.
+*
+!backend/
+!scripts/
+# Local junk that must never reach the image.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/*.egg-info/
+**/.env
+**/.env.*

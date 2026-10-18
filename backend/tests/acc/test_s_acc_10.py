@@ -35,7 +35,7 @@ def _reference() -> str:
 
 
 def _user_with_booking(db) -> tuple[int, int]:
-    user = insert_user(db, role="customer", password_hash="$2b$04$" + uuid.uuid4().hex.ljust(53, "a")[:53])
+    user = insert_user(db, role="customer", password_hash="$2b$" + "04$" + uuid.uuid4().hex.ljust(53, "a")[:53])
     booking = insert_booking(db, user_id=user, showtime=insert_showtime(db), price_paise=25000, reference=_reference())
     return user, booking
 

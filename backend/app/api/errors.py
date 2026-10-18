@@ -57,6 +57,10 @@ def _respond(status: int, code: str, details: dict[str, Any] | None = None, mess
     return JSONResponse(envelope(code, get_request_id(), details, message), status_code=status, headers=headers)
 
 
+# A framework HTTPException's status -> the registry code it is answered with (405 has its own handler).
+_HTTP_CODES = {401: "AUTH_REQUIRED", 403: "FORBIDDEN", 404: "NOT_FOUND"}
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Mounted on the APPLICATION, never on a router (P-XCT-11 3a): routing has already failed when
     404 and 405 are raised, so a router-level handler would never see them."""
@@ -74,8 +78,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         # Without this the framework answers with its own {"detail": ...} body, a second shape the
-        # interface cannot parse. In practice: 404 for an address no method serves.
-        code = "NOT_FOUND" if exc.status_code == 404 else "INTERNAL_ERROR"
+        # interface cannot parse. In practice: 404 for an address no method serves. Each status gets the
+        # registry code for it; any other 4xx is a request the server could not read (REQUEST_INVALID),
+        # and only a 5xx is INTERNAL_ERROR - the one code whose sentence quotes the request id.
+        code = _HTTP_CODES.get(exc.status_code) or ("INTERNAL_ERROR" if exc.status_code >= 500 else "REQUEST_INVALID")
         return _respond(exc.status_code, code, headers=getattr(exc, "headers", None))
 
     @app.exception_handler(RequestValidationError)

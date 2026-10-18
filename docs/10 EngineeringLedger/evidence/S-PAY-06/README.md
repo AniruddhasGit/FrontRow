@@ -1,0 +1,7 @@
+# S-PAY-06 — Done
+
+Lane `p4-booking`, workflow wf_61979593-b09, 2026-10-18. Verifier verdict: PASS_WITH_DEFECTS; this row was not refuted.
+
+**Evidence:** backend/tests/pay/test_s_pay_06.py, 8 passed: test_a_missing_empty_or_overlong_key_is_400_and_writes_nothing, test_the_key_is_compared_as_exact_bytes, test_a_completed_duplicate_replays_the_stored_body_byte_for_byte, test_a_duplicate_while_the_first_is_capturing_is_409_and_never_waits, test_the_same_key_with_another_hold_is_422_every_time, test_the_same_key_from_another_user_confirms_normally, test_a_key_whose_transaction_rolled_back_inserts_cleanly_next_time, test_nothing_ever_deletes_or_ages_out_an_idempotency_record. Red first: import failure (no module).
+
+**Note:** DependsOn not yet Done: S-PAY-01. A missing key is 400 with no idempotency or payment SQL issued, and so are '' and 256 characters (255 is accepted). 'Key-Abc', 'Key-Abc ' and 'KEY-ABC' give 3 records. A replay returns the first response's exact bytes, with 1 booking and 1 payment. A duplicate sent while the first is held inside its capture by the gated sleep port returns 409 IDEMPOTENCY_IN_FLIGHT with Retry-After: 3 before the first completes. The no-wait is a pg_try_advisory_xact_lock taken before the insert, because an INSERT that meets an uncommitted duplicate would block. The same key with a different hold gives 422 every time. The same key from another user gives 201. A rolled-back key inserts again. There are 0 delete or expiry hits.

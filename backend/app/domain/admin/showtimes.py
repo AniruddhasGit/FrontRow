@@ -19,7 +19,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.errors import ApiError
-from app.domain.admin.common import (DB_DOWN, audit, check_ceiling, check_version, invalid, is_int, need_int,
+from app.domain.admin.common import (DB_DOWN, audit, check_ceiling, check_version, lock_price_ceiling, invalid, is_int, need_int,
                                      need_version, not_found, parse_local, to_local, to_utc, transaction)
 from app.domain.admin.halls import lock_screen
 from app.models import booking_seat, cinema, format, movie, screen, seat, seat_category, showtime, showtime_seat
@@ -56,6 +56,7 @@ def _price(value: Any) -> int:
 
 async def _check_price_ceiling(conn: AsyncConnection, price: int) -> None:
     # Against the HIGHEST STORED uplift, not a constant (P-ADM-10).
+    await lock_price_ceiling(conn)
     highest = await conn.scalar(select(func.coalesce(func.max(seat_category.c.uplift_basis_points), 0)))
     if not check_ceiling(price, highest):
         raise invalid("base_price_paise", PRICE_CEILING)

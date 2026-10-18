@@ -204,6 +204,7 @@ movie_genre = Table(
     metadata,
     Column('movie_id', BigInteger, primary_key=True, nullable=False),
     Column('genre_id', BigInteger, primary_key=True, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )
 
 
@@ -234,6 +235,7 @@ showtime = Table(
     Column('format_id', BigInteger, nullable=True),
     Column('seat_count_at_creation', Integer, nullable=False),
     Column('version', Integer, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )
 
 
@@ -257,6 +259,7 @@ showtime_seat = Table(
     metadata,
     Column('showtime_id', BigInteger, primary_key=True, nullable=False),
     Column('seat_id', BigInteger, primary_key=True, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )
 
 
@@ -302,4 +305,5 @@ receipt_dispatch = Table(
     Column('ses_message_id', Text, nullable=True),
     Column('attempts', Integer, nullable=False),
     Column('last_error', Text, nullable=True),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )

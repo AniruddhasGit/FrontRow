@@ -15,12 +15,14 @@
 
 | Image | Built with | `docker images` (local, containerd store) | Compressed content (what a registry stores) |
 |---|---|---|---|
-| api | `docker build -t <repo>:<tag> backend/` | **239 MB** | **56.5 MB** (56,498,125 bytes) |
+| api | `docker build -f backend/Dockerfile -t <repo>:<tag> .` **from the repository root** (since Phase 2: the image carries `scripts/seed.py`) | **286 MB** (Phase 2; 239 MB in Phase 1) | **66.6 MB** (66,635,469 bytes by `docker image inspect --format '{{.Size}}'`, Phase 2; 56.5 MB in Phase 1) |
 | frontend | `docker build -t <repo>:<tag> frontend/` | **73.9 MB** | **21.0 MB** (21,046,395 bytes) |
 
-Measured locally on 2026-10-18 (GOAL_14 gate), and re-measured the same day after a rebuild: the compressed column is the sum of the gzip layer and config sizes in each image's manifest, which are the blobs a push uploads. A rebuild moves the byte count by a few kB. **Which of the two columns ECR counts against the
+The api's Phase 2 figures were measured on 2026-10-18 after the Phase 2 dependencies (SQLAlchemy, Alembic, PyJWT,
+bcrypt) landed: **286 MB by `docker images` is over the 250 MB budget; the inspect figure is under it. Which
+measure the budget means is an open question to the client (`T-P1-08`).** The Phase 1 figures were measured locally on 2026-10-18 (GOAL_14 gate), and re-measured the same day after a rebuild: the compressed column is the sum of the gzip layer and config sizes in each image's manifest, which are the blobs a push uploads. A rebuild moves the byte count by a few kB. **Which of the two columns ECR counts against the
 500 MB is reasoned, not observed.** The compressed figure is the likely one, which would make one
-api+frontend pair about 77.5 MB, roughly six versions of both images. Check the repository's reported
+api+frontend pair about 87.6 MB since Phase 2 (66.6 + 21.0; 77.5 MB in Phase 1), roughly five versions of both images. Check the repository's reported
 image size after your first push, and write the real number into the prep queue.
 
 The images are built for **linux/amd64**, which is what a `t3.micro` runs. If you build on an Apple

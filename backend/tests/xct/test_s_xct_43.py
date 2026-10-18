@@ -1,9 +1,8 @@
 """S-XCT-43 (PRD P-XCT-29, OPEN-TLS-01): the deployed environment is never called production and holds only
 seeded demonstration data; nothing is designed around the absence of TLS.
 
-NOT covered here (the row stays open on it, see the lane report): resolving the TLS specification THROUGH
-the Spec cell of docs/30 Deployment/AWS_PREP_QUEUE.md row 14 - that cell is still empty and the queue file
-is outside this lane. The specification itself, P2_TLS_CERTIFICATE.md, is checked directly below.
+The TLS specification is resolved THROUGH the Spec cell of the docs/30 Deployment/AWS_PREP_QUEUE.md row whose
+Item names the TLS certificate (row 14), as the criterion says, and then checked.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import sys
 from tests.conftest import VALID_ENV
 from tests.dbkit import BACKEND_DIR
 from tests.seed.kit import one, seeded  # noqa: F401
-from tests.xct._support import DEPLOY, REPO, rg
+from tests.xct._support import DEPLOY, REPO, prep_queue, rg, spec_files, strip_md
 
 DEPLOYED_PATHS = ("docs/30 Deployment", "backend/app", "backend/migrations", "frontend/src", "scripts",
                   "docker-compose.yml", ".env.example")
@@ -79,3 +78,8 @@ def test_the_tls_specification_carries_the_five_steps_and_the_zone_c_sentence():
                  "set PUBLIC_BASE_URL to the HTTPS address"):
         assert step in spec, step
     assert "The first three steps are Zone C. No application code changes." in spec
+
+
+def test_the_tls_spec_is_found_through_the_queue_rows_spec_cell():
+    (row,) = [r for r in prep_queue() if "TLS certificate" in strip_md(r["Item"])]
+    assert [DEPLOY / f for f in spec_files(row["Spec"])] == [DEPLOY / "P2_TLS_CERTIFICATE.md"]

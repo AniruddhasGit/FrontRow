@@ -13,7 +13,7 @@ from app.main import create_app
 
 from ..conftest import VALID_ENV
 from ..test_health import ok_probe
-from ..xct.test_s_xct_29 import _boot_env, _free_port, _refused
+from ..xct.test_s_xct_29 import _boot_env, _boot_watching, _free_port
 
 
 
@@ -28,10 +28,10 @@ def test_no_settings_field_names_an_excluded_capability():
 
 def test_payment_provider_unset_exits_nonzero_names_it_on_stderr_and_never_binds(tmp_path):
     port = _free_port()
-    proc = _boot(_boot_env(PAYMENT_PROVIDER=None, API_PORT=str(port)), tmp_path)
+    proc, bound = _boot_watching(_boot_env(PAYMENT_PROVIDER=None, API_PORT=str(port)), tmp_path, port)
     assert proc.returncode != 0
     assert "PAYMENT_PROVIDER" in proc.stderr
-    assert _refused(port)
+    assert not bound
 
 
 def test_payment_provider_stripe_exits_nonzero_saying_simulated(tmp_path):

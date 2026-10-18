@@ -14,7 +14,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api import admin, auth, auth_session, browse, manager
+from app.api import admin, auth, auth_session, bookings, browse, holds, manager, me
+from app.core.logging import new_request_id
+from app.domain import holds as holds_domain
 from app.api.errors import install_error_handlers
 from app.api.health import router as health_router
 from app.core.clock import Clock, SystemClock
@@ -99,6 +101,8 @@ def create_app(
                 # Last, because a Phase 4 hook releases locks THROUGH this client.
                 await redis_client.aclose()
             if owned_engine:
+                # Closes the pooled connections. Without it the process exits with connections the server
+                # still counts as open until its TCP keepalive notices - slots a new task may need now.
                 await app.state.db_engine.dispose()
 
     app = FastAPI(
@@ -115,6 +119,21 @@ def create_app(
     # seat holds" here. A failing hook is logged and does not stop the next one, because expiry - not
     # release - is the correctness guarantee.
     app.state.shutdown_hooks: list[ShutdownHook] = []
+    # This process's id for the seat-hold registry `instance:{id}:holds` (P-HLD-12): every lock key this api
+    # grants is listed under it, and the hook below releases exactly those. A fresh id per boot, so a restarted
+    # container never releases a predecessor's keys (which expire on their own).
+    app.state.instance_id = new_request_id()
+
+    app.state.granted_holds = False
+
+    async def release_seat_holds() -> None:
+        # Best-effort: expiry, not this, is the guarantee. Without it a deploy strands every seat this instance
+        # was holding for up to SEAT_HOLD_TTL_SECONDS with no error anywhere (GOTCHAS, SIGTERM without release).
+        # A process that granted no hold has nothing in its registry, so it sends Redis nothing at all.
+        if app.state.granted_holds:
+            await holds_domain.release_instance(app.state.redis, app.state.instance_id)
+
+    app.state.shutdown_hooks.append(("release this instance's seat holds", release_seat_holds))
     # Read by app/api/deps.py: the dependencies take settings and the clock from here, so a test that
     # builds the app with a FakeClock moves every decision-bearing instant (sessions, audit rows).
     app.state.settings = settings
@@ -123,7 +142,7 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health_router)
     # One line per router module, each with its own prefix and authorisation dependency (deps.py).
-    for module in (browse, auth, auth_session, admin, manager):
+    for module in (browse, auth, auth_session, admin, manager, holds, bookings, me):
         app.include_router(module.router)
     return app
 
@@ -131,8 +150,11 @@ def create_app(
 async def _run_shutdown_hooks(hooks: list[ShutdownHook]) -> None:
     log.info("drain complete; running shutdown hooks", extra={"hook_count": len(hooks)})
     for name, hook in hooks:
+        # One try per hook: a failing hook must not stop the next one, because expiry - not release - is the
+        # correctness guarantee, and the hooks after it still have work to do.
         try:
             await hook()
         except Exception:  # noqa: BLE001
+            # Logged with the trace and the hook's name, so the failure is findable after the task is gone.
             log.error("shutdown hook failed", exc_info=True, extra={"hook": name})
     log.info("shutdown hooks complete")

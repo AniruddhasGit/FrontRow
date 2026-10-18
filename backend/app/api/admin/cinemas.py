@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Path
 
 from app.api.deps import CurrentUser, current_user, db, get_clock
 from app.domain.admin import cinemas
-from app.domain.admin.common import AdminBody, submitted
+from app.domain.admin.common import BIGINT_MAX, AdminBody, submitted
 
 router = APIRouter()
 
@@ -23,6 +23,6 @@ async def list_cinemas(conn=Depends(db)):
 
 
 @router.patch("/cinemas/{cinema_id}")
-async def edit_cinema(body: CinemaPatch, cinema_id: int = Path(gt=0), conn=Depends(db),
+async def edit_cinema(body: CinemaPatch, cinema_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                       user: CurrentUser = Depends(current_user), clock=Depends(get_clock)):
     return await cinemas.edit_cinema(conn, user, cinema_id, submitted(body), clock.now())

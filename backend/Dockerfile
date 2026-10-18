@@ -10,17 +10,24 @@
 #   test     builder + test tools + tests. `docker build --target test .` runs the suite.
 #   runtime  LAST, so a plain `docker build .` produces the deployable image and never the test one
 #
-# Build:   docker build -t frontrow-api backend/
-# Measure: docker images frontrow-api      (budget: under 250 MB, SRC-002 §5.4.2)
+# Build:   docker build -f backend/Dockerfile -t frontrow-api .     (from the REPOSITORY ROOT - see below)
+# Measure: docker images frontrow-api   and   docker image inspect --format '{{.Size}}' frontrow-api
+#          The budget is under 250 MB (SRC-002 §5.4.2). The two commands report different numbers and
+#          WHICH ONE the budget means is an open question to the client (T-P1-08): on 2026-10-18 this image
+#          measured 286 MB by `docker images` (OVER the budget) and 66.6 MB by inspect (under it).
+#
+# The build context is the repository root, not backend/: the seed command runs scripts/seed.py, and
+# scripts/ sits beside backend/ (SRC-002 §11). The root .dockerignore admits only backend/ and scripts/,
+# so the context stays small. Building with `backend/` as the context fails at the first COPY.
 # =====================================================================================================
 
 # Exact patch tag, not `3.12-slim`: a floating tag silently changes the interpreter under you between
 # two builds of the same commit, and "nothing changed" stops being true.
 # `slim` (Debian, glibc) rather than `alpine` (musl): the prebuilt manylinux wheels for psycopg and
 # pydantic-core are the ones every CI and laptop also uses; musl is a second libc to debug against.
-# `trixie` (Debian 13) rather than `bookworm` (Debian 12): measured on this build, bookworm put the
-# image at 258 MB by `docker images` - OVER the 250 MB budget (SRC-002 §5.4.2) - and trixie's
-# smaller base brings it under without removing anything the application uses.
+# `trixie` (Debian 13) rather than `bookworm` (Debian 12): measured in Phase 1, bookworm put the image
+# at 258 MB by `docker images` and trixie at 239 MB. Since the Phase 2 dependencies the image is 286 MB by
+# that measure even on trixie - see the Measure note in the header. trixie is still the smaller base.
 FROM python:3.12.15-slim-trixie AS base
 
 # Without PYTHONDONTWRITEBYTECODE Python writes .pyc files next to the source at import time. On a
@@ -58,7 +65,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /build
 # Requirements are copied BEFORE the source so the dependency layer is cached. Without this ordering
 # every one-line code change reinstalls every dependency and a build takes minutes instead of seconds.
-COPY requirements.txt requirements-dev.txt ./
+COPY backend/requirements.txt backend/requirements-dev.txt ./
 # The runtime dependencies, into the venv. Without them the runtime stage copies an empty venv and the
 # container exits at the first import.
 RUN /usr/local/bin/pip --python /opt/venv/bin/python install -r requirements.txt
@@ -80,15 +87,15 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin fron
 # Without it pytest runs from /build, finds no tests and no pyproject.toml, and exits "no tests ran".
 WORKDIR /srv
 # pytest's configuration (test paths, pythonpath, no cache directory). Without it pytest finds no tests.
-COPY pyproject.toml ./
+COPY backend/pyproject.toml ./
 # The code under test, the same files the runtime stage copies.
-COPY app ./app
+COPY backend/app ./app
 # The migration revisions, so the database tests can run the real `migrate` command.
-COPY migrations ./migrations
+COPY backend/migrations ./migrations
 # The entrypoint, so the database tests run `migrate` through it exactly as the task does.
-COPY entrypoint.sh ./entrypoint.sh
+COPY backend/entrypoint.sh ./entrypoint.sh
 # The tests themselves. Without them `docker run` of this stage reports "no tests ran".
-COPY tests ./tests
+COPY backend/tests ./tests
 # The non-root user created above, so a test that only passes as root fails here.
 USER 10001
 # `docker run` of this stage runs the suite.
@@ -118,13 +125,19 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /srv
 # Owned by root and not writable by the runtime user: the application has no reason to modify its
 # own code, and a process that cannot write here cannot be tricked into persisting anything here.
-COPY app ./app
+COPY backend/app ./app
 # The revisions the entrypoint's `migrate` command applies. Same image as the code, so the migration
 # and the code it serves are always the same build (P-XCT-19). Without it `migrate` finds nothing.
-COPY migrations ./migrations
+COPY backend/migrations ./migrations
+# The seed, for the entrypoint's `seed` command (P-XCT-32). Same image as the code, so the seed writes rows
+# the code it ships with can read. Without it `seed` exits "can't open file 'scripts/seed.py'" and the
+# one-off seed task can never succeed.
+COPY scripts/seed.py ./scripts/seed.py
+# The placeholder poster the seeded films point at: the seed refuses to run without it. 1.5 KB.
+COPY scripts/assets ./scripts/assets
 # 0555 = executable and read-only for everyone. Without the exec bit the container fails at start
 # with "permission denied"; without read-only, the runtime user could rewrite its own entrypoint.
-COPY --chmod=0555 entrypoint.sh /usr/local/bin/frontrow-entrypoint
+COPY --chmod=0555 backend/entrypoint.sh /usr/local/bin/frontrow-entrypoint
 # Without this, a checkout on Windows with git's CRLF conversion produces "#!/bin/sh\r", and the
 # container dies at start with the baffling "/bin/sh^M: not found" (or "no such file or directory").
 RUN sed -i 's/\r$//' /usr/local/bin/frontrow-entrypoint

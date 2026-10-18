@@ -1,10 +1,8 @@
 """S-XCT-48 (PRD P-XCT-32): every seeded account signs in with SEED_DEFAULT_PASSWORD, and no credential is
 committed, printed or written.
 
-NOT covered here (the row stays open on them, see the lane report): `rg -n 'SEED_DEFAULT_PASSWORD' backend/app`
-returning 0 hits - backend/app/core/config.py still declares SeedSettings, which the foundation lane owns;
-and the repository-wide `rg -nP '\\$2[aby]\\$\\d\\d\\$' .` returning 0 hits - two test fixtures outside this lane
-(tests/dbkit.py, tests/acc/test_s_acc_10.py) carry a literal bcrypt prefix.
+"No file written" is checked by a static scan of seed.py (no open()/write_text/write_bytes), not by watching
+the filesystem during a run.
 """
 
 from __future__ import annotations
@@ -114,3 +112,17 @@ async def test_the_admin_and_all_fifty_customers_sign_in_with_the_value_that_was
             assert r.status_code == 200, (c, r.text)
             ok += 1
         assert ok == 50
+
+
+def test_the_seed_password_is_read_by_the_seed_and_by_nothing_in_the_application():
+    assert rg(r"SEED_DEFAULT_PASSWORD", "backend/app") == []
+    assert rg(r"SEED_DEFAULT_PASSWORD", "scripts/seed.py")  # not vacuous: the seed itself does read it
+
+
+# Written with escapes and a character class, so this file does not match its own pattern.
+_BCRYPT_HASH = r"\$2[aby]\$\d\d\$"
+
+
+def test_no_bcrypt_hash_is_committed_anywhere_in_the_repository():
+    assert rg(_BCRYPT_HASH, ".") == []
+    assert rg(_BCRYPT_HASH, "docs/05 Bible") == []  # the criterion's self-check: the pattern misses its own text

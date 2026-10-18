@@ -166,8 +166,10 @@ code goal. The inputs live in `datamodel.json` → `seed_expectations`, each one
    among them what the seed writes into the `NOT NULL` `payment.idempotency_key`, and the seeded
    `booking.created_at` for past showtimes.
 2. **`P-TKT-01` and the Bible still describe the pre-`SRC-004` reference** (8 characters over 30).
-   The schema follows `SRC-004 R-5` (9 over 26). Any criterion asserting `length(reference) = 8`
-   now fails against a correct schema until the PRD and the Bible are updated.
+   The schema follows `SRC-004 R-5`: 8 characters (7 + 1 check character) over a 26-character
+   alphabet, as `ck_booking__reference_charset` states. *(This line said "9 over 26" until
+   2026-10-18; the CHECK was always `{8}`.)* A criterion that assumes the 30-character alphabet fails
+   against a correct schema until the PRD and the Bible are updated.
 3. **66 gaps and 107 notes** from the six cluster reads are preserved verbatim in `derivation/` and
    have not all been triaged. Several are real questions. `derivation/MERGE_DECISIONS.md` records
    the eight decisions the merge rests on and the cross-document defects found.
@@ -175,9 +177,12 @@ code goal. The inputs live in `datamodel.json` → `seed_expectations`, each one
    `receipt_dispatch` row, the PRD says the booking transaction does and *"the worker never inserts
    it"*. Same columns either way, so the schema is unaffected — but three criteria test the PRD's
    reading and Art II.1 ranks the ADR higher. **Recorded, not decided.**
-5. **`showtime_seat` carries a PRIMARY KEY and an identical UNIQUE constraint on
-   `(showtime_id, seat_id)`.** Both are constraints, so the fix wave's de-duplication kept both:
-   `S-ADM-08` asserts the named unique exists, and the primary key is the table's identity.
+5. **`showtime_seat` is declared with a PRIMARY KEY and an identical UNIQUE on
+   `(showtime_id, seat_id)`, and PostgreSQL 16 keeps only one of them.** Observed on a fresh migrate
+   (2026-10-18, `pg_constraint`): ONE constraint, named `uq_showtime_seat__showtime_id_seat_id`, with
+   `contype = 'p'` - the duplicate UNIQUE was folded into the primary key and the unique's name kept.
+   A check filtering `information_schema.table_constraints` on `constraint_type = 'UNIQUE'` finds
+   nothing for this table; look the name up in `pg_constraint` instead. `S-ADM-08` reads it that way.
 6. **RDS is not observed.** Everything said here about the two roles on RDS is reasoned, not
    observed.
 
@@ -192,6 +197,7 @@ accepted, which overflows `integer`.
 ## Provenance
 
 `derivation/` holds the six independent cluster reads this model was assembled from — 22 tables,
-152 columns, every one citing a PRD row, an ADR or a Bible story. They are kept because they carry
+152 columns at the time (156 since revision 0002 added `created_at` to `movie_genre`,
+`receipt_dispatch`, `showtime` and `showtime_seat` for `S-XCT-09`), every one citing a PRD row, an ADR or a Bible story. They are kept because they carry
 the reasoning and the verbatim SQL behind each column, and re-deriving them costs six full agent
 runs.

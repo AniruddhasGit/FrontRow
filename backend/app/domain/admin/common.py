@@ -15,6 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -22,7 +23,7 @@ from app.api.errors import ApiError
 from app.core.audit import check_action, write_audit
 from app.domain.audit import AUDIT_ACTIONS
 from app.domain.money import BIGINT_MAX
-from app.domain.pricing import _BASIS_POINTS_PER_WHOLE, _HALF_UP
+from app.domain.pricing import seat_price_paise
 
 # The closed action vocabulary as an enum (S-ADM-02). Built from the one tuple, so there is no second list:
 # AuditAction("screen.exploded") raises ValueError.
@@ -43,7 +44,9 @@ class AdminBody(BaseModel):
 def submitted(body: AdminBody) -> dict[str, Any]:
     """The fields the request actually carried. An unknown one is 400 REQUEST_INVALID (E6 S4)."""
     if body.model_extra:
-        raise ApiError(400, "REQUEST_INVALID")
+        # details.field names the property (E8 SCR-XCT-01 details table: `field` where one can be named); with
+        # several, the first in sorted order, so the same body always names the same one.
+        raise ApiError(400, "REQUEST_INVALID", details={"field": sorted(body.model_extra)[0]})
     return {name: getattr(body, name) for name in body.model_fields_set}
 
 
@@ -55,13 +58,20 @@ def not_found(message: str) -> ApiError:
     return ApiError(404, "NOT_FOUND", message)
 
 
+# PostgreSQL's integer widths. A value past the column's width is a validation failure (422), never a
+# DataError from the driver (500): every id here is bigint, and seat_number / grid_row / grid_col are integer.
+INT4_MAX = 2**31 - 1
+
+
 def is_int(value: Any) -> bool:
-    # bool is an int subclass; 25000.0 is a float. Neither is a whole number of anything here.
-    return type(value) is int
+    # bool is an int subclass; 25000.0 is a float. Neither is a whole number of anything here. A whole number
+    # outside bigint cannot be stored or even compared by the database, so it is not one here either.
+    return type(value) is int and -BIGINT_MAX - 1 <= value <= BIGINT_MAX
 
 
-def need_int(value: Any, field: str, *, minimum: int = 1, wrong: str | None = None, low: str | None = None) -> int:
-    if not is_int(value):
+def need_int(value: Any, field: str, *, minimum: int = 1, maximum: int = BIGINT_MAX, wrong: str | None = None,
+             low: str | None = None) -> int:
+    if not is_int(value) or value > maximum:
         raise invalid(field, wrong)
     if value < minimum:
         raise invalid(field, low or wrong)
@@ -93,9 +103,27 @@ def check_version(stored: int, sent: int, message: str) -> None:
         raise ApiError(409, "VERSION_CONFLICT", message)
 
 
-def check_ceiling(base_price_paise: int, uplift_basis_points: int) -> bool:
-    """FR-ADR-038's numerator must fit PostgreSQL bigint (P-ADM-10, P-ADM-11). Arithmetic, not business."""
-    return base_price_paise * (_BASIS_POINTS_PER_WHOLE + uplift_basis_points) + _HALF_UP <= BIGINT_MAX
+def check_ceiling(base: int, uplift: int) -> bool:
+    """FR-ADR-038's numerator must fit PostgreSQL bigint (P-ADM-10, P-ADM-11). Arithmetic, not business.
+    Asked of the one formula itself (app/domain/pricing.py refuses a numerator past bigint), so the ceiling
+    and the price can never disagree about where the edge is."""
+    try:
+        seat_price_paise(base, uplift)
+    except OverflowError:
+        return False
+    return True
+
+
+# Any fixed bigint; it names the one pairwise ceiling below and nothing else takes it.
+_PRICE_CEILING_LOCK = 0x46525052494345  # "FRPRICE"
+
+
+async def lock_price_ceiling(conn: AsyncConnection) -> None:
+    """Serialise the two mirror ceilings (P-ADM-10 against the highest uplift, P-ADM-11 against the highest base
+    price). Each reads the OTHER table's maximum; without a shared lock a showtime create and an uplift raise
+    can each pass against the other's old value and together store a pair whose price overflows bigint
+    (write skew). Transaction-scoped: released at COMMIT or ROLLBACK, so it needs no cleanup."""
+    await conn.execute(select(func.pg_advisory_xact_lock(_PRICE_CEILING_LOCK)))
 
 
 # ---- admin datetimes are naive local in both directions (E6 S4) ------------------------------------------

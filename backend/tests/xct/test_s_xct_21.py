@@ -183,3 +183,21 @@ def test_the_load_balancer_row_names_health_ready():
 
 def test_the_deployment_spec_says_reversing_them_is_a_restart_loop():
     assert rg("reversing them turns a recoverable outage into a restart loop", "docs/30 Deployment", fixed=True)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"QUEUE_URL": "http://10.255.255.1:9324/000000000000/frontrow-receipts"},
+        {"AWS_REGION": "xx-nowhere-1", "MAIL_PROVIDER": "ses"},
+        {"S3_BUCKET_NAME": "frontrow-unroutable-bucket", "AWS_REGION": "xx-nowhere-1"},
+    ],
+)
+def test_the_default_probe_list_is_postgres_and_redis_and_nothing_else(valid_env, clock, override):
+    """The test above injects its own probes, so it cannot see the DEFAULT list. This one builds the app the way
+    boot does (probes=None) and reads the list the lifespan installed: an SQS, SES or S3 probe added there fails
+    here. Nothing is probed - the lifespan only builds the list."""
+    application = create_app(Settings(**{**VALID_ENV, **override}), clock=clock)
+    with TestClient(application):
+        names = [p.name for p in application.state.readiness._probes]
+    assert names == ["postgres", "redis"]

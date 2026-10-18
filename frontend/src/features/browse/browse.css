@@ -1,0 +1,204 @@
+/* SCR-BRW-01 and SCR-BRW-02 (COMPONENTS.md §3, §4). Every value is a design token (FR-ADR-044); no hex code. */
+.fr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.fr-mono {
+  font-family: var(--fr-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.fr-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fr-space-3);
+  margin-bottom: var(--fr-space-4);
+}
+.fr-strip,
+.fr-pick {
+  display: flex;
+  gap: var(--fr-space-2);
+  overflow-x: auto;
+  padding: var(--fr-space-1) 2px;
+}
+.fr-choice,
+.fr-clear {
+  min-height: var(--fr-tap-min);
+  padding: 0 var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  background: var(--fr-surface-raised);
+  color: var(--fr-ink);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fr-choice[aria-pressed="true"] {
+  background: var(--fr-surface-accent);
+  color: var(--fr-ink-on-accent);
+}
+.fr-clear {
+  background: transparent;
+  color: var(--fr-accent-ink);
+  align-self: flex-start;
+}
+.fr-choice:focus-visible,
+.fr-clear:focus-visible,
+.fr-card-link:focus-visible,
+.fr-time:focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  outline-offset: 2px;
+}
+.fr-filters-down {
+  color: var(--fr-ink);
+  font-size: var(--fr-text-sm);
+}
+.fr-state {
+  color: var(--fr-ink);
+  font-size: var(--fr-text-md);
+}
+.fr-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--fr-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+}
+.fr-card {
+  background: var(--fr-surface-raised);
+  border-radius: var(--fr-radius-lg);
+  box-shadow: var(--fr-shadow-card);
+  padding: var(--fr-space-4);
+}
+.fr-card-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fr-space-3);
+  color: inherit;
+  text-decoration: none;
+}
+.fr-poster {
+  aspect-ratio: var(--fr-poster-ratio);
+  border-radius: var(--fr-radius-md);
+  background: var(--fr-surface-inset);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fr-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* The perforation motif: a column of dots down both long edges, like a strip of film (COMPONENTS.md §3). */
+.fr-poster[data-empty] {
+  background:
+    radial-gradient(circle, var(--fr-poster-empty-mark) 30%, transparent 32%) left var(--fr-space-1) top / var(--fr-space-3) var(--fr-space-4) repeat-y,
+    radial-gradient(circle, var(--fr-poster-empty-mark) 30%, transparent 32%) right var(--fr-space-1) top / var(--fr-space-3) var(--fr-space-4) repeat-y,
+    var(--fr-surface-inset);
+}
+.fr-poster-title {
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-sm);
+  text-align: center;
+  padding: 0 var(--fr-space-5);
+}
+.fr-card-title {
+  margin: 0;
+  font-family: var(--fr-font-display);
+  font-size: var(--fr-text-lg);
+  font-weight: var(--fr-weight-bold);
+  letter-spacing: var(--fr-track-tight);
+  line-height: var(--fr-leading-tight);
+  color: var(--fr-ink-strong);
+}
+.fr-card-synopsis {
+  margin: 0;
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+  line-height: var(--fr-leading-body);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.fr-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2);
+  align-items: center;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-meta .fr-mono {
+  font-family: var(--fr-font-mono);
+}
+.fr-chip {
+  color: var(--fr-ink);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-radius: var(--fr-radius-sm);
+  padding: var(--fr-space-1);
+}
+.fr-card-loading .fr-poster {
+  opacity: 0.6;
+}
+.fr-movie-head {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr;
+  gap: var(--fr-space-4);
+  margin-bottom: var(--fr-space-4);
+}
+.fr-movie-synopsis {
+  font-size: var(--fr-text-md);
+  color: var(--fr-ink);
+  max-width: var(--fr-measure);
+  -webkit-line-clamp: none;
+}
+.fr-times {
+  list-style: none;
+  margin: var(--fr-space-4) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--fr-space-2);
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+}
+.fr-time {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--fr-tap-min);
+  padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  background: var(--fr-surface-raised);
+  color: var(--fr-ink);
+  text-decoration: none;
+}
+.fr-time-at {
+  font-size: var(--fr-text-md);
+}
+.fr-time-hall,
+.fr-time-price {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-time[data-closed] {
+  background: var(--fr-surface-inset);
+  color: var(--fr-ink-muted);
+  cursor: default;
+}
+.fr-time-closed {
+  font-size: var(--fr-text-xs);
+}
+.fr-time-loading {
+  background: var(--fr-surface-inset);
+  min-height: var(--fr-tap-min);
+  border-radius: var(--fr-radius-md);
+}

@@ -191,9 +191,14 @@ def test_the_cinema_row_takes_its_zone_from_cinema_timezone(empty_db):
     assert one(empty_db, "SELECT timezone FROM cinema") == "Europe/London"
 
 
-def test_an_unknown_cinema_timezone_is_refused_before_any_write(empty_db):
+def test_an_unknown_cinema_timezone_is_refused_before_any_write():
+    from tests.dbkit import create_database, drop_database
     from tests.seed.kit import NOW, PASSWORD, seed_env
-    with seed_env(DATABASE_URL=empty_db.app_url, SEED_DEFAULT_PASSWORD=PASSWORD, BCRYPT_COST="4",
-                  CINEMA_TIMEZONE="Mars/Olympus"):
-        assert seed.main([], now=NOW, out=lambda _line: None) == 78
-    assert one(empty_db, "SELECT count(*) FROM cinema") == 0
+    db = create_database(migrate=True)  # its own database: empty_db is module-scoped and already seeded
+    try:
+        with seed_env(DATABASE_URL=db.app_url, SEED_DEFAULT_PASSWORD=PASSWORD, BCRYPT_COST="4",
+                      CINEMA_TIMEZONE="Mars/Olympus"):
+            assert seed.main([], now=NOW, out=lambda _line: None) == 78
+        assert one(db, "SELECT count(*) FROM cinema") == 0
+    finally:
+        drop_database(db)

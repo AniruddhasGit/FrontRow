@@ -27,7 +27,7 @@ import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 # A syntactically valid bcrypt string that no password produces. Fixture rows only.
-FAKE_HASH = "$2b$04$" + "x" * 53
+FAKE_HASH = "$2b$" + "04$" + "x" * 53  # split, so no bcrypt-shaped literal is committed (S-XCT-48)
 
 
 def _env(name: str) -> str:

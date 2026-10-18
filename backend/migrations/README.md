@@ -1,8 +1,10 @@
 # backend/migrations/
 
-Alembic, from **Phase 2** (`SRC-002 §12`). One revision so far: `versions/0001_initial_schema.py`,
-which creates exactly what `docs/06 DataModel/schema.sql` creates (proved by
-`backend/tests/xct/test_s_xct_04.py`, which diffs the two catalogs).
+Alembic, from **Phase 2** (`SRC-002 §12`). Two revisions so far: `versions/0001_initial_schema.py`
+creates the Phase 2 model, and `versions/0002_created_at_on_four_tables.py` adds `created_at` to the four
+tables 0001 left without it (`S-XCT-09`). Together they create exactly what
+`docs/06 DataModel/schema.sql` creates (proved by `backend/tests/xct/test_s_xct_04.py`, which diffs the
+two catalogs).
 
 - **Run only by the entrypoint's `migrate` command**, as a one-off task, before the service is
   updated. **Never on boot** (`SRC-002 §7.8`). Nothing under `backend/app/` mentions Alembic.

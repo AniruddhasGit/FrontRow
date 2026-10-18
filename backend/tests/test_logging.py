@@ -206,3 +206,36 @@ def test_an_unmatched_path_logs_a_constant_route_not_the_raw_path(app, log_captu
         c.get("/wp-admin/../../etc/passwd?token=abc")
     done = [ln for ln in log_capture.lines() if ln["message"] == "request completed"]
     assert [(d["route"], d["status_code"]) for d in done] == [("<unmatched>", 404)]
+
+
+# A token-shaped value: three base64url segments, the first one a JSON header ("eyJ" is base64 for '{"').
+_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI3IiwicHYiOjF9.c2lnbmF0dXJlLW5vdC1hLXJlYWwtb25l"
+
+
+def test_denylisted_keys_inside_a_nested_extra_are_redacted(log_capture):
+    logging.getLogger("app.test").info("nested", extra={"req": {"authorization": "Bearer abc", "path": "/x",
+                                                                "inner": [{"password": "hunter2"}]}})
+    line = log_capture.lines()[-1]
+    assert line["req"]["authorization"] == "[REDACTED]"
+    assert line["req"]["inner"][0]["password"] == "[REDACTED]"
+    assert line["req"]["path"] == "/x"
+    assert "hunter2" not in log_capture.stream.getvalue()
+
+
+def test_credentials_in_a_nested_url_are_scrubbed(log_capture):
+    logging.getLogger("app.test").warning("nested url", extra={"probe": {"error": "postgresql://u:hunter2@h/db"}})
+    assert "hunter2" not in log_capture.raw_lines()[-1]
+
+
+def test_a_token_sent_as_the_inbound_request_id_never_reaches_the_log(app, log_capture):
+    with TestClient(app) as c:
+        c.get("/_test/hello", headers={"X-Request-Id": _JWT})
+    assert _JWT not in log_capture.stream.getvalue()
+    done = next(ln for ln in log_capture.lines() if ln["message"] == "request completed")
+    assert done["client_request_id"] == "[REDACTED]"
+
+
+def test_a_token_shaped_value_anywhere_in_a_line_is_redacted(log_capture):
+    logging.getLogger("app.test").warning(f"bad header {_JWT}", extra={"note": f"Bearer {_JWT}"})
+    raw = log_capture.raw_lines()[-1]
+    assert _JWT not in raw and "eyJhbGciOiJIUzI1NiJ9" not in raw

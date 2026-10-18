@@ -81,25 +81,46 @@ def test_sigterm_drains_an_in_flight_request_and_exits_zero():
         result: dict = {}
 
         def in_flight():
-            r = httpx.get(f"http://127.0.0.1:{port}/_drain/slow?seconds=2", timeout=15)
+            r = httpx.get(f"http://127.0.0.1:{port}/_drain/slow?seconds=5", timeout=15)
             result["status"] = r.status_code
             result["body"] = r.json()
 
+        lines: list[str] = []
+        entered = threading.Event()
+
+        def read_output():
+            for line in proc.stdout:
+                lines.append(line)
+                if "drain handler entered" in line:
+                    entered.set()
+
+        reader = threading.Thread(target=read_output, daemon=True)
+        reader.start()
         t = threading.Thread(target=in_flight)
         t.start()
-        time.sleep(0.5)  # the request is now inside the handler
+        # Ordered by the harness's own signal, never by a sleep: the handler logs when it is entered.
+        assert entered.wait(timeout=15), "the slow request never reached the handler"
         proc.send_signal(signal.SIGTERM)
-        time.sleep(0.3)
-        # stop accepting: a NEW connection after SIGTERM is refused
-        with pytest.raises(httpx.ConnectError):
-            httpx.get(f"http://127.0.0.1:{port}/health/live", timeout=1)
+        # stop accepting: a NEW connection after SIGTERM is refused - observed while the first request is
+        # still in flight (it sleeps 5 s), so the refusal is the drain, not the process having exited.
+        refused = False
+        for _ in range(400):
+            try:
+                httpx.get(f"http://127.0.0.1:{port}/health/live", timeout=1)
+            except httpx.ConnectError:
+                refused = True
+                break
+            time.sleep(0.01)
+        assert refused, "new connections were still accepted after SIGTERM"
+        assert "status" not in result, "the in-flight request had already finished: the check proved nothing"
         t.join(timeout=15)
         code = proc.wait(timeout=15)
     finally:
         if proc.poll() is None:
             proc.kill()
-    out = proc.stdout.read() if proc.stdout else ""
+    reader.join(timeout=15)  # the reader ends at EOF, once the process has exited and its pipe is drained
+    out = "".join(lines)
     assert result.get("status") == 200, out
-    assert result["body"] == {"slept": 2.0}
+    assert result["body"] == {"slept": 5.0}
     assert code == 0, out
     assert '"shutdown hooks complete"' in out

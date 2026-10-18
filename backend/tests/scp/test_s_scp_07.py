@@ -2,8 +2,6 @@
 and nothing here rules what withdrawal would do.
 
 NOT covered here (the row stays open on them, see the lane report):
-- `error.details` naming the rejected property on the 400 - app/domain/admin/common.py `submitted()` raises
-  REQUEST_INVALID with no details today; that file belongs to the admin lane;
 - the RENDERED accessibility tree of the admin showtime list and edit routes - there is no browser harness
   in this repository. The source-level check below is the strongest evidence available without one, and
   is weaker than the criterion: it reads the button text the components declare, not what a browser renders.
@@ -62,6 +60,7 @@ def test_patch_with_a_withdrawal_property_is_400_request_invalid(client, prop, v
     r = client.patch("/api/admin/showtimes/1", json={"version": 1, prop: value})
     assert r.status_code == 400, r.text
     assert r.json()["error"]["code"] == "REQUEST_INVALID"
+    assert r.json()["error"]["details"] == {"field": prop}
 
 
 @pytest.mark.parametrize("component", ["ShowtimesScreen.tsx"])

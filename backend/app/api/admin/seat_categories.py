@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Path
 
 from app.api.deps import CurrentUser, current_user, db, get_clock, get_settings
 from app.domain.admin import seat_categories
-from app.domain.admin.common import AdminBody, submitted
+from app.domain.admin.common import BIGINT_MAX, AdminBody, submitted
 
 router = APIRouter()
 
@@ -34,7 +34,7 @@ async def create_category(body: CategoryCreate, conn=Depends(db), user: CurrentU
 
 
 @router.patch("/seat-categories/{seat_category_id}")
-async def edit_category(body: CategoryPatch, seat_category_id: int = Path(gt=0), conn=Depends(db),
+async def edit_category(body: CategoryPatch, seat_category_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                         user: CurrentUser = Depends(current_user), clock=Depends(get_clock),
                         settings=Depends(get_settings)):
     return await seat_categories.edit_category(conn, user, seat_category_id, submitted(body), clock.now(),

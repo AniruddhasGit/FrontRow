@@ -4,8 +4,8 @@ Transcribed from P-ADM-19's table, the single source of these strings for the wh
 handler, test or screen may coin another: a value outside this tuple is refused with 500 before the
 transaction opens (app/core/audit.py), because a free-text action makes every change-log filter
 silently match nothing. Adding a member is a specification change to P-ADM-19 first, then here.
-A base-price change is `showtime.base_price_changed` - not `showtime.price_changed`, not
-`base_price_changed`.
+A base-price change is `showtime.base_price_changed`: the full name, never a shortened "price changed"
+action and never the bare `base_price_changed` without its entity prefix.
 """
 
 from __future__ import annotations

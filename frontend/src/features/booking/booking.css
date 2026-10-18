@@ -1,0 +1,218 @@
+/* SCR-PAY-01, SCR-TKT-01, SCR-ACC-01, SCR-ACC-04 (COMPONENTS.md §5, §6, §8, §9, §11). Every value is a design token
+   (FR-ADR-044); no hex code. */
+.fr-checkout {
+  display: grid;
+  gap: var(--fr-space-3);
+  padding: var(--fr-space-5);
+  background: var(--fr-surface-raised);
+  border-radius: var(--fr-radius-lg);
+  box-shadow: var(--fr-shadow-sheet);
+  max-width: var(--fr-measure);
+}
+.fr-notice {
+  background: var(--fr-surface-notice);
+  color: var(--fr-ink-on-notice);
+  font-size: var(--fr-text-md);
+  font-weight: var(--fr-weight-medium);
+  border-radius: var(--fr-radius-md);
+  padding: var(--fr-space-4);
+}
+.fr-checkout h1 {
+  margin: 0;
+  font-size: var(--fr-text-xl);
+  font-weight: var(--fr-weight-black);
+  letter-spacing: var(--fr-track-tight);
+}
+.fr-checkout-showtime,
+.fr-checkout-line {
+  margin: 0;
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink);
+}
+.fr-checkout-line {
+  display: grid;
+  grid-template-columns: 4rem 1fr auto;
+  gap: var(--fr-space-3);
+  min-height: 1.5em;
+}
+.fr-checkout-cat {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-checkout-pending {
+  display: inline-block;
+  min-width: 5rem;
+  background: var(--fr-surface-inset);
+  border-radius: var(--fr-radius-sm);
+}
+.fr-perforation {
+  border: 0;
+  border-top: var(--fr-stroke-hair) dashed var(--fr-rule);
+  margin: var(--fr-space-3) 0;
+}
+.fr-checkout-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+}
+.fr-total-label {
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+  letter-spacing: var(--fr-track-caps);
+}
+.fr-checkout-total .fr-total {
+  font-size: var(--fr-text-xl);
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-ink-strong);
+}
+.fr-checkout .fr-action,
+.fr-checkout .fr-action-secondary,
+.fr-auth .fr-action {
+  min-height: var(--fr-tap-min);
+  border-radius: var(--fr-radius-md);
+  font-weight: var(--fr-weight-bold);
+}
+.fr-checkout .fr-action,
+.fr-auth .fr-action {
+  background: var(--fr-surface-accent);
+  color: var(--fr-ink-on-accent);
+  border: 0;
+}
+.fr-checkout .fr-action-secondary {
+  background: transparent;
+  color: var(--fr-accent-ink);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+}
+.fr-link-action:focus-visible,
+.fr-tab:focus-visible,
+.fr-form-field:focus-visible,
+.fr-checkout button:focus-visible,
+.fr-auth button:focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  outline-offset: 2px;
+}
+.fr-banner {
+  margin: 0 0 var(--fr-space-3);
+  padding: var(--fr-space-3) var(--fr-space-4);
+  background: var(--fr-surface-danger);
+  color: var(--fr-ink-on-danger);
+  border-left: var(--fr-stroke-bold) solid var(--fr-danger-ink);
+  border-radius: var(--fr-radius-md);
+}
+.fr-ticket {
+  display: grid;
+  gap: var(--fr-space-3);
+  max-width: var(--fr-measure);
+}
+.fr-ticket h1 {
+  font-size: var(--fr-text-xl);
+}
+.fr-ref-block {
+  background: var(--fr-surface-inset);
+  border-radius: var(--fr-radius-md);
+  padding: var(--fr-space-4);
+  border-top: var(--fr-stroke-hair) dashed var(--fr-rule);
+  border-bottom: var(--fr-stroke-hair) dashed var(--fr-rule);
+}
+.fr-ref-label {
+  margin: 0;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  letter-spacing: var(--fr-track-caps);
+}
+.fr-ref {
+  margin: var(--fr-space-2) 0;
+  font-family: var(--fr-font-mono);
+  font-size: var(--fr-text-2xl);
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-ink-strong);
+  letter-spacing: var(--fr-track-ref);
+  overflow-wrap: anywhere;
+}
+.fr-link-action {
+  min-height: var(--fr-tap-min);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--fr-accent-ink);
+  font-size: var(--fr-text-sm);
+}
+.fr-ticket-facts {
+  margin: 0;
+}
+.fr-ticket-facts div,
+.fr-booking-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--fr-space-3);
+  padding: var(--fr-space-2) 0;
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+.fr-ticket-facts dt {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  letter-spacing: var(--fr-track-caps);
+}
+.fr-ticket-facts dd {
+  margin: 0;
+}
+.fr-bookings {
+  list-style: none;
+  padding: 0;
+}
+.fr-booking-row {
+  color: var(--fr-ink);
+  text-decoration: none;
+}
+.fr-auth {
+  display: grid;
+  gap: var(--fr-space-3);
+  max-width: 28rem;
+}
+.fr-auth form {
+  display: grid;
+  gap: var(--fr-space-2);
+}
+.fr-tabs {
+  display: flex;
+  gap: var(--fr-space-4);
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule);
+}
+.fr-tab {
+  min-height: var(--fr-tap-min);
+  background: transparent;
+  border: 0;
+  color: var(--fr-ink);
+}
+.fr-tab[aria-selected="true"] {
+  box-shadow: inset 0 calc(-1 * var(--fr-stroke-bold)) 0 var(--fr-surface-accent);
+}
+.fr-form-label {
+  font-size: var(--fr-text-sm);
+  font-weight: var(--fr-weight-medium);
+}
+.fr-form-field {
+  min-height: var(--fr-tap-min);
+  background: var(--fr-surface-inset);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-radius: var(--fr-radius-md);
+  color: var(--fr-ink);
+  font-size: var(--fr-text-md);
+}
+.fr-help {
+  margin: 0;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-context-note {
+  margin: 0;
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+}
+.fr-field-error {
+  margin: 0;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-danger-ink);
+}

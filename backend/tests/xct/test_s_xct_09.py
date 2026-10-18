@@ -68,3 +68,20 @@ def test_every_table_except_alembic_version_and_audit_log_carries_created_at(mig
             ORDER BY 1""",
     )
     assert rows == []
+
+
+THE_THREE_DELETES = {"/api/admin/seats/{seat_id}", "/api/holds/{hold_token}/seats/{seat_id}", "/api/holds/{hold_token}"}
+
+
+def test_no_delete_route_is_mounted_outside_the_three_the_criterion_permits(valid_env):
+    """Partial: the criterion wants EXACTLY these three; the two hold routes are Phase 4 (EP-HLD-03/04), so today
+    the walk can only show that nothing outside the three is mounted and that the seat delete is."""
+    from app.core.config import load_settings
+    from app.main import create_app
+    from tests.test_health import ok_probe
+    from tests.xct._support import mounted_routes
+
+    application = create_app(load_settings(), probes=[ok_probe("postgres"), ok_probe("redis")])
+    deletes = {p for m, p in mounted_routes(application) if m == "DELETE"}
+    assert "/api/admin/seats/{seat_id}" in deletes
+    assert deletes <= THE_THREE_DELETES, deletes - THE_THREE_DELETES

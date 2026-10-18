@@ -10,9 +10,11 @@ injected clock's local date, and 11,003 captured bookings at a deterministic occ
 correct run must produce are docs/06 DataModel/seed/expected_summary.json.
 
 Rules this file keeps, each one an acceptance criterion:
-- Idempotent, keyed on the placeholder identifiers (names, emails, (screen, starts_at)). A run against a
-  populated database inserts nothing and deletes nothing, and never resets a password changed by hand.
-- ONE transaction: a failure part-way leaves the database exactly as it was - no partial catalogue.
+- Idempotent, keyed on the ONE cinema row (whatever the admin has since renamed it to) and below it on the
+  placeholder identifiers (names, emails, (screen, starts_at)). A run against a populated database inserts
+  nothing and deletes nothing, and never resets a password changed by hand.
+- ONE transaction: a failure part-way leaves the database exactly as it was - no partial catalogue. With
+  --wipe-and-reseed the TRUNCATE is inside that same transaction, so a failed reseed un-wipes too.
 - Write order: vocabulary, then screens and seats, then films, then showtimes (P-XCT-30 exception 7).
 - No audit_log row. The seed creates the first admin itself, so no honest actor exists for its writes;
   this is the only exemption from the same-transaction audit rule (P-XCT-30 exception 10).
@@ -69,6 +71,9 @@ SLOTS = [time(11, 0), time(14, 30), time(18, 0), time(21, 30)]  # ASSUMED local 
 # admin upload path's own function; until then the poster redirect has no object behind this key.
 POSTER_FILE = Path(__file__).resolve().parent / "assets" / "placeholder-poster.png"
 POSTER_OBJECT_KEY = "posters/seed/placeholder-poster.png"
+# The seed's own environment variables: read here and by nothing under backend/app (S7.9, S-XCT-48).
+# .env.example lists exactly app/core/config.py's Settings plus these (S-XCT-29).
+SEED_VARIABLES = ("SEED_DEFAULT_PASSWORD", "SEED_CHANGEOVER_MINUTES", "SEED_EMAIL_DOMAIN")
 # The value .env.example ships on its SEED_DEFAULT_PASSWORD line. Refused by value.
 PASSWORD_PLACEHOLDER = "CHANGE_ME_NOT_A_REAL_PASSWORD"
 NOTICE = ("NOTICE: the next write freezes the seat layout of all six halls. Renumbering, removing or "
@@ -166,11 +171,20 @@ def vocabulary(db: Db) -> dict[str, dict[str, int]]:
     return out
 
 
-def insert_halls(db: Db) -> tuple[list[int], dict[str, int]]:
-    """The cinema, the categories, the six screens and their seats. Returns screen ids by number and category ids."""
-    cinema_id = db.one("SELECT id FROM cinema WHERE name = %s", (CINEMA_NAME,))
-    if cinema_id is None:
-        cinema_id = db.one("INSERT INTO cinema (name, timezone, version) VALUES (%s, %s, 1) RETURNING id", (CINEMA_NAME, ZONE))
+def ensure_cinema(db: Db, zone: str) -> tuple[int, str]:
+    """The one cinema (SRC-003 C-2) and the zone the schedule is computed in. Keyed on the single row, never on
+    its name: EP-ADM-29 lets the admin rename it, and a name key would then seed a second venue. An existing
+    row's STORED timezone wins over CINEMA_TIMEZONE - it is the zone the existing schedule was written in."""
+    rows = db.all("SELECT id, timezone FROM cinema ORDER BY id")
+    if len(rows) > 1:
+        raise SeedError(f"{len(rows)} cinema rows exist; the seed writes one venue and will not guess which to fill")
+    if rows:
+        return rows[0][0], rows[0][1]
+    return db.one("INSERT INTO cinema (name, timezone, version) VALUES (%s, %s, 1) RETURNING id", (CINEMA_NAME, zone)), zone
+
+
+def insert_halls(db: Db, cinema_id: int) -> tuple[list[int], dict[str, int]]:
+    """The categories, the six screens and their seats. Returns screen ids by number and category ids."""
     db.many("INSERT INTO seat_category (name, uplift_basis_points, version) VALUES (%s, %s, 1) ON CONFLICT DO NOTHING",
             CATEGORIES)
     categories = dict(db.all("SELECT name, id FROM seat_category WHERE name = ANY(%s)", ([n for n, _ in CATEGORIES],)))
@@ -193,14 +207,20 @@ def insert_halls(db: Db) -> tuple[list[int], dict[str, int]]:
     return screen_ids, categories
 
 
-def anchor_day(db: Db, now: datetime):
-    """The local date of day index 0: the earliest existing seeded showtime's, else the clock's minus 15
-    (P-XCT-30 'The showtime's placeholder identity'). A re-run therefore recomputes the identical schedule."""
+def anchor_day(db: Db, now: datetime, screen_ids: list[int]):
+    """The local date of day index 0: the earliest existing SEEDED showtime's (on the six seeded halls, at a
+    seeded slot), else the clock's minus 15 (P-XCT-30 'The showtime's placeholder identity'). A re-run therefore
+    recomputes the identical schedule; a showtime the admin added on another hall or at another time is not
+    an anchor."""
     zone = ZoneInfo(ZONE)
-    earliest = db.one("SELECT min(s.starts_at) FROM showtime s JOIN screen sc ON sc.id = s.screen_id "
-                      "JOIN cinema c ON c.id = sc.cinema_id WHERE c.name = %s", (CINEMA_NAME,))
-    if earliest is not None:
-        return earliest.astimezone(zone).date()
+    for (starts_at,) in db.all("SELECT starts_at FROM showtime WHERE screen_id = ANY(%s) ORDER BY starts_at", (screen_ids,)):
+        if starts_at.astimezone(zone).time() in SLOTS:
+            return starts_at.astimezone(zone).date()
+    if db.one("SELECT count(*) FROM showtime WHERE screen_id = ANY(%s)", (screen_ids,)):
+        # Showtimes exist on the seeded halls but none sits at a seeded local slot: the cinema's timezone was
+        # changed after the seed ran. Recomputing would write a second, shifted schedule over the first.
+        raise SeedError(f"the seeded halls hold showtimes, but none starts at a seeded time in {ZONE}; the cinema's "
+                        "timezone has changed since the seed ran, and a re-run would write a second schedule")
     return now.astimezone(zone).date() - timedelta(days=15)
 
 
@@ -348,19 +368,21 @@ def insert_bookings(db: Db, plan: list[dict], new: list[dict], customers: list[i
 
 
 def run(conn, *, password: str, cost: int, domain: str, padding_minutes: int, now: datetime, out=print,
-        hasher=hash_password, trace=None, zone: str) -> None:
-    """The whole seed in ONE transaction on `conn` (a psycopg connection)."""
+        hasher=hash_password, trace=None, zone: str, wipe_first: bool = False) -> None:
+    """The whole seed in ONE transaction on `conn` (a psycopg connection) - the local-only wipe included."""
     global ZONE
-    ZONE = zone
     check_layout(LAYOUT)
     if not POSTER_FILE.is_file():
         raise SeedError(f"the placeholder poster {POSTER_FILE.name} is missing beside this script")
     db = Db(conn, trace)
     with conn.transaction():
+        if wipe_first:
+            wipe(db)
         insert_vocabulary(db)
-        screen_ids, _ = insert_halls(db)
+        cinema_id, ZONE = ensure_cinema(db, zone)
+        screen_ids, _ = insert_halls(db, cinema_id)
         vocab = vocabulary(db)
-        first_day = anchor_day(db, now)
+        first_day = anchor_day(db, now, screen_ids)
         film_ids = insert_films(db, vocab, first_day, now)
         users = insert_accounts(db, domain, password, cost, hasher)
         assign_managers(db, users, domain, screen_ids)
@@ -376,10 +398,10 @@ def run(conn, *, password: str, cost: int, domain: str, padding_minutes: int, no
                 out(f"  {email}")
 
 
-def wipe(conn) -> None:
-    """LOCAL ONLY. Needs the owner's credentials (the application role holds no TRUNCATE)."""
-    with conn.transaction():
-        conn.execute("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY")
+def wipe(db: Db) -> None:
+    """LOCAL ONLY. Needs the owner's credentials (the application role holds no TRUNCATE). Called inside run()'s
+    transaction, never on its own: TRUNCATE is transactional in PostgreSQL, so a reseed that fails rolls it back."""
+    db.all("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY")
 
 
 def seed_inputs() -> dict:
@@ -440,9 +462,7 @@ def main(argv=None, *, now: datetime | None = None, connect=None, out=print, has
         connect = psycopg.connect
     try:
         with connect(inputs.pop("url")) as conn:
-            if args.wipe_and_reseed:
-                wipe(conn)
-            run(conn, now=now, out=out, hasher=hasher, trace=trace, **inputs)
+            run(conn, now=now, out=out, hasher=hasher, trace=trace, wipe_first=args.wipe_and_reseed, **inputs)
     except SeedError as exc:
         print(f"seed: {exc}", file=sys.stderr)
         return 1

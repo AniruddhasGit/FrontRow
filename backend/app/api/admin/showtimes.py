@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Path, Query
 
 from app.api.deps import CurrentUser, current_user, db, get_clock
 from app.domain.admin import showtimes
-from app.domain.admin.common import AdminBody, submitted
+from app.domain.admin.common import BIGINT_MAX, AdminBody, submitted
 
 router = APIRouter()
 
@@ -44,6 +44,6 @@ async def create_showtime(body: ShowtimeCreate, conn=Depends(db), user: CurrentU
 
 
 @router.patch("/showtimes/{showtime_id}")
-async def edit_showtime(body: ShowtimePatch, showtime_id: int = Path(gt=0), conn=Depends(db),
+async def edit_showtime(body: ShowtimePatch, showtime_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                         user: CurrentUser = Depends(current_user), clock=Depends(get_clock)):
     return await showtimes.edit_showtime(conn, user, showtime_id, submitted(body), clock.now())

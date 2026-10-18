@@ -17,13 +17,16 @@ import sys
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from app.db import async_url
+
 url = os.environ.get("DATABASE_URL", "")
 if not url:
     # Without this, SQLAlchemy raises an opaque "Could not parse URL" and the task log says nothing useful.
     sys.stderr.write("migrate: DATABASE_URL is required and is not set\n")
     sys.exit(78)
-# psycopg 3 is the only installed driver; SQLAlchemy would otherwise look for psycopg2.
-url = url.replace("postgresql://", "postgresql+psycopg://", 1).replace("postgres://", "postgresql+psycopg://", 1)
+# psycopg 3 is the only installed driver; SQLAlchemy would otherwise look for psycopg2. The application's own
+# function, which rewrites only the scheme prefix (a password containing "postgres://" is left alone).
+url = async_url(url)
 
 # NullPool: a one-off process opens one connection and exits; a pool would only delay the exit.
 engine = create_engine(url, poolclass=pool.NullPool)

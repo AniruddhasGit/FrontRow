@@ -51,7 +51,14 @@ def test_the_application_holds_routes_never_routers_and_every_route_carries_its_
 
     application = create_app(load_settings(), probes=[ok_probe("postgres"), ok_probe("redis")])
     assert not any(isinstance(r, APIRouter) for r in application.routes)
-    for route in (r for r in application.routes if isinstance(r, APIRoute)):
+    # The kit's walker unwraps FastAPI's _IncludedRouter; a walk over application.routes alone sees no APIRoute
+    # at all on FastAPI 0.143 and would pass vacuously (it did, until 2026-10-18).
+    from tests.adm.kit import routes
+
+    # Not filtered on APIRoute: on FastAPI 0.143 the walked objects are _EffectiveRouteContext wrappers.
+    mounted = routes(application)
+    assert [r for r in mounted if r.path.startswith("/api/admin")], "no admin route was walked"
+    for route in mounted:
         calls = _calls(route.dependant)
         if route.path.startswith("/api/admin"):
             assert require_admin in calls, route.path

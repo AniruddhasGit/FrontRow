@@ -1,0 +1,384 @@
+/* SCR-BRW-03 / SCR-SEA-01 (COMPONENTS.md §1, §2, §5, §6). Every value is a design token (FR-ADR-044); no hex code.
+   The map scrolls sideways INSIDE its own box and the page body never does; the seat is never shrunk to avoid
+   that scroll, because --fr-seat-size (24px) is the WCAG 2.2 target-size minimum (COMPONENTS.md §1.3). */
+.fr-seatmap-head h1 {
+  margin-bottom: var(--fr-space-1);
+}
+.fr-seatmap-body {
+  display: grid;
+  gap: var(--fr-space-4);
+}
+@media (min-width: 40rem) {
+  .fr-seatmap-body {
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+  }
+  .fr-legend {
+    grid-column: 1;
+  }
+  .fr-summary {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+  }
+}
+.fr-field {
+  background: var(--fr-surface-inset);
+  padding: var(--fr-space-4);
+  border-radius: var(--fr-radius-md);
+  min-width: 0;
+}
+.fr-poll-strip {
+  margin: 0 0 var(--fr-space-2);
+  min-height: 1lh;
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-xs);
+}
+.fr-screen-bar {
+  width: 60%;
+  height: 4px;
+  margin: 0 auto;
+  background: var(--fr-screen-bar);
+  border-radius: var(--fr-radius-pill);
+}
+.fr-screen-label {
+  margin: 0 0 var(--fr-space-3);
+  height: 48px;
+  padding-top: var(--fr-space-2);
+  box-sizing: border-box;
+  text-align: center;
+  background: linear-gradient(var(--fr-screen-glow), transparent);
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-xs);
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+}
+.fr-grid-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline-start: var(--fr-seat-gutter);
+}
+.fr-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fr-seat-gap);
+  width: max-content;
+}
+.fr-grid-loading {
+  width: auto;
+  min-height: calc(6 * (var(--fr-seat-size) + var(--fr-seat-gap)));
+  opacity: 0.6;
+}
+.fr-grid-row {
+  display: grid;
+  grid-template-columns: var(--fr-seat-gutter) repeat(var(--fr-grid-cols), var(--fr-seat-size));
+  column-gap: var(--fr-seat-gap);
+  min-height: var(--fr-seat-size);
+}
+.fr-gutter {
+  grid-column: 1;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--fr-surface-inset);
+  font-family: var(--fr-font-mono);
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  display: flex;
+  align-items: center;
+}
+.fr-band-rule {
+  border-top: var(--fr-stroke-hair) dashed var(--fr-rule);
+  margin: calc(var(--fr-seat-band-gap) / 2) 0;
+}
+.fr-mixed-note {
+  margin: 0 0 var(--fr-space-2);
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-xs);
+}
+
+/* ---- the seat cell: fill, mark and border, never colour alone (COMPONENTS.md §1.4) ---- */
+.fr-seat {
+  box-sizing: border-box;
+  width: var(--fr-seat-size);
+  height: var(--fr-seat-size);
+  border-radius: var(--fr-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-family: var(--fr-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-seat-ink);
+  transition: background-color var(--fr-motion-base) var(--fr-ease-out);
+  cursor: default;
+  user-select: none;
+}
+.fr-seat[data-visual="available"] {
+  background: var(--fr-seat-available);
+  border: var(--fr-stroke-hair) solid var(--fr-seat-edge-available);
+  cursor: pointer;
+}
+.fr-seat[data-visual="sold"] {
+  background:
+    repeating-linear-gradient(45deg, var(--fr-seat-ink) 0 1px, transparent 1px 5px),
+    var(--fr-seat-sold);
+}
+.fr-seat[data-visual="held_by_other"] {
+  background: var(--fr-seat-held-other);
+}
+.fr-seat[data-visual="held_by_other"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 1.5px);
+  height: 3px;
+  background: var(--fr-seat-ink);
+}
+.fr-seat[data-visual="held_by_me"] {
+  background: var(--fr-seat-mine);
+  border: var(--fr-stroke-bold) solid var(--fr-seat-edge-mine);
+  color: var(--fr-seat-ink-mine);
+  cursor: pointer;
+}
+.fr-seat[data-visual="held_by_me"]::before {
+  content: "";
+  width: 40%;
+  height: 65%;
+  margin-top: -15%;
+  border: solid var(--fr-seat-ink-mine);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+/* Out of service is drawn ON TOP of the four, not as a fifth: no fill, a 1px dashed rule, a muted number. */
+.fr-seat[data-visual="out_of_service"] {
+  background: transparent;
+  border: var(--fr-stroke-hair) dashed var(--fr-rule);
+  color: var(--fr-ink-muted);
+}
+.fr-seat-num {
+  position: relative;
+}
+.fr-seat:focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  outline-offset: 2px;
+}
+/* A seat that changed between two polls keeps a 2px ring for --fr-motion-change (the timer is the screen's).
+   Under reduced motion the ring is static; the duration is unchanged, because it carries information. */
+.fr-seat[data-changed] {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  animation: fr-seat-pulse var(--fr-motion-change) var(--fr-ease-out);
+}
+@keyframes fr-seat-pulse {
+  50% {
+    outline-offset: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-seat[data-changed] {
+    animation: none;
+  }
+}
+
+/* ---- legend (COMPONENTS.md §2) ---- */
+.fr-legend {
+  background: var(--fr-surface-raised);
+  border-radius: var(--fr-radius-md);
+  padding: var(--fr-space-3);
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink);
+}
+.fr-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-3);
+}
+.fr-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--fr-space-2);
+}
+.fr-legend-categories {
+  border-top: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  margin-top: var(--fr-space-3) !important;
+  padding-top: var(--fr-space-3) !important;
+  white-space: pre;
+}
+.fr-legend-price {
+  color: var(--fr-ink-strong);
+}
+.fr-inset-block {
+  display: inline-block;
+  width: 6rem;
+  height: 1em;
+  background: var(--fr-surface-inset);
+}
+
+/* ---- price summary (COMPONENTS.md §5) ---- */
+.fr-summary {
+  background: var(--fr-surface-raised);
+  border-radius: var(--fr-radius-lg);
+  box-shadow: var(--fr-shadow-card);
+  padding: var(--fr-space-4);
+}
+.fr-summary-heading {
+  margin: 0 0 var(--fr-space-2);
+  color: var(--fr-screen-ink);
+  font-size: var(--fr-text-sm);
+  font-weight: var(--fr-weight-medium);
+}
+.fr-summary-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fr-summary-line {
+  display: flex;
+  gap: var(--fr-space-2);
+  justify-content: space-between;
+  font-size: var(--fr-text-sm);
+}
+.fr-summary-cat {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  margin-right: auto;
+}
+/* The stub perforation: the tear between what you chose and what you owe. */
+.fr-summary-total {
+  border-top: var(--fr-stroke-hair) dashed var(--fr-rule);
+  margin-top: var(--fr-space-3);
+  padding-top: var(--fr-space-3);
+  align-items: baseline;
+}
+.fr-total-label {
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+  letter-spacing: var(--fr-track-caps);
+}
+.fr-total {
+  font-family: var(--fr-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fr-text-xl);
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-ink-strong);
+}
+.fr-cap-note {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-action {
+  width: 100%;
+  min-height: var(--fr-tap-min);
+  border: 0;
+  border-radius: var(--fr-radius-md);
+  background: var(--fr-surface-accent);
+  color: var(--fr-ink-on-accent);
+  font: inherit;
+  font-weight: var(--fr-weight-bold);
+}
+.fr-action:disabled {
+  opacity: 0.6;
+}
+.fr-action-secondary {
+  min-height: var(--fr-tap-min);
+  padding: 0 var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  background: transparent;
+  color: var(--fr-accent-ink);
+  font: inherit;
+}
+.fr-action:focus-visible,
+.fr-action-secondary:focus-visible,
+.fr-banner-dismiss:focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---- banners (COMPONENTS.md §6), pinned at the top of the page's own scroll and reserving their height ---- */
+.fr-banners {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.fr-banner {
+  display: flex;
+  gap: var(--fr-space-3);
+  align-items: flex-start;
+  background: var(--fr-surface-danger);
+  color: var(--fr-ink-on-danger);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-left: 3px solid var(--fr-danger-ink);
+  border-radius: var(--fr-radius-md);
+  padding: var(--fr-space-3);
+  margin-bottom: var(--fr-space-3);
+  font-size: var(--fr-text-sm);
+  line-height: var(--fr-leading-body);
+}
+.fr-banner p {
+  margin: 0;
+  flex: 1;
+}
+.fr-banner-dismiss {
+  background: transparent;
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-radius: var(--fr-radius-sm);
+  color: var(--fr-ink-on-danger);
+  font: inherit;
+  min-height: var(--fr-tap-min);
+}
+.fr-map-error {
+  background: var(--fr-surface-inset);
+  color: var(--fr-ink);
+  padding: var(--fr-space-4);
+  border-radius: var(--fr-radius-md);
+}
+.fr-request-id {
+  font-family: var(--fr-font-mono);
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+
+/* The hold countdown (COMPONENTS.md §7). The bar's length carries the time with the colour removed; the last
+   60 seconds switch bar and digits to --fr-countdown-urgent and add the warning line. */
+.fr-countdown {
+  display: grid;
+  gap: var(--fr-space-1, 4px);
+  margin-bottom: var(--fr-space-3, 12px);
+}
+.fr-countdown-label {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--fr-track-caps);
+}
+.fr-countdown-digits {
+  font-family: var(--fr-font-mono);
+  font-size: var(--fr-text-xl);
+  font-weight: var(--fr-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--fr-countdown-fill);
+}
+.fr-countdown-track {
+  display: block;
+  height: 4px;
+  background: var(--fr-surface-inset);
+  border-radius: var(--fr-radius-pill);
+  overflow: hidden;
+}
+.fr-countdown-bar {
+  display: block;
+  height: 100%;
+  background: var(--fr-countdown-fill);
+}
+.fr-countdown[data-urgent] .fr-countdown-digits { color: var(--fr-countdown-urgent); }
+.fr-countdown[data-urgent] .fr-countdown-bar { background: var(--fr-countdown-urgent); }
+.fr-countdown-line {
+  margin: 0;
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink);
+}

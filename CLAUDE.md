@@ -122,6 +122,15 @@ frontend/src/  ·  scripts/{seed.py,stress_seats.py}  ·  docker-compose.yml (lo
 
 A monorepo with obvious boundaries, because each service gets its own Dockerfile.
 
+## Build style: ponytail, full (client ruling 2026-10-18)
+Every session and every subagent builds lazy-senior-dev style. Stop at the first rung that holds:
+need it at all? → already in this repo? → stdlib → platform/DB feature → installed dependency → one line → minimum code.
+- No unrequested abstractions, no scaffolding "for later", fewest files, shortest working diff. Deletion beats addition.
+- Bug fix = root cause in the shared function, after grepping every caller.
+- A cut corner with a known ceiling gets a `ponytail:` comment naming the ceiling and the upgrade path.
+- Non-trivial logic leaves ONE runnable check behind (one small test), not a suite.
+- Never lazy about: the invariants below, validation at trust boundaries, data-loss error handling, security, accessibility, or reading the code first.
+
 ## Non-negotiable invariants — enforce in CODE, never via a prompt
 
 - **A seat is never sold twice** (`SRC-001 §2.2`, `§7.1`). Enforced **twice, in two systems**: a

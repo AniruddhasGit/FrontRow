@@ -27,6 +27,7 @@ from app.api.errors import ApiError
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.security import SESSION_COOKIE, ExpiredSession, InvalidSession, decode_session_token
+from app.domain.accounts import Role
 from app.models import users
 
 
@@ -89,12 +90,13 @@ async def current_user(
     return CurrentUser(id=row.id, email=row.email, role=row.role, password_version=row.password_version)
 
 
-def require_role(*roles: str):
+def require_role(*roles: str, message: str | None = None):
+    """`message` is the refusing surface's own 403 sentence; None is the registry default."""
     allowed = frozenset(roles)
 
     async def dependency(user: CurrentUser = Depends(current_user)) -> CurrentUser:
         if user.role not in allowed:
-            raise ApiError(403, "FORBIDDEN")
+            raise ApiError(403, "FORBIDDEN", message)
         return user
 
     dependency.__name__ = "require_role_" + "_".join(sorted(allowed))
@@ -103,5 +105,8 @@ def require_role(*roles: str):
 
 # The two role sets the routers use. Module-level objects, so a handler that also needs the user can
 # `Depends(require_admin)` and FastAPI reuses the router's already-resolved result.
-require_admin = require_role("admin")
-require_reporting = require_role("manager", "admin")
+# P-ADM-18 / P-ADM-01 row 2: the admin surface's refusal. Entity-blind: the same body whether or not the
+# addressed film exists, so a refusal never reveals one (S-ADM-01).
+require_admin = require_role(
+    Role.ADMIN.value, message="This page is for administrators. Your account cannot change films, showtimes, prices or halls.")
+require_reporting = require_role(Role.MANAGER.value, Role.ADMIN.value)

@@ -43,9 +43,13 @@ class ReadinessResult:
 
 class Readiness:
     def __init__(self, probes: list[Probe], ttl_s: float, clock: Clock) -> None:
+        # The dependencies checked: PostgreSQL and Redis only (module docstring).
         self._probes = probes
+        # READINESS_CACHE_TTL_SECONDS. Without a cache every load balancer poll opens a database connection.
         self._ttl_s = ttl_s
+        # Injected, so a test moves the cache's age without sleeping.
         self._clock = clock
+        # Nothing cached yet, and -inf as its age: the FIRST poll always probes, never answers from nothing.
         self._cached: ReadinessResult | None = None
         self._cached_at = -math.inf
         # Without this lock, N polls arriving while the cache is stale each open their own database
@@ -53,6 +57,7 @@ class Readiness:
         self._lock = asyncio.Lock()
 
     def _fresh(self) -> bool:
+        # Younger than the TTL: answer from the cache. Without this comparison every poll probes.
         return self._cached is not None and (self._clock.monotonic() - self._cached_at) < self._ttl_s
 
     async def check(self) -> ReadinessResult:
@@ -75,6 +80,8 @@ class Readiness:
 
     async def _run(self, probe: Probe) -> tuple[str, str]:
         try:
+            # The timeout is ENFORCED here, per probe. Without wait_for a dependency that accepts the
+            # connection and never answers hangs /health/ready until the load balancer gives up.
             await asyncio.wait_for(probe.check(), timeout=probe.timeout_s)
             return probe.name, "ok"
         except Exception as exc:  # noqa: BLE001 - any failure at all means "not ready"
@@ -105,19 +112,28 @@ def postgres_probe(database_url: str, timeout_ms: int) -> Probe:
     async def check() -> None:
         # libpq's connect_timeout is whole seconds with an effective minimum of 2; the asyncio
         # ceiling in Readiness._run is the real bound. Both exist so neither is the only guard.
+        # autocommit: SELECT 1 must not leave a transaction open on the server if the close below is
+        # interrupted by the timeout; an idle-in-transaction connection holds a slot until it is killed.
         conn = await psycopg.AsyncConnection.connect(
             database_url, connect_timeout=max(2, math.ceil(timeout_ms / 1000)), autocommit=True
         )
         try:
+            # The cheapest statement that proves the server answers queries, not merely accepts connections.
             await conn.execute("SELECT 1")
         finally:
+            # Without it one connection leaks per probe, and the database runs out of slots on a quiet day.
             await conn.close()
 
     return Probe(name="postgres", check=check, timeout_s=timeout_ms / 1000)
 
 
 def redis_probe(client: "object", timeout_ms: int) -> Probe:
+    """PING on the process's shared Redis client. timeout_ms is connect + command (app/main.py passes the
+    sum): a probe on a fresh connection pays both, so a smaller ceiling would call a cold, healthy Redis
+    unreachable. The client itself has retries off, so a dead node fails once, not (retries + 1) times."""
+
     async def check() -> None:
+        # The same client the rate limiter uses: if this PING fails, so would every limited request.
         await client.ping()  # type: ignore[attr-defined]
 
     return Probe(name="redis", check=check, timeout_s=timeout_ms / 1000)

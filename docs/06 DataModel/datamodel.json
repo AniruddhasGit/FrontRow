@@ -1883,6 +1883,15 @@
           "cite": "P-ADM-01 (genre_ids: array of integer, 1..10, unique, each must exist); FR-ADR-021",
           "note": "1..10 rows per film; a duplicate genre_id in the request is 422. A film with zero rows here is legal on the wire (genres is []) even though the create endpoint refuses an empty array — S-BRW-02 asserts the empty case renders.",
           "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries `created_at`') · S-XCT-09",
+          "note": "Added by revision 0002 (a forward migration; 0001 is never edited). S-XCT-09 asserts information_schema returns zero public tables lacking created_at, except alembic_version and audit_log. DEFAULT now() at the database (FR-ADR-018): row metadata only, never read by a domain decision. Rows existing before 0002 carry the instant 0002 ran.",
+          "reserved_row": null
         }
       ],
       "primary_key": [
@@ -2353,6 +2362,15 @@
           "default": null,
           "cite": "E4 P-TKT-05 Preconditions, exception rows 2 and 2a; FR-ADR-049 dimension 5",
           "note": "Carries the SES error. MUST DISTINGUISH A TIMEOUT FROM A REFUSAL: P-TKT-05 exception 2a — 'last_error records that the call timed out rather than that SES refused, so the two are distinguishable afterwards by the operator'. Bible S-TKT-08 tests exactly that: last_error contains 'timeout' and does not contain the SES refusal string, and an SES error is 'distinguishable from the timeout case by that string'.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries `created_at`') · S-XCT-09",
+          "note": "Added by revision 0002 (a forward migration; 0001 is never edited). S-XCT-09 asserts information_schema returns zero public tables lacking created_at, except alembic_version and audit_log. DEFAULT now() at the database (FR-ADR-018): row metadata only, never read by a domain decision. Rows existing before 0002 carry the instant 0002 ran.",
           "reserved_row": null
         }
       ],
@@ -2832,6 +2850,15 @@
           "cite": "P-ADM-09; FR-ADR-035; S-ADM-14",
           "note": "Application-set to 1 on insert, +1 per successful write. Unchanged by a no-op. In S-ADM-14's exact five-table set.",
           "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries `created_at`') · S-XCT-09",
+          "note": "Added by revision 0002 (a forward migration; 0001 is never edited). S-XCT-09 asserts information_schema returns zero public tables lacking created_at, except alembic_version and audit_log. DEFAULT now() at the database (FR-ADR-018): row metadata only, never read by a domain decision. Rows existing before 0002 carry the instant 0002 ran.",
+          "reserved_row": null
         }
       ],
       "primary_key": [
@@ -2929,6 +2956,15 @@
           "default": null,
           "cite": "P-ADM-14 server-side validation table ('must be a seat of the showtime's screen and in service at the creation instant ... never client-supplied')",
           "note": "",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "E8 P-XCT-04 ('Every table carries `created_at`') · S-XCT-09",
+          "note": "Added by revision 0002 (a forward migration; 0001 is never edited). S-XCT-09 asserts information_schema returns zero public tables lacking created_at, except alembic_version and audit_log. DEFAULT now() at the database (FR-ADR-018): row metadata only, never read by a domain decision. Rows existing before 0002 carry the instant 0002 ran.",
           "reserved_row": null
         }
       ],

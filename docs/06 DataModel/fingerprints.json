@@ -7,12 +7,12 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "ad34b5af8232f6ab0d15a225a531dfcc54199a67746c765ed6ee53651771890b",
-    "TRACEABILITY.tsv": "64c78a4bed7a7a3ba6a48865334ccc354ceb7dbec1b14a5c1e2eaf6020cdd4d9",
-    "schema.sql": "11d9b59e98f143bdb56fdf1c79e7444a2348417f4805c82e61dd96c3f37698af",
+    "datamodel.json": "89a849ba103208a57e98112a17ce2a3bd539fae34f0783f7bfbb0a408e7e9c7c",
+    "TRACEABILITY.tsv": "78753609ffcd6a93f1637d404380ca00ec8d3c8b97fdfdbfbd2850ea6e205bcf",
+    "schema.sql": "5e5494cd9017347e23c023a5dc998394f9e1586954cd5e34057d343846fad4d2",
     "seed/expected_summary.json": "5c443e2989c59d42dbef9d8af1f901f585a96c65fb0407ec82cbee75f3e2b4d3"
   },
-  "schema_structure_sha256": "4e960ab3faeff1831d9392bdf3c46ad970c7dc39276508e3eaf7d31a8bd05bb0",
+  "schema_structure_sha256": "ef621d98da3c8d1a9485533fff77c00b8149f23d115da2e67c8a0a8461e2394c",
   "roles_and_grants": [
     "role frontrow_owner",
     "role frontrow_app",
@@ -232,9 +232,10 @@
       ]
     },
     "movie_genre": {
-      "sha256": "bafb2ff713842a968c7288a33698a85f2f5a530b09f55d5661c1559a33c0253d",
-      "columns": 2,
+      "sha256": "527c1f4b5876bc7477468cdec6f31911ce90d39175acef0e72724db3e24ef475",
+      "columns": 3,
       "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
         "column genre_id bigint NOT NULL",
         "column movie_id bigint NOT NULL",
         "foreign_key fk_movie_genre__genre_id (genre_id) -> genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
@@ -297,14 +298,15 @@
       ]
     },
     "receipt_dispatch": {
-      "sha256": "39ccb37c07e7cb2d996eecc56dd5d6f4f55bb20c60a3ff316ed109777db2b392",
-      "columns": 9,
+      "sha256": "c3dcd20865f243a12b0869a05280f987d3437eddd5f14f016b1140399eecc71f",
+      "columns": 10,
       "signature": [
         "check ck_receipt_dispatch__1 (status IN ('pending', 'sending', 'sent', 'failed', 'suppressed'))",
         "check ck_receipt_dispatch__2 (dispatch_seq >= 1)",
         "column attempts integer NOT NULL",
         "column booking_id bigint NOT NULL",
         "column claimed_at timestamptz NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
         "column dispatch_seq integer NOT NULL",
         "column id bigint NOT NULL IDENTITY",
         "column last_error text NULL",
@@ -369,10 +371,11 @@
       ]
     },
     "showtime": {
-      "sha256": "ff27da2d2d973e95e659eccd48eac8a2811eecc4b6c6fbde8623defb36e25dbe",
-      "columns": 9,
+      "sha256": "3299309ab93d8611a705caf4690ef1975a82cb1910cd2e8c3cb5f9b93a759501",
+      "columns": 10,
       "signature": [
         "column base_price_paise bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
         "column ends_at timestamptz NOT NULL",
         "column format_id bigint NULL",
         "column id bigint NOT NULL IDENTITY",
@@ -390,9 +393,10 @@
       ]
     },
     "showtime_seat": {
-      "sha256": "ea78e71ae0e7ba83242f7eb0d586e46dacccb951737b2b393c07df70fbff5ae1",
-      "columns": 2,
+      "sha256": "38f565acd387d30b6a2652b94f87888e54568138a0fc5188289c58609729ef19",
+      "columns": 3,
       "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
         "column seat_id bigint NOT NULL",
         "column showtime_id bigint NOT NULL",
         "foreign_key fk_showtime_seat__seat_id (seat_id) -> seat (id) ON DELETE RESTRICT ON UPDATE RESTRICT",

@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from app.core import config as config_module
-from app.core.config import CROSS_FIELD_CHECKS, ConfigError, SeedSettings, Settings, load_seed_settings, load_settings
+from app.core.config import CROSS_FIELD_CHECKS, ConfigError, Settings, load_settings
 
 from ..conftest import VALID_ENV
 from ._support import REPO, rg
@@ -65,16 +65,36 @@ def _refused(port: int) -> bool:
         return True
 
 
+def _boot_watching(env: dict[str, str], cwd: Path, port: int) -> tuple[subprocess.CompletedProcess, bool]:
+    """Boot the api and probe its port WHILE it runs, not only after it has exited (a dead process can never
+    hold a port, so a check made afterwards proves nothing). Returns the result and whether a connect to the
+    port ever succeeded during boot. Sampling, so a bind shorter than one probe could still be missed; the
+    absence of uvicorn's "running on" line is the second, independent signal."""
+    proc = subprocess.Popen([sys.executable, "-m", "app", "api"], cwd=cwd, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True)
+    bound = False
+    for _ in range(3000):  # up to ~30 s of 10 ms waits
+        bound = bound or not _refused(port)
+        try:
+            proc.wait(timeout=0.01)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    out, err = proc.communicate(timeout=30)
+    result = subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
+    return result, bound or "running on" in out.lower()
+
+
 # ---------------------------------------------------------------- the five with no default
 
 
 @pytest.mark.parametrize("name", THE_FIVE)
 def test_each_of_the_five_unset_exits_nonzero_naming_it_and_never_binds(name, tmp_path):
     port = _free_port()
-    proc = _boot(_boot_env(**{name: None, "API_PORT": str(port)}), tmp_path)
+    proc, bound = _boot_watching(_boot_env(**{name: None, "API_PORT": str(port)}), tmp_path, port)
     assert proc.returncode != 0, proc.stdout
     assert name in proc.stdout and name in proc.stderr
-    assert _refused(port)
+    assert not bound
 
 
 @pytest.mark.parametrize("name", THE_FIVE)
@@ -190,7 +210,13 @@ def _env_example_names() -> list[str]:
 
 
 def test_settings_names_equal_env_example_names():
-    declared = set(Settings.model_fields) | set(SeedSettings.model_fields)
+    # The API's settings model plus the seed's own variables, which the seed declares and nothing under
+    # backend/app reads (S-XCT-48). The test's copy of that list must equal the seed's.
+    from tests.conftest import SEED_VARIABLES
+    from tests.seed.kit import seed
+
+    assert seed.SEED_VARIABLES == SEED_VARIABLES
+    declared = set(Settings.model_fields) | set(seed.SEED_VARIABLES)
     in_example = set(_env_example_names())
     assert declared == in_example, {"only_in_settings": declared - in_example, "only_in_env_example": in_example - declared}
 
@@ -202,11 +228,14 @@ def test_every_env_example_assignment_has_a_comment_line_directly_above():
 
 
 def test_the_env_example_seed_password_is_refused_by_the_seed_placeholder_check(clean_env):
+    from tests.seed.kit import seed
+
     value = next(ln.split("=", 1)[1] for ln in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines() if ln.startswith("SEED_DEFAULT_PASSWORD="))
     clean_env.setenv("SEED_DEFAULT_PASSWORD", value)
-    with pytest.raises(ConfigError) as exc:
-        load_seed_settings()
-    assert "SEED_DEFAULT_PASSWORD" in str(exc.value)
+    clean_env.setenv("DATABASE_URL", "postgresql://nobody@db.invalid/none")
+    with pytest.raises(seed.SeedError) as exc:
+        seed.seed_inputs()
+    assert "SEED_DEFAULT_PASSWORD" in str(exc.value) and "placeholder" in str(exc.value)
     assert value not in str(exc.value)
 
 

@@ -19,7 +19,9 @@ from app.core.config import Settings
 
 def async_url(database_url: str) -> str:
     # The settings accept postgresql:// or postgres:// (the form RDS and Parameter Store hand out). SQLAlchemy needs
-    # the driver named, or it looks for psycopg2, which is not installed.
+    # the driver named, or it looks for psycopg2, which is not installed. Only the scheme PREFIX is rewritten,
+    # never text inside the password or path. psycopg 3 serves sync and async engines under the same name, so
+    # migrations/env.py uses this function too: one rewrite, not two that can drift.
     for prefix in ("postgresql://", "postgres://"):
         if database_url.startswith(prefix):
             return "postgresql+psycopg://" + database_url[len(prefix):]
@@ -31,6 +33,9 @@ def make_engine(settings: Settings) -> AsyncEngine:
         async_url(settings.DATABASE_URL),
         # db.t3.micro allows roughly 110 connections in total, and these two multiply across every
         # process (PRD S7.9). The defaults (5 + 10) were not chosen for that ceiling; these were.
+        # Without it a DBAPIError's text carries "[parameters: ...]" - an email, a password hash, a token
+        # digest - and the last-resort handler logs that text with exc_info, so row values reach CloudWatch.
+        hide_parameters=True,
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_POOL_MAX_OVERFLOW,
         # Without a connect timeout an unreachable database hangs the request instead of failing.

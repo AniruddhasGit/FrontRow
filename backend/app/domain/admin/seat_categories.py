@@ -14,7 +14,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.domain.admin.common import (audit, check_ceiling, check_version, constraint_name, invalid, is_int,
+from app.domain.admin.common import (audit, check_ceiling, check_version, lock_price_ceiling, constraint_name, invalid, is_int,
                                      need_name, need_version, not_found, transaction, utc_text)
 from app.models import seat, seat_category, showtime
 
@@ -55,6 +55,7 @@ def _uplift(value: Any) -> int:
 
 async def _check_uplift_ceiling(conn: AsyncConnection, uplift: int) -> None:
     # Against the HIGHEST STORED base price, not a constant (P-ADM-11 mirror bound).
+    await lock_price_ceiling(conn)
     highest = await conn.scalar(select(func.coalesce(func.max(showtime.c.base_price_paise), 0)))
     if not check_ceiling(highest, uplift):
         raise invalid("uplift_basis_points", UPLIFT_CEILING)

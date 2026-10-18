@@ -5,6 +5,8 @@
 #   frontrow-entrypoint api       start the API server (the image's default CMD)
 #   frontrow-entrypoint migrate   apply database migrations, then EXIT. Run by hand, as a one-off
 #                                 task, BEFORE updating the service. Never on boot (SRC-002 §7.8).
+#   frontrow-entrypoint seed      write the demonstration data (scripts/seed.py), then EXIT. A one-off
+#                                 task on its own task definition family (P-XCT-32), run once, by hand.
 #
 # Every line that exists for a production reason says what breaks without it.
 # =====================================================================================================
@@ -51,12 +53,25 @@ case "${1:-api}" in
     exec alembic -c migrations/alembic.ini upgrade head
     # End of the migrate branch (never reached: exec replaced the shell).
     ;;
+  # The one-off demonstration seed (P-XCT-30, P-XCT-32). Never part of a long-running process.
+  seed)
+    # Drop the word `seed`, so any further arguments (e.g. --help) reach the script unchanged.
+    shift
+    # The seed reads SEED_DEFAULT_PASSWORD, which only the seed's own task definition carries. It runs as
+    # its own process and exits; without a separate command the only way to seed would be a flag on the
+    # api, and then every api task that booted would seed.
+    log "INFO" "seed: writing the demonstration data"
+    # exec, so the seed's exit status is the task's exit status: a refusal (78) or a failure (1) must reach
+    # the stopped-task reason, never be masked as 0. Path relative to /srv, where the image puts scripts/.
+    exec python scripts/seed.py "$@"
+    # End of the seed branch (never reached: exec replaced the shell).
+    ;;
   # Anything else is a typo in the task definition's command.
   *)
     # Without this, a typo in the task definition's command (e.g. "API") would fall through and the
     # task would exit with no explanation. EX_USAGE. The command is reduced to safe characters first:
     # a quote inside it would break the JSON line.
-    log "CRITICAL" "unknown command '$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')'; expected: api | migrate"
+    log "CRITICAL" "unknown command '$(printf '%s' "$1" | tr -cd 'A-Za-z0-9_-')'; expected: api | migrate | seed"
     # EX_USAGE: distinct from a crash (1) and a bad configuration (78) in the stopped-task reason.
     exit 64
     # End of the unknown-command branch.

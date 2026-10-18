@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.errors import ApiError
 from app.domain.admin.common import (audit, check_version, constraint_name, invalid, join_labels, need_bool,
-                                     need_int, need_name, need_version, not_found, transaction)
+                                     need_int, need_name, need_version, not_found, transaction, INT4_MAX)
 from app.models import cinema, screen, seat, seat_category, showtime
 
 HALL_GONE = "That hall no longer exists at this address."
@@ -178,9 +178,9 @@ def _row_label(value: Any) -> str:
 def _seat_fields(raw: dict, *, partial: bool) -> dict:
     out = {}
     for name, check in (("row_label", _row_label),
-                        ("seat_number", lambda v: need_int(v, "seat_number", wrong=SEAT_NUMBER)),
-                        ("grid_row", lambda v: need_int(v, "grid_row", wrong=GRID)),
-                        ("grid_col", lambda v: need_int(v, "grid_col", wrong=GRID)),
+                        ("seat_number", lambda v: need_int(v, "seat_number", maximum=INT4_MAX, wrong=SEAT_NUMBER)),
+                        ("grid_row", lambda v: need_int(v, "grid_row", maximum=INT4_MAX, wrong=GRID)),
+                        ("grid_col", lambda v: need_int(v, "grid_col", maximum=INT4_MAX, wrong=GRID)),
                         ("seat_category_id", lambda v: need_int(v, "seat_category_id", wrong=CATEGORY))):
         if name in raw:
             out[name] = check(raw[name])

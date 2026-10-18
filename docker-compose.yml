@@ -43,7 +43,7 @@ services:
       POSTGRES_PASSWORD: local-dev-only
       POSTGRES_DB: frontrow
     ports:
-      - "55433:5432"
+      - "${PG_HOST_PORT:-55433}:5432"  # overridable so a second compose project (-p) can run beside this one
     volumes:
       - pgdata:/var/lib/postgresql/data
       - "./docs/06 DataModel/checks/roles_local.sql:/frontrow/roles_local.sql:ro"
@@ -63,7 +63,7 @@ services:
     # record of truth (SRC-002 §8.1 - the database is the truth).
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      - "56379:6379"
+      - "${REDIS_HOST_PORT:-56379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -73,7 +73,9 @@ services:
 
   api:
     build:
-      context: ./backend
+      # The repository root, so the image can carry scripts/seed.py (backend/Dockerfile header).
+      context: .
+      dockerfile: backend/Dockerfile
       target: runtime
     image: frontrow-api:phase1
     command: ["api"]
@@ -145,7 +147,9 @@ services:
     profiles: ["tools"]
     image: frontrow-api:phase1
     build:
-      context: ./backend
+      # The repository root, so the image can carry scripts/seed.py (backend/Dockerfile header).
+      context: .
+      dockerfile: backend/Dockerfile
       target: runtime
     command: ["migrate"]
     environment:
@@ -162,7 +166,9 @@ services:
   test:
     profiles: ["test"]
     build:
-      context: ./backend
+      # The repository root, so the image can carry scripts/seed.py (backend/Dockerfile header).
+      context: .
+      dockerfile: backend/Dockerfile
       target: test
     image: frontrow-api:test
     environment:

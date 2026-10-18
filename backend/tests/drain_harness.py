@@ -7,6 +7,7 @@ Never shipped: the runtime image does not contain tests/. The slow route exists 
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 
 from app.core.clock import SystemClock
@@ -24,6 +25,8 @@ def build():
 
     @app.get("/_drain/slow")
     async def slow(seconds: float = 2.0):
+        # The test waits for this line, so "the request is inside the handler" is an observed fact, not a sleep.
+        logging.getLogger("drain").info("drain handler entered")
         await asyncio.sleep(seconds)
         return {"slept": seconds}
 

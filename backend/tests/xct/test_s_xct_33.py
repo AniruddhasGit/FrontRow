@@ -3,8 +3,9 @@
 Covered: no migration code path in backend/app; alembic only inside the entrypoint's migrate branch;
 migrate exits with the migration's status; the API against an UNMIGRATED database starts, is live and
 ready, and answers 500 at the first query that needs a table; every downgrade is one raise; the LOCK
-marker; no destructive operations; the application role is not a superuser. NOT covered: the entrypoint's
-worker and seed commands (Phase 5 / the seed lane), and the docs/30 Deployment runbook strings.
+marker; no destructive operations; the application role is not a superuser; the docs/30 Deployment runbook
+strings. NOT covered: the entrypoint's `worker` command (Phase 5), so "exactly four commands, api, worker,
+migrate and seed" cannot hold yet - the entrypoint accepts api, migrate and seed.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from app.api.deps import db
 from app.main import create_app
 from app.models import movie
 from tests.dbkit import BACKEND_DIR, app_settings, app_sql, create_database, drop_database, run_migrate
+from tests.xct._support import REPO
 
 VERSIONS = BACKEND_DIR / "migrations" / "versions"
 REVISIONS = sorted(p for p in VERSIONS.glob("*.py"))
@@ -122,3 +124,16 @@ def test_no_revision_drops_or_alters_a_column_or_table():
 def test_the_application_role_is_not_a_superuser(migrated_db):
     assert app_sql(migrated_db, "SELECT rolsuper FROM pg_roles WHERE rolname = current_user") == [(False,)]
     assert app_sql(migrated_db, "SELECT current_user") == [("frontrow_app",)]
+
+
+def test_the_runbook_names_the_symptom_and_the_one_directional_deploy_order():
+    from tests.xct._support import rg
+
+    assert rg("starts healthy and fails at the first query touching a new column", "docs/30 Deployment", fixed=True)
+    hits = rg("1 manual snapshot, 2 one-off migrate task, 3 verify the task exited 0, 4 update the service",
+              "docs/30 Deployment", fixed=True)
+    assert hits
+    (path,) = {h[0] for h in hits}
+    text = (REPO / path).read_text(encoding="utf-8")
+    assert "reversing 2 and 4 runs new code against an old schema" in text
+    assert "skipping 1 makes 2 unrecoverable after seven days" in text

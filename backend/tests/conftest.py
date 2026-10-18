@@ -16,9 +16,11 @@ import pytest
 # Every variable the Settings models declare. Tests clear all of them first so a value exported on
 # the machine running the tests can never leak into an assertion. Derived from the models, so a new
 # setting cannot be forgotten here.
-from app.core.config import SeedSettings, Settings  # noqa: E402
+from app.core.config import Settings  # noqa: E402
 
-PHASE1_VARS = tuple(Settings.model_fields) + tuple(SeedSettings.model_fields)
+# The seed's own three (scripts/seed.py SEED_VARIABLES), which no Settings model declares (S-XCT-48).
+SEED_VARIABLES = ("SEED_DEFAULT_PASSWORD", "SEED_CHANGEOVER_MINUTES", "SEED_EMAIL_DOMAIN")
+PHASE1_VARS = tuple(Settings.model_fields) + SEED_VARIABLES
 
 # A complete, valid environment for the variables with no default (PRD S7.9). Every value is an
 # obvious test placeholder: .invalid hosts never resolve, and no value is a real credential.

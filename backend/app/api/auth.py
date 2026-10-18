@@ -11,6 +11,8 @@ own (P-ACC-01, P-ACC-02), and because a `role` in the body must be ignored, neve
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -27,8 +29,10 @@ router = APIRouter(prefix="/api/auth")
 
 
 class Credentials(BaseModel):
-    email: str | None = None
-    password: str | None = None
+    # Any, not str: pydantic would refuse {"email": 1} with a 422 BEFORE the handler runs, and that request
+    # would never be counted by the limiter (P-XCT-07 "every request counted"). The domain checks the type.
+    email: Any = None
+    password: Any = None
 
 
 def _start_session(response: Response, user: dict, settings: Settings, clock: Clock) -> dict:
@@ -52,11 +56,11 @@ async def register(body: Credentials, request: Request, response: Response, conn
 @router.post("/login")
 async def login(body: Credentials, request: Request, response: Response, conn: AsyncConnection = Depends(db),
                 settings: Settings = Depends(get_settings), clock: Clock = Depends(get_clock)) -> dict:
-    key = (body.email or "").strip().lower()
+    key = body.email.strip().lower() if isinstance(body.email, str) else ""
     checks = [(ratelimit.LOGIN_EMAIL, key)] if key else []
     checks.append((ratelimit.LOGIN_IP, ratelimit.client_ip(request, settings)))
     await ratelimit.enforce(request, checks, accounts.UNAVAILABLE_SIGN_IN)
-    if not key or not body.password:
+    if not key or not isinstance(body.password, str) or not body.password:
         raise ApiError(422, "VALIDATION_FAILED", "Enter your email address and password.")
     # Shape only - never the password rules: an older account may hold a password today's rules refuse.
     email = accounts.checked_email(body.email)

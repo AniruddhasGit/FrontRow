@@ -11,9 +11,10 @@
   standalone task (PRD `P-XCT-19`). Not a service. It connects as the table **owner**, from its own SSM
   parameter, so it needs a task definition of its own: `secrets` cannot be swapped by a run-task
   override, and putting the owner credential on the api task gives the running API the power the
-  owner/application split exists to deny it (prep-queue rows 20 and 24). In Phase 1 it applies nothing,
-  logs `migrate: no migrations exist in Phase 1; nothing was applied`, and exits 0. Run it once anyway,
-  so the procedure is learned before it matters.
+  owner/application split exists to deny it (prep-queue rows 20 and 24). In Phase 1 it applied nothing.
+  **From Phase 2 it applies real revisions** (`0001` the data model, `0002` four `created_at` columns): it
+  logs `migrate: applying alembic revisions up to head`, runs them in one transaction, and exits with the
+  migration's status. Run it before every service update that ships a new revision - the order is below.
 
 Network mode: **bridge** on the instance. `awsvpc` gives each task its own network interface, and a
 `t3.micro` has too few to place three services (`04_deployment.md`, AWS-04-06).
@@ -71,9 +72,24 @@ process exited **0**, and the shutdown took **3742 ms** from signal to exit. An 
 5. The stop timeout exceeds the 20 s drain with margin, and preferably the strict bound too
    (stop timeout > deregistration delay from `P1_ALB.md` + 20). Write both values in the prep queue.
 6. A standalone run of the **`migrate` task definition**, its own family and not the api's, exits 0
-   and logs its one line. That task definition injects the owner `DATABASE_URL` from its own SSM
+   and logs `migrate: applying alembic revisions up to head`. That task definition injects the owner `DATABASE_URL` from its own SSM
    parameter, and the api task definition does not reference that parameter (prep-queue row 24).
 7. Stopping a running api task gives exit code **0**, and its log stream ends with `api stopped cleanly`.
+
+## The deploy order, from Phase 2 (PRD `P-XCT-19`, `P-XCT-20`)
+
+The order is one-directional and is the same every time a new image carries a migration:
+**1 manual snapshot, 2 one-off migrate task, 3 verify the task exited 0, 4 update the service.**
+Reversing 2 and 4 is not a faster deploy: **reversing 2 and 4 runs new code against an old schema.**
+And the snapshot is not optional: the automated backups are kept for seven days (`P-XCT-20`), so
+**skipping 1 makes 2 unrecoverable after seven days** - a migration that damaged data and is noticed in week
+two can only be undone from a manual snapshot that was taken first. *(reasoned, not observed)* This
+session has never run a migration or a restore in AWS.
+
+The symptom of a forgotten step 2 is not a failed start. The api
+**starts healthy and fails at the first query touching a new column**: `/health/live` and `/health/ready` are
+both 200 (neither runs a query against the new schema), and the first request that needs the new column answers 500 `INTERNAL_ERROR`. Locally this was
+observed against a database with no revision applied at all (`backend/tests/xct/test_s_xct_33.py`).
 
 ## Common mistakes
 

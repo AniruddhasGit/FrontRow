@@ -70,6 +70,8 @@ def serve(settings: Settings, app: object) -> int:
         # 0.0.0.0, not 127.0.0.1: inside a container, loopback is unreachable from the load balancer
         # and from the Docker port mapping. The security group, not the bind address, is the fence.
         host="0.0.0.0",
+        # API_PORT (default 8000), never a literal: the target group, the security group and the container
+        # port mapping are built against this number, and if they disagree every health check fails.
         port=settings.API_PORT,
         # ONE worker process. Each uvicorn worker is a full Python process; two roughly double the
         # API's memory on a 1 GB host (PRD P-XCT-21). Scale with tasks, not workers.
@@ -88,22 +90,33 @@ def serve(settings: Settings, app: object) -> int:
         # Without it, every response names the server software and version, which tells a scanner
         # which published vulnerabilities to try.
         server_header=False,
-        # X-Forwarded-For is NOT trusted until Phase 7 sets FORWARDED_ALLOW_IPS to the load
-        # balancer's subnet. Trusting it from any peer is the same as trusting the client.
+        # uvicorn's own proxy handling stays OFF: with it on, request.client becomes whatever the header
+        # says and the peer address is lost. The rate limiter reads X-Forwarded-For itself, and trusts it
+        # only from the peer FORWARDED_ALLOW_IPS names (required at boot; app/core/ratelimit.py client_ip).
         proxy_headers=False,
     )
+    # The subclass that records when the signal arrived, for the shutdown_ms field below.
     server = _Server(config)
+    # No-op handlers installed BEFORE uvicorn starts: uvicorn re-raises the signal against these after its
+    # graceful drain. Without them the re-raised SIGTERM kills an already-drained process and ECS records
+    # exit 143 for every clean deploy (see _swallow above).
     signal.signal(signal.SIGTERM, _swallow)
+    # Ctrl-C in a terminal: the same drain, the same clean exit.
     signal.signal(signal.SIGINT, _swallow)
+    # Blocks until the drain is complete: stop accepting, finish in-flight requests (or hit the drain
+    # timeout), run the lifespan shutdown (the release hooks), then return.
     server.run()
     if not server.started:
         # Port already bound, lifespan startup raised, ...: uvicorn has logged why. Non-zero, so the
         # orchestrator sees a failed start and not a clean stop.
         return 1
+    # How long the drain took. Without it a deploy that keeps hitting the stop timeout looks identical in the
+    # log to one that drained in milliseconds.
     fields = {}
     if server.signalled_at is not None:
         fields["shutdown_ms"] = round((server.clock.monotonic() - server.signalled_at) * 1000)
     log.info("api stopped cleanly", extra=fields)
+    # 0 after a clean drain, so ECS records a deploy as a stop and not as a crash.
     return 0
 
 

@@ -95,8 +95,32 @@ _URL_CREDENTIALS = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s]*):([^@\s]+)@
 _STANDARD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime", "color_message"}
 
 
+# A JSON Web Token anywhere in a string: three base64url segments, the first a JSON header ("eyJ" is '{"').
+# The session cookie is one; so is anything a client pastes into X-Request-Id, which is logged as
+# client_request_id. Without this a token sent in any header we record reaches CloudWatch verbatim.
+_JWT_SHAPED = re.compile(r"eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
+# Nested extras are walked this deep; anything deeper is stringified and scrubbed (a cycle cannot recurse forever).
+_MAX_DEPTH = 8
+
+
 def scrub(text: str) -> str:
-    return _URL_CREDENTIALS.sub(r"\1:***@", text)
+    return _JWT_SHAPED.sub(REDACTED, _URL_CREDENTIALS.sub(r"\1:***@", text))
+
+
+def _clean(key: str, value: Any, depth: int = 0) -> Any:
+    """Redaction for one extra field, applied at every depth: a denylisted key at any level of a nested dict
+    or list is replaced, and every string is scrubbed (P-XCT-12 exception 5)."""
+    if key.lower() in DENYLIST:
+        return REDACTED
+    if isinstance(value, str):
+        return scrub(value)
+    if depth >= _MAX_DEPTH and isinstance(value, (dict, list, tuple)):
+        return scrub(str(value))
+    if isinstance(value, dict):
+        return {k: _clean(str(k), v, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean("", v, depth + 1) for v in value]
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -121,7 +145,7 @@ class JsonFormatter(logging.Formatter):
             if key in _STANDARD_ATTRS or key in out or key.startswith("_"):
                 continue
             # Without the scrub, a driver error passed as extra={"error": str(exc)} prints the DB password.
-            out[key] = REDACTED if key.lower() in DENYLIST else scrub(value) if isinstance(value, str) else value
+            out[key] = _clean(key, value)
         if record.exc_info:
             # The trace goes in the log and never in the response (P-XCT-11).
             out["exc_info"] = scrub("".join(traceback.format_exception(*record.exc_info)))

@@ -2,8 +2,9 @@
 
 Exercises app/core/audit.py against a migrated database, connected as frontrow_app, with the change
 written in the same `async with conn.begin()` block an admin handler uses. The request id is bound by
-the same context the middleware uses and is generated, never a literal. NOT covered: the HTTP path
-through EP-ADM-11 (PATCH /api/admin/showtimes/{id}), which the admin lane owns.
+the same context the middleware uses and is generated, never a literal. The commit, rollback and no-row clauses
+are ALSO proved through the real request path, EP-ADM-11 (PATCH /api/admin/showtimes/{id}), with the request id
+read from the response at assertion time (the tests prefixed test_http_).
 """
 
 from __future__ import annotations
@@ -168,3 +169,70 @@ async def test_a_naive_or_non_utc_instant_is_refused_before_anything_is_written(
         async with engine.connect() as conn, conn.begin():
             await write_audit(conn, actor=ADMIN, action="showtime.updated", entity_type="showtime", entity_id=41,
                               before={"a": 1}, after={"a": 2}, occurred_at=bad)
+
+
+# ---- the same clauses through the real request path, EP-ADM-11 PATCH /api/admin/showtimes/{id} ----------------
+
+
+@pytest.fixture
+def admin_http(seeded, clock):
+    from fastapi.testclient import TestClient
+
+    from app.core.security import SESSION_COOKIE, issue_session_token
+    from app.main import create_app
+    from tests.dbkit import app_settings
+    from tests.test_health import ok_probe
+
+    owner_sql(seeded, "UPDATE showtime SET base_price_paise = 25000, version = 1 WHERE id = 41")
+    application = create_app(app_settings(seeded), clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    with TestClient(application, raise_server_exceptions=False) as c:
+        c.cookies.set(SESSION_COOKIE, issue_session_token(user_id=17, role="admin", password_version=1, now=clock.now(),
+                                                          settings=app_settings(seeded)))
+        yield c
+
+
+def _rid(r) -> str:
+    rid = r.json()["error"]["request_id"] if r.status_code >= 400 else r.headers["x-request-id"]
+    assert re.fullmatch(r"[0-9a-f]{8}", rid) and rid == r.headers["x-request-id"]
+    return rid
+
+
+def test_http_the_price_change_and_its_audit_row_commit_together(seeded, admin_http):
+    r = admin_http.patch("/api/admin/showtimes/41", json={"version": 1, "base_price_paise": 28000})
+    assert r.status_code == 200, r.text
+    rid = _rid(r)
+    assert app_sql(seeded, "SELECT actor_user_id, actor_role, action, entity_type, entity_id, before, after FROM audit_log "
+                           "WHERE request_id = %s", (rid,)) == [
+        (17, "admin", "showtime.base_price_changed", "showtime", 41, {"base_price_paise": 25000}, {"base_price_paise": 28000})]
+    assert app_sql(seeded, "SELECT base_price_paise FROM showtime WHERE id = 41") == [(28000,)]
+
+
+def test_http_a_failing_audit_insert_rolls_the_price_back(seeded, admin_http, monkeypatch):
+    from app.domain.admin import common
+
+    (before_count,) = app_sql(seeded, "SELECT count(*) FROM audit_log")[0]
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("audit insert failed")
+
+    monkeypatch.setattr(common, "write_audit", boom)
+    r = admin_http.patch("/api/admin/showtimes/41", json={"version": 1, "base_price_paise": 28000})
+    assert r.status_code == 500 and r.json()["error"]["code"] == "INTERNAL_ERROR"
+    _rid(r)
+    assert app_sql(seeded, "SELECT base_price_paise FROM showtime WHERE id = 41") == [(25000,)]
+    assert app_sql(seeded, "SELECT count(*) FROM audit_log") == [(before_count,)]
+
+
+def test_http_a_failing_update_leaves_no_audit_row(seeded, admin_http, monkeypatch):
+    from app.domain.admin import showtimes as showtimes_domain
+
+    owner_sql(seeded, "DELETE FROM audit_log WHERE entity_id = 41")  # owner-only cleanup between tests
+
+    def failing_update(*args, **kwargs):
+        raise RuntimeError("the showtime UPDATE failed")
+
+    monkeypatch.setattr(showtimes_domain, "update", failing_update)
+    r = admin_http.patch("/api/admin/showtimes/41", json={"version": 1, "base_price_paise": 28000})
+    assert r.status_code == 500
+    assert app_sql(seeded, "SELECT count(*) FROM audit_log WHERE entity_id = 41 AND action = 'showtime.base_price_changed'") == [(0,)]
+    assert app_sql(seeded, "SELECT base_price_paise FROM showtime WHERE id = 41") == [(25000,)]

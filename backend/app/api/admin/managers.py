@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Path
 
 from app.api.deps import CurrentUser, current_user, db, get_clock, get_settings
 from app.domain.admin import managers
-from app.domain.admin.common import AdminBody, submitted
+from app.domain.admin.common import BIGINT_MAX, AdminBody, submitted
 
 router = APIRouter()
 
@@ -32,6 +32,6 @@ async def create_manager(body: ManagerCreate, conn=Depends(db), user: CurrentUse
 
 
 @router.put("/managers/{user_id}/screens")
-async def replace_screens(body: ManagerScreens, user_id: int = Path(gt=0), conn=Depends(db),
+async def replace_screens(body: ManagerScreens, user_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                           user: CurrentUser = Depends(current_user), clock=Depends(get_clock)):
     return await managers.replace_screens(conn, user, user_id, submitted(body), clock.now())

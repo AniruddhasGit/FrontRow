@@ -1,9 +1,0 @@
-# Keeps the build context small and keeps local junk out of the image.
-__pycache__/
-*.pyc
-.pytest_cache/
-.venv/
-venv/
-*.egg-info/
-.env
-.env.*

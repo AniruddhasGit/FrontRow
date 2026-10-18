@@ -13,7 +13,9 @@ absence of TLS: no token travels in a query string, the session lives only in an
 no certificate or private key is in this repository. So when the domain arrives, turning TLS on is
 configuration, in this order.
 
-## What to build — the five steps
+## What to build
+
+Five steps, in this order:
 
 1. **request an ACM certificate validated by DNS** for the domain the client owns.
 2. **add an HTTPS listener redirecting HTTP to it**: port 443 with the certificate, forwarding to the same

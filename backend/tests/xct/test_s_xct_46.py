@@ -112,6 +112,21 @@ def test_wipe_and_reseed_empties_and_seeds_again_with_the_owner():
         drop_database(db)
 
 
+def test_a_failed_wipe_and_reseed_leaves_the_database_exactly_as_it_was(monkeypatch):
+    """The TRUNCATE and the reseed are ONE transaction: a reseed that fails part-way rolls the wipe back too."""
+    db = create_database(migrate=True)
+    try:
+        assert run_seed(db.app_url)[0] == 0
+        before = table_counts(db)
+        monkeypatch.setattr(seed, "insert_vocabulary", lambda db: None)  # the reseed then fails before any film
+        code, _ = run_seed(db.owner_url, "--wipe-and-reseed")
+        assert code != 0
+        assert table_counts(db) == before
+        assert before["booking"] == 11003  # not vacuous: there was something to lose
+    finally:
+        drop_database(db)
+
+
 @pytest.fixture(scope="module")
 def admin_client(seeded):
     db, _ = seeded
@@ -201,3 +216,19 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
         elif template == "/api/admin/managers":
             state["manager"] = data["user_id"]
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", day)
+    # S-XCT-46/S-ADM-02: no audit row without an actor at ANY point - re-checked here, where audit rows exist.
+    assert audits() > 0
+    assert one(db, "SELECT count(*) FROM audit_log WHERE actor_user_id IS NULL") == 0
+
+
+def test_zzz_a_re_run_after_the_admin_renamed_the_cinema_inserts_nothing(admin_client):
+    """Runs after the sweep, which renamed DEMO CINEMA. The seed keys on the one cinema row, not on its name, so
+    a re-run neither creates a second cinema nor a second set of halls, showtimes and bookings."""
+    db = admin_client.db
+    assert one(db, "SELECT name FROM cinema") == "DEMO CINEMA X"  # the sweep did rename it
+    before = table_counts(db)
+    code, _ = run_seed(db.app_url)
+    assert code == 0
+    assert table_counts(db) == before
+    assert one(db, "SELECT count(*) FROM cinema") == 1
+

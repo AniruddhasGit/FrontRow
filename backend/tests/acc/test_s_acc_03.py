@@ -53,6 +53,10 @@ async def test_unknown_address_and_wrong_password_are_identical_but_for_the_requ
     assert unknown.json()["error"]["request_id"] != wrong.json()["error"]["request_id"]
     assert without_request_id(unknown.json()) == without_request_id(wrong.json())
     assert set(unknown.json()["error"]) == set(wrong.json()["error"])
+    # Byte-identical once the request id is removed, as the criterion says - not merely equal once parsed.
+    rid_u, rid_w = unknown.json()["error"]["request_id"].encode(), wrong.json()["error"]["request_id"].encode()
+    assert unknown.content.count(rid_u) == 1 and wrong.content.count(rid_w) == 1
+    assert unknown.content.replace(rid_u, b"") == wrong.content.replace(rid_w, b"")
     for r in (unknown, wrong):
         assert r.json()["error"]["code"] == "CREDENTIALS_INVALID"
         assert r.json()["error"]["message"] == MISMATCH

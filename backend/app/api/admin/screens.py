@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Path
 
 from app.api.deps import CurrentUser, current_user, db, get_clock
 from app.domain.admin import halls
-from app.domain.admin.common import AdminBody, submitted
+from app.domain.admin.common import BIGINT_MAX, AdminBody, submitted
 
 router = APIRouter()
 
@@ -38,17 +38,17 @@ async def create_screen(body: ScreenCreate, conn=Depends(db), user: CurrentUser 
 
 
 @router.patch("/screens/{screen_id}")
-async def edit_screen(body: ScreenPatch, screen_id: int = Path(gt=0), conn=Depends(db),
+async def edit_screen(body: ScreenPatch, screen_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                       user: CurrentUser = Depends(current_user), clock=Depends(get_clock)):
     return await halls.edit_screen(conn, user, screen_id, submitted(body), clock.now())
 
 
 @router.get("/screens/{screen_id}/seats")
-async def list_seats(screen_id: int = Path(gt=0), conn=Depends(db)):
+async def list_seats(screen_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db)):
     return await halls.list_seats(conn, screen_id)
 
 
 @router.post("/screens/{screen_id}/seats", status_code=201)
-async def add_seats(body: SeatBatch, screen_id: int = Path(gt=0), conn=Depends(db),
+async def add_seats(body: SeatBatch, screen_id: int = Path(gt=0, le=BIGINT_MAX), conn=Depends(db),
                     user: CurrentUser = Depends(current_user), clock=Depends(get_clock)):
     return await halls.add_seats(conn, user, screen_id, submitted(body), clock.now())
