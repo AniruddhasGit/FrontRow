@@ -1,6 +1,6 @@
 """Showtimes, created by hand and only by hand (P-ADM-07 to P-ADM-10, P-ADM-14's seat set).
 
-Create and edit run inside a row lock (with_for_update) on the screen row: that lock is what serialises the
+Create and edit run inside SELECT ... FOR UPDATE on the screen row: that lock is what serialises the
 overlap check (no constraint can say "these two ranges overlap") and what makes the seat set exactly
 the in-service seats at that instant. The intervals are half-open: [starts_at, ends_at).
 

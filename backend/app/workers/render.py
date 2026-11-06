@@ -11,6 +11,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from app.core.config import Settings
+from app.domain.booking import presentation
 
 SENDER_NAME = "FrontRow"  # SCR-TKT-02 / the reset email: the display name both messages send under
 # The ruled position, written once and rendered into both parts (SRC-003 OPEN-CANCEL-01/02).
@@ -29,11 +30,6 @@ class ReceiptFacts:
     timezone: str  # the cinema row's zone
     seats: list[str]  # already ordered by row letter, then seat number as an integer
     total_paise: int
-
-
-def presentation(stored: str) -> str:
-    """FR-XXXX-XXXX from the stored 8 characters (P-TKT-01); the hyphens are presentation only."""
-    return f"FR-{stored[:4]}-{stored[4:]}"
 
 
 def _when(instant: datetime, zone: str) -> str:

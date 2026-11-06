@@ -1,8 +1,4 @@
-"""S-ADM-02 - every privileged write writes its audit row in the same transaction (P-ADM-19).
-
-NOT covered (Phase 6 routes): the movie title + display_until request writing movie.updated and
-movie.display_window_changed. Covered through the Phase 2 analogues instead (cinema, category).
-"""
+"""S-ADM-02 - every privileged write writes its audit row in the same transaction (P-ADM-19)."""
 
 from __future__ import annotations
 
@@ -15,7 +11,7 @@ from sqlalchemy import event
 from app.domain.admin import halls
 from app.domain.admin.common import AuditAction
 from tests.adm.kit import (audit_rows, client, count, make_category, make_cinema, make_movie, make_screen,  # noqa: F401
-                           make_seats, make_showtime, sign_in)
+                           make_seats, make_showtime, new_film, sign_in)
 from tests.dbkit import app_sql, owner_sql
 from tests.xct._support import REPO, rg
 
@@ -121,6 +117,27 @@ def test_a_220_seat_batch_writes_220_seat_created_rows_one_per_seat(client):
     logged = owner_sql(client.db, "SELECT entity_id FROM audit_log WHERE action = 'seat.created' AND entity_id = ANY(%s) "
                                   "ORDER BY entity_id", (ids,))
     assert [x[0] for x in logged] == ids and len(ids) == 220
+
+
+def test_a_film_title_and_display_until_in_one_request_write_exactly_two_rows(client):
+    sign_in(client)
+    make_screen(client.db, make_cinema(client.db))
+    film = new_film(client)
+    assert client.patch(f"/api/admin/movies/{film['id']}", json={"version": 1, "display_from": "2026-09-04 00:00",
+                                                                  "display_until": "2026-10-02 00:00"}).status_code == 200
+    mark = owner_sql(client.db, "SELECT max(id) FROM audit_log")[0][0]
+    r = client.patch(f"/api/admin/movies/{film['id']}", json={"version": 2, "title": "DEMO MOVIE 02 NEW",
+                                                                "display_until": "2026-10-05 00:00"})
+    assert r.status_code == 200, r.text
+    rows = owner_sql(client.db, "SELECT action, before, after FROM audit_log WHERE id > %s ORDER BY id", (mark,))
+    assert [(a, set(b), set(c)) for a, b, c in rows] == [
+        ("movie.updated", {"title"}, {"title"}),
+        ("movie.display_window_changed", {"display_from", "display_until"}, {"display_from", "display_until"})]
+    # Two fields submitted, one of them unchanged: one row.
+    r = client.patch(f"/api/admin/movies/{film['id']}", json={"version": 3, "title": "DEMO MOVIE 02 NEW", "runtime_minutes": 101})
+    assert r.status_code == 200
+    rows = owner_sql(client.db, "SELECT action, after FROM audit_log WHERE id > %s ORDER BY id", (mark,))
+    assert rows[2:] == [("movie.updated", {"runtime_minutes": 101})]
 
 
 def test_two_changes_two_rows_each_carrying_only_its_own_keys_and_one_change_one_row(client):

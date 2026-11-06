@@ -224,12 +224,12 @@ LIVE_SESSION_AT = "2099-01-01T00:00:00+00:00"  # a session minted here outlives 
 @contextmanager
 def live_api(db, tmp_path, **env_overrides: str):
     """tests/drain_harness.py as a subprocess on a free loopback port, against this test's database and Redis 12.
-    Yields (base_url, proc). Polls of the external process wait on an Event that is never set: a bounded pause,
-    not a clock read."""
+    Yields (base_url, proc). The readiness poll sleeps between tries: it waits on an external process, reads no clock
+    and asserts nothing about time (the S-SEA-08 rg finds it all the same - see that row's doc defect)."""
     import socket
     import subprocess
     import sys
-    import threading
+    import time
 
     from tests.conftest import VALID_ENV
     from tests.dbkit import BACKEND_DIR
@@ -251,8 +251,11 @@ def live_api(db, tmp_path, **env_overrides: str):
                 if httpx.get(f"{base}/health/live", timeout=1).status_code == 200:
                     break
             except httpx.TransportError:
-                assert proc.poll() is None, proc.log()
-                threading.Event().wait(0.05)
+                pass
+            assert proc.poll() is None, proc.log()
+            time.sleep(0.05)
+        else:
+            raise AssertionError("the api never answered 200 on /health/live: " + proc.log())
         yield base, proc
     finally:
         if proc.poll() is None:

@@ -1,7 +1,7 @@
 # S-SEA-16 — Done
 
-Lane `p4-close`, workflow wf_d4b6fac7-d2f, 2026-10-18. Verifier verdict: PASS_WITH_DEFECTS; this row was not refuted.
+Lane `blocked-fix`, workflow wf_db5fb564-900, 2026-11-06. Verifier verdict: PASS_WITH_DEFECTS; this row was not refuted.
 
-**Evidence:** tests/sea/test_s_sea_16.py passed. test_an_admin_price_change_moves_nothing_already_held now confirms at 19:34:20: 201, payment.amount_paise 106665, booking_seat (416,33333,25000),(417,33333,25000),(418,39999,30000), and a pricing-function spy (patched in pricing and holds) records [] during the confirm. New: test_redis_unreachable_at_confirm_is_503_and_nothing_is_charged.
+**Evidence:** backend/tests/sea/test_s_sea_16.py::test_redis_failing_at_the_hold_read_of_a_real_hold_is_503_and_nothing_is_charged: a REAL hold, then hgetall raises a RedisConnectionError. The observer steps are exactly ['idempotency insert','hold re-validation'], so the request got past the limiter. Result: 503 DEPENDENCY_UNAVAILABLE, payment 0, booking_seat 0, idempotency_record 0. Passes.
 
-**Note:** DependsOn not yet Done: E-ADM-A. Every clause is now asserted against the product.
+**Note:** DependsOn not yet Done: E-ADM-A. The row was already Done. This closes the verifier's 'limiter not holds.load' gap.

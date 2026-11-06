@@ -31,7 +31,7 @@ for i, (k, v, st, r) in rep.items():
     if st == "Done":
         os.makedirs(ev, exist_ok=True)
         open(f"{ev}/README.md", "w", encoding="utf-8").write(
-            f"# {i} — Done\n\nLane `{k}`, workflow {run}, 2026-10-18. Verifier verdict: {v}; this row was not refuted.\n\n"
+            f"# {i} — Done\n\nLane `{k}`, workflow {run}, 2026-11-06. Verifier verdict: {v}; this row was not refuted.\n\n"
             f"**Evidence:** {r['evidence']}\n\n**Note:** {r['note']}\n")
     elif os.path.isdir(ev) and run in open(f"{ev}/README.md", encoding="utf-8").read():
         shutil.rmtree(ev)  # written by an earlier pass of this same run

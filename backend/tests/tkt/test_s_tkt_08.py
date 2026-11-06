@@ -90,3 +90,25 @@ def test_the_process_refuses_to_start_without_a_mail_provider_or_sender(tmp_path
     with socket.socket() as s:  # nothing is listening: the port was never bound
         assert s.connect_ex(("127.0.0.1", port)) != 0
     assert re.search(r'"service":"%s"' % command, proc.stdout)
+
+
+async def test_an_unexpected_error_after_the_claim_releases_it_at_once(db):
+    """Not a refusal, not a timeout: a transport bug. The claim must not sit in `sending` for the stale age - the row
+    goes back to `failed` (retryable) and the message stays, so the next delivery sends without waiting 900 s."""
+    b = booking(db)
+    mail = Mail()
+
+    async def broken(to, message):
+        raise ValueError("unexpected transport bug (test)")
+
+    mail.send = broken
+    w = worker(db, Clock(), mail=mail)
+    try:
+        assert await w.handle(message(b)) is False
+        status, sent_at, _, last_error = _row(db, b)
+        assert (status, sent_at) == ("failed", None) and "ValueError" in last_error
+        mail.send = Mail().send  # fixed: the redelivery is claimed at once, with no clock movement
+        assert await w.handle(message(b)) is True
+    finally:
+        await w.engine.dispose()
+    assert _row(db, b)[0] == "sent"

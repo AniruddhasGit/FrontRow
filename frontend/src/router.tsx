@@ -8,6 +8,8 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { adminRoutes } from "./features/admin/routes";
 import { authRoutes } from "./features/auth/routes";
 import { browseRoutes } from "./features/browse/routes";
+// lane p8-reports: /dashboard and /dashboard/audit
+import { reportsRoutes } from "./features/reports/routes";
 
 export type RouteParams = Record<string, string>;
 export interface AppRoute {
@@ -65,7 +67,7 @@ export function Link({ to, children, className }: { to: string; children: ReactN
 
 // Every feature's routes, in one table. First match wins.
 export function allRoutes(): AppRoute[] {
-  return [...browseRoutes, ...authRoutes, ...adminRoutes];
+  return [...browseRoutes, ...authRoutes, ...adminRoutes, ...reportsRoutes];
 }
 
 export function Outlet({ routes, notFound }: { routes: AppRoute[]; notFound: ReactNode }) {

@@ -342,7 +342,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   );
 }
 
-function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
+export function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
   if (r.status === 404) return { message: "That showtime could not be found.", requestId: null };
   if (r.status === 503 && r.message) return { message: r.message, requestId: null };
   // Every other 4xx and 5xx, 429 included: the first-load error. The request id is shown on 5xx only (FR-ADR-052).

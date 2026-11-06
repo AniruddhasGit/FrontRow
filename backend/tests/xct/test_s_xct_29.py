@@ -1,8 +1,7 @@
 """S-XCT-29 (PRD P-XCT-15, S7.9): every setting from the environment, and a non-zero exit at boot
 when one is wrong. The ledger's AcceptanceCriteria cell is the spec; each test names its clause.
 
-Not covered here, because the code does not exist yet: the WORKER half of "exit non-zero in both the
-api and the worker process" (the worker arrives in Phase 5).
+The WORKER half of "exit non-zero in both the api and the worker process" is the worker test beside the api one.
 """
 
 from __future__ import annotations
@@ -161,6 +160,17 @@ def test_check5_secure_cookie_over_plain_http(valid_env):
 def test_check12_ports_equal_or_out_of_range_exit_nonzero_in_the_api_process(api, worker, tmp_path):
     proc = _boot(_boot_env(API_PORT=api, WORKER_METRICS_PORT=worker), tmp_path)
     assert proc.returncode != 0, proc.stdout
+
+
+@pytest.mark.parametrize(
+    "api,worker", [("8000", "8000"), ("80", "8001"), ("70000", "8001"), ("8000", "80"), ("8000", "70000")]
+)
+def test_check12_ports_equal_or_out_of_range_exit_nonzero_in_the_worker_process(api, worker, tmp_path):
+    # The worker half (Phase 5 added the worker): it loads the same settings and refuses the same values at boot.
+    proc = subprocess.run([sys.executable, "-m", "app", "worker"], cwd=tmp_path,
+                          env=_boot_env(API_PORT=api, WORKER_METRICS_PORT=worker), capture_output=True, text=True, timeout=60)
+    assert proc.returncode != 0, proc.stdout
+    assert '"service": "worker"' in proc.stdout or '"service":"worker"' in proc.stdout
 
 
 # ---------------------------------------------------------------- the boot log

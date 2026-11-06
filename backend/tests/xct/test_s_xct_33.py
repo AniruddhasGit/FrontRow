@@ -20,7 +20,7 @@ from sqlalchemy import select
 from app.api.deps import db
 from app.main import create_app
 from app.models import movie
-from tests.dbkit import BACKEND_DIR, app_settings, app_sql, create_database, drop_database, run_migrate
+from tests.dbkit import BACKEND_DIR, app_settings, app_sql, create_database, drop_database, owner_sql, run_migrate
 from tests.xct._support import REPO
 
 VERSIONS = BACKEND_DIR / "migrations" / "versions"
@@ -94,7 +94,7 @@ def test_the_api_against_an_unmigrated_database_starts_and_fails_at_the_first_qu
     from app.core.readiness import postgres_probe, redis_probe
     from redis.asyncio import Redis
 
-    behind = create_database(migrate=False)  # one revision behind head: no revision applied at all
+    behind = create_database(migrate=False)  # no revision applied: the table itself is missing
     try:
         settings = app_settings(behind, REDIS_URL=os.environ["TEST_REDIS_URL"])
         redis_client = Redis.from_url(settings.REDIS_URL)
@@ -109,6 +109,47 @@ def test_the_api_against_an_unmigrated_database_starts_and_fails_at_the_first_qu
             assert client.get("/health/live").status_code == 200
             assert client.get("/health/ready").status_code == 200, client.get("/health/ready").text
             r = client.get("/__test__/first-query")
+            assert r.status_code == 500
+            assert r.json()["error"]["code"] == "INTERNAL_ERROR"
+    finally:
+        drop_database(behind)
+
+
+def test_the_api_one_revision_behind_starts_healthy_and_fails_at_the_first_request_touching_a_new_column(clock):
+    """The AC's case as written: the database at 0001, the code at head, a request reading a column 0002 adds.
+    ponytail: pinned to the 0001 -> 0002 pair (showtime.created_at); a later revision keeps this a valid
+    one-behind case for 0002 and gets its own pair only if its own column needs proving."""
+    import os
+    import subprocess
+
+    from app.core.readiness import postgres_probe, redis_probe
+    from app.models import showtime
+    from redis.asyncio import Redis
+
+    behind = create_database(migrate=False)
+    try:
+        r = subprocess.run(["alembic", "-c", "migrations/alembic.ini", "upgrade", "0001"], cwd=BACKEND_DIR,
+                           env={**os.environ, "DATABASE_URL": behind.owner_url}, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert owner_sql(behind, "SELECT version_num FROM alembic_version") == [("0001",)]
+        settings = app_settings(behind, REDIS_URL=os.environ["TEST_REDIS_URL"])
+        redis_client = Redis.from_url(settings.REDIS_URL)
+        probes = [postgres_probe(settings.DATABASE_URL, settings.DB_CONNECT_TIMEOUT_MS), redis_probe(redis_client, 1000)]
+        application = create_app(settings, clock=clock, probes=probes)
+
+        @application.get("/__test__/new-column")
+        async def new_column(conn=Depends(db)):
+            return {"n": len((await conn.execute(select(showtime.c.created_at))).all())}
+
+        @application.get("/__test__/old-column")
+        async def old_column(conn=Depends(db)):
+            return {"n": len((await conn.execute(select(showtime.c.id))).all())}
+
+        with TestClient(application, raise_server_exceptions=False) as client:
+            assert client.get("/health/live").status_code == 200
+            assert client.get("/health/ready").status_code == 200, client.get("/health/ready").text
+            assert client.get("/__test__/old-column").json() == {"n": 0}  # the table is there; only the column is new
+            r = client.get("/__test__/new-column")
             assert r.status_code == 500
             assert r.json()["error"]["code"] == "INTERNAL_ERROR"
     finally:

@@ -9,10 +9,9 @@ receipt_dispatch row by a conditional UPDATE before any mail call; a password_re
 password_reset_token row the same way. Zero rows claimed means somebody else owns the send, it already went out, or
 the message is stale - the message is deleted and nothing is sent.
 
-TIME. Every instant written or compared here comes from the injected clock (`self.instant`), bound into the SQL as a
-parameter. The database's own clock never decides an age: it does not move when a test moves the injected one
-(S-TKT-06, S-TKT-07). [The clock method is called through `instant` so the source carries no call spelled like the
-database's clock function, which the S-TKT-06/07 scan forbids in this package.]
+TIME. Every instant written or compared here comes from the injected clock (`self.clock.now()`), bound into the SQL as
+a parameter. The database's own clock never decides an age: it does not move when a test moves the injected one
+(S-TKT-06, S-TKT-07).
 
 DELETE OR NOT. `handle` returns True when the message must be deleted and False when it must stay for redelivery:
   receipt.send         claimed+sent -> True; claim not taken -> True; no dispatch row -> True (logged ERROR);
@@ -36,6 +35,7 @@ from datetime import timedelta
 
 from sqlalchemy import text
 
+from app.core import metrics
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.logging import bind_request_id, new_request_id
@@ -86,7 +86,7 @@ class Worker:
 
     def __init__(self, settings: Settings, clock: Clock, engine, queue, transport, within=None) -> None:
         self.settings, self.engine, self.queue, self.transport = settings, engine, queue, transport
-        self.instant = clock.now
+        self.clock = clock
         self.within = within or (lambda ms, aw: asyncio.wait_for(aw, ms / 1000))
 
     # ---- the relay (P-TKT-04 step 4) -----------------------------------------------------------------------------
@@ -97,7 +97,7 @@ class Worker:
         s = self.settings
         sent = 0
         async with self.engine.begin() as conn:
-            cutoff = self.instant() - timedelta(seconds=s.OUTBOX_RELAY_MIN_AGE_SECONDS)
+            cutoff = self.clock.now() - timedelta(seconds=s.OUTBOX_RELAY_MIN_AGE_SECONDS)
             rows = (await conn.execute(RELAY_SELECT, {"cutoff": cutoff, "batch": s.OUTBOX_RELAY_BATCH_SIZE})).all()
             for row in rows:
                 with bind_request_id(str(row.payload.get("request_id") or new_request_id())):
@@ -109,7 +109,7 @@ class Worker:
                         log.error("outbox relay send failed; the row stays pending", extra={"outbox_id": row.id})
                         continue
                     await conn.execute(text("UPDATE outbox_message SET status = 'sent', sent_at = :at WHERE id = :id"),
-                                       {"at": self.instant(), "id": row.id})
+                                       {"at": self.clock.now(), "id": row.id})
                     sent += 1
         return sent
 
@@ -135,7 +135,7 @@ class Worker:
         if not (_positive(booking_id) and _positive(seq)):
             log.error("receipt.send with a malformed booking_id or dispatch_seq; not deleted", extra={"job_id": message.id})
             return False
-        at = self.instant()
+        at = self.clock.now()
         stale_before = at - timedelta(seconds=self.settings.RECEIPT_CLAIM_STALE_SECONDS)
         async with self.engine.begin() as conn:
             claim = (await conn.execute(CLAIM_RECEIPT, {"at": at, "booking_id": booking_id, "dispatch_seq": seq,
@@ -158,16 +158,20 @@ class Worker:
             error = f"timeout: no answer within SES_SEND_TIMEOUT_MS={self.settings.SES_SEND_TIMEOUT_MS} ms"
         except (mail.MailRefused, LookupError) as exc:
             error = str(exc)[:500]
+        except Exception as exc:  # noqa: BLE001 - anything else after the claim must release it, not strand it in `sending` for 900 s
+            error = f"{type(exc).__name__}: {exc}"[:500]
         else:
             async with self.engine.begin() as conn:
                 await conn.execute(text("UPDATE receipt_dispatch SET status = 'sent', sent_at = :at, ses_message_id = :mid, last_error = NULL "
-                                        "WHERE id = :id"), {"at": self.instant(), "mid": provider_id, "id": claim})
+                                        "WHERE id = :id"), {"at": self.clock.now(), "mid": provider_id, "id": claim})
             log.info("receipt sent", extra=fields)
+            metrics.inc("receipt_dispatch_total", outcome="sent")
             return True
         # P-TKT-05 exceptions 2 / 2a: failed and retryable; the message stays, so the queue redelivers it.
         async with self.engine.begin() as conn:
             await conn.execute(text("UPDATE receipt_dispatch SET status = 'failed', last_error = :e WHERE id = :id"), {"e": error, "id": claim})
         log.error("receipt send failed; left for redelivery", extra={**fields, "last_error": error})
+        metrics.inc("receipt_dispatch_total", outcome="failed")
         return False
 
     async def _facts(self, booking_id: int) -> tuple[render.ReceiptFacts, str]:
@@ -185,7 +189,7 @@ class Worker:
         if not (_positive(token_id) and _positive(user_id) and isinstance(token, str) and token):
             log.error("password_reset.send with a malformed body; not deleted", extra={"job_id": message.id})
             return False
-        at = self.instant()
+        at = self.clock.now()
         stale_before = at - timedelta(seconds=self.settings.RECEIPT_CLAIM_STALE_SECONDS)
         fields = {"reset_token_id": token_id, "job_id": message.id}
         async with self.engine.begin() as conn:
@@ -209,7 +213,7 @@ class Worker:
             return False
         async with self.engine.begin() as conn:
             # email_sent_at is terminal and never cleared: a redelivery a day later still sends nothing.
-            await conn.execute(text("UPDATE password_reset_token SET email_sent_at = :at WHERE id = :id"), {"at": self.instant(), "id": token_id})
+            await conn.execute(text("UPDATE password_reset_token SET email_sent_at = :at WHERE id = :id"), {"at": self.clock.now(), "id": token_id})
         log.info("reset email sent", extra=fields)
         return True
 
@@ -228,9 +232,10 @@ class Worker:
                 await self.queue.remove(message)
 
 
-def receipt_port(state, settings: Settings, clock: Clock):
+def receipt_port(state, settings: Settings, clock: Clock, topic: str = RECEIPT):
     """The API's post-commit fast path (app.state.receipt_queue, P-TKT-04 step 3; app/api/bookings.py bounds it).
 
+    `topic` is receipt.send (the default) or password_reset.send (app/server.py installs both: P-ACC-07 step 6).
     ses / stub: one SendMessage to QUEUE_URL; the worker sends the mail.
     resend: the Render copy has NO worker and no queue (SRC-005 D-2), so the API runs the worker's own receipt job
             in-process, after commit, inside the same QUEUE_SEND_TIMEOUT_MS bound (check 15 keeps the mail call shorter).
@@ -242,13 +247,13 @@ def receipt_port(state, settings: Settings, clock: Clock):
 
         async def inline(payload: dict) -> None:
             job = Worker(settings, clock, state.db_engine, None, transport)
-            if not await job.handle(Message(id=f"inline-{new_request_id()}", topic=RECEIPT, body=payload, receipt_handle="")):
+            if not await job.handle(Message(id=f"inline-{new_request_id()}", topic=topic, body=payload, receipt_handle="")):
                 # Raising leaves the outbox row pending (app/api/bookings.py): the record that this send is owed.
                 raise RuntimeError("inline receipt send did not complete")
 
         return inline
     queue = SqsQueue(settings)
-    return lambda payload: queue.send(RECEIPT, payload)
+    return lambda payload: queue.send(topic, payload)
 
 
 def run_worker(settings: Settings, clock: Clock) -> int:
@@ -268,6 +273,20 @@ async def _serve(settings: Settings, clock: Clock) -> int:
         loop.add_signal_handler(sig, stopping.set)
     engine = make_engine(settings)
     worker = Worker(settings, clock, engine, SqsQueue(settings), mail.transport(settings))
+    # The worker's own /metrics (P-XCT-13): its counters, plus outbox_pending and queue_depth read at scrape time.
+    depth = metrics.QueueDepth(worker.queue.depth, clock.monotonic)
+
+    async def gauges():
+        g: dict = {}
+        try:
+            async with engine.connect() as conn:
+                g["outbox_pending"] = (await conn.execute(text("SELECT count(*) FROM outbox_message WHERE status = 'pending'"))).scalar_one()
+        except Exception:  # noqa: BLE001 - NaN, never a failed scrape
+            pass
+        g["queue_depth"], age = await depth.get()
+        return g, age
+
+    listener = await metrics.serve(settings.WORKER_METRICS_PORT, gauges)
     log.info("worker started", extra={"mail_provider": settings.MAIL_PROVIDER, "queue_poll_wait_seconds": settings.QUEUE_POLL_WAIT_SECONDS})
     try:
         while not stopping.is_set():
@@ -281,6 +300,7 @@ async def _serve(settings: Settings, clock: Clock) -> int:
                 except TimeoutError:
                     pass
     finally:
+        listener.close()
         await engine.dispose()
     log.info("worker stopped cleanly")
     return 0

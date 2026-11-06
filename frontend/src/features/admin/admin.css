@@ -17,3 +17,23 @@
 .admin-note { color: var(--fr-ink-muted); font-size: var(--fr-text-sm); }
 .admin-editor { display: grid; gap: var(--fr-space-3); margin-top: var(--fr-space-3); }
 [role="alert"] { color: var(--fr-danger-ink); }
+.admin-mono { font-family: var(--fr-font-mono); font-variant-numeric: tabular-nums; }
+.admin-gate-fail { color: var(--fr-danger-ink); font-size: var(--fr-text-xs); }
+.admin-poster { display: grid; place-items: center; aspect-ratio: var(--fr-poster-ratio); width: 4rem; background: var(--fr-surface-inset);
+  font-size: var(--fr-text-xs); text-align: center; overflow: hidden; }
+.admin-poster img { width: 100%; height: 100%; object-fit: cover; }
+.admin-poster-failed { color: var(--fr-danger-ink); }
+.admin-film { display: block; color: var(--fr-ink); text-decoration: none; min-height: var(--fr-tap-min); }
+.admin-film-row { display: grid; grid-template-columns: auto 1fr; gap: var(--fr-space-1) var(--fr-space-3); align-items: center; }
+.admin-film-row > .admin-poster { grid-row: span 4; }
+.admin-film-title { font-weight: var(--fr-weight-medium); }
+.admin-row-loading { height: 6rem; background: var(--fr-surface-inset); border-radius: var(--fr-radius-sm); }
+.admin-pager { display: flex; gap: var(--fr-space-3); align-items: center; }
+.admin-filter { display: flex; gap: var(--fr-space-3); border: 0; padding: 0; }
+.admin-primary { background: var(--fr-surface-accent) !important; color: var(--fr-ink-on-accent) !important; padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-md); min-height: var(--fr-tap-min); display: inline-block; }
+.admin-entry { display: grid; gap: var(--fr-space-1); padding: var(--fr-space-2); background: var(--fr-surface-raised);
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet); }
+.admin-withdrawn { background: var(--fr-surface-inset); color: var(--fr-ink-muted); }
+[role="tab"][aria-selected="true"] { border-bottom: var(--fr-stroke-bold) solid var(--fr-surface-accent); }
+.admin textarea { font: inherit; min-height: 6rem; max-width: var(--fr-measure); }

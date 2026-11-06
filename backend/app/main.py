@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api import admin, auth, auth_session, bookings, browse, holds, manager, me, receipts
+from app.api import admin, auth, auth_session, bookings, browse, holds, manager, me, metrics, receipts
 from app.core.logging import new_request_id
 from app.domain import holds as holds_domain
 from app.api.errors import install_error_handlers
@@ -142,8 +142,14 @@ def create_app(
     install_error_handlers(app)
     app.include_router(health_router)
     # One line per router module, each with its own prefix and authorisation dependency (deps.py).
-    for module in (browse, auth, auth_session, admin, manager, holds, bookings, me, receipts):
+    for module in (browse, auth, auth_session, admin, manager, holds, bookings, me, receipts, metrics):
         app.include_router(module.router)
+    # ---- lane p8-reports: the reporting surface (E7), two routers on /api/reports (app/api/reports) ----
+    from app.api import reports
+
+    app.include_router(reports.router)
+    app.include_router(reports.audit_router)
+    # ---- end lane p8-reports ----
     return app
 
 

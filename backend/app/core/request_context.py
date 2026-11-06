@@ -10,6 +10,9 @@ import json
 import logging
 from typing import Any
 
+from starlette.requests import Request
+
+from app.core import metrics, ratelimit
 from app.core.clock import Clock
 from app.api.errors import envelope
 from app.core.logging import bind_request_id, new_request_id
@@ -84,6 +87,10 @@ class RequestContextMiddleware:
                 path = scope.get("path", "")
                 route = _route(scope)
                 status = state["status"]
+                elapsed = self.clock.monotonic() - started
+                # The two request series of /metrics (P-XCT-13), by route TEMPLATE for the same cardinality reason.
+                metrics.inc("http_requests_total", route=route, method=str(scope.get("method")), status=str(status))
+                metrics.observe(route, elapsed)
                 # Quiet means SUCCESSFUL polls only. A 503 from readiness, or a 405 from someone
                 # POSTing to a health path, is not a routine poll and stays visible.
                 if path not in QUIET_PATHS or status >= 400:
@@ -91,8 +98,13 @@ class RequestContextMiddleware:
                         "route": route,
                         "method": scope.get("method"),
                         "status_code": status,
-                        "duration_ms": round((self.clock.monotonic() - started) * 1000),
+                        "duration_ms": round(elapsed * 1000),
                     }
                     if client_request_id is not None:
                         fields["client_request_id"] = client_request_id
+                    settings = getattr(getattr(scope.get("app"), "state", None), "settings", None)
+                    if settings is not None:
+                        # The address the rate limiter keyed on (S-XCT-15): X-Forwarded-For's rightmost entry from the
+                        # one trusted proxy, else the peer. Without it a limiter keyed on the load balancer looks fine.
+                        fields["client_ip"] = ratelimit.client_ip(Request(scope), settings)
                     log.info("request completed", extra=fields)

@@ -1,14 +1,14 @@
 """S-ACC-02 - the password rules, bcrypt off the event loop, one verification on every branch
 (P-ACC-01 rows 4-6, P-ACC-03, EP-ACC-01, EP-ACC-02).
 
-NOT covered here: the reset-confirm half of the 11-character clause. EP-ACC-06 ships in Phase 5
-(SRC-004 JC-R6-02) and does not exist in this build; that clause is re-run against it there.
+The reset-confirm half of the 11-character clause (EP-ACC-06) is the test after the register one.
 """
 
 from __future__ import annotations
 
 import re
 import threading
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -30,6 +30,21 @@ def _empty_buckets():
 
 def _short_message(n: int) -> str:
     return f"Your password must be at least {n} characters. It does not have to contain numbers or symbols."
+
+
+async def test_eleven_characters_on_reset_confirm_is_refused_with_the_same_sentence(migrated_db, clock):
+    import hashlib
+
+    from tests.dbkit import owner_sql
+
+    user = insert_user(migrated_db, role="customer", email="eleven-reset@example.com")
+    token = "R" * 43
+    owner_sql(migrated_db, "INSERT INTO password_reset_token (user_id, token_sha256, expires_at, created_at) "
+                           "VALUES (%s, %s, %s, %s)", (user, hashlib.sha256(token.encode()).hexdigest(),
+                                                       clock.now() + timedelta(seconds=1800), clock.now()))
+    async with api(settings_for(migrated_db, PASSWORD_MIN_LENGTH="12"), clock) as c:
+        r = await c.post("/api/auth/password-reset/confirm", json={"token": token, "password": "abcdefghijk"})
+    assert (r.status_code, r.json()["error"]["code"], r.json()["error"]["message"]) == (422, "VALIDATION_FAILED", _short_message(12))
 
 
 async def test_eleven_characters_is_refused_with_the_interpolated_floor(migrated_db, clock):

@@ -32,8 +32,8 @@ from app.domain.money import BIGINT_MAX
 log = logging.getLogger("app.holds")
 
 # The seat-hold bucket (EP-HLD-01..04 rate_limit): 20 per minute per user, 60 per minute per real client IP.
-HOLD_USER = Bucket("hold-user", "RATE_LIMIT_HOLD_USER_PER_MIN", 60, holds.RATE_LIMITED)
-HOLD_IP = Bucket("hold-ip", "RATE_LIMIT_HOLD_IP_PER_MIN", 60, holds.RATE_LIMITED)
+HOLD_USER = Bucket("hold:user", "RATE_LIMIT_HOLD_USER_PER_MIN", 60, holds.RATE_LIMITED)
+HOLD_IP = Bucket("hold:ip", "RATE_LIMIT_HOLD_IP_PER_MIN", 60, holds.RATE_LIMITED)
 
 
 async def signed_in(request: Request, conn: AsyncConnection = Depends(db), settings: Settings = Depends(get_settings),

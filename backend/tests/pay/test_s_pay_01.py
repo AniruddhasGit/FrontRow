@@ -44,13 +44,11 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def test_an_unset_ratio_is_refused_naming_it(valid_env):
-    """S-PAY-01 verbatim: 'with CURRENCY_MINOR_UNIT_RATIO unset ... the process exits non-zero'. PRD S7.9
-    publishes a default of 100 for it; the two documents disagree (see the lane report)."""
+def test_an_unset_ratio_boots_with_the_s7_9_default_of_100(valid_env):
+    """S-PAY-01 as amended: 'with CURRENCY_MINOR_UNIT_RATIO unset it boots with the S7.9 default of 100'. An invalid
+    value is still refused (test_a_zero_or_non_integer_ratio_is_refused_naming_it)."""
     valid_env.delenv("CURRENCY_MINOR_UNIT_RATIO", raising=False)
-    with pytest.raises(ConfigError) as exc:
-        load_settings()
-    assert "CURRENCY_MINOR_UNIT_RATIO" in exc.value.names
+    assert load_settings().CURRENCY_MINOR_UNIT_RATIO == 100
 
 
 @pytest.mark.parametrize("ratio", ["0", "1.5"])
@@ -66,13 +64,14 @@ def test_the_process_exits_before_binding_and_stderr_names_the_variable(tmp_path
 
 def test_the_money_columns_are_exactly_four_and_all_bigint(migrated_db):
     rows = app_sql(migrated_db, "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' "
-                                "AND table_name IN ('booking','booking_seat','payment') AND column_name LIKE '%_paise'")
+                                "AND table_name IN ('booking','booking_seat','payment') AND column_name LIKE '%paise%'")
     assert sorted(rows) == sorted([("total_paise", "bigint"), ("price_paise", "bigint"),
                                    ("base_price_paise_applied", "bigint"), ("amount_paise", "bigint")])
 
 
 def test_pricing_holds_no_float_or_decimal():
-    assert not re.search(r"float\(|Decimal", (APP / "domain" / "pricing.py").read_text(encoding="utf-8"))
+    for path in (APP / "domain" / "pricing.py", APP / "api" / "bookings.py"):
+        assert not re.search(r"float\(|Decimal", path.read_text(encoding="utf-8")), path
 
 
 def test_the_api_and_domain_layers_format_no_money():
@@ -92,4 +91,27 @@ def test_the_ratio_is_assigned_exactly_once_in_the_settings_module():
 
 
 def test_pricing_never_multiplies_or_divides_by_a_literal_100():
-    assert not re.search(r"[*/]\s*100\b|\b100\s*[*/]", (APP / "domain" / "pricing.py").read_text(encoding="utf-8"))
+    paths = [APP / "domain" / "pricing.py", APP / "api" / "bookings.py", *(APP / "domain" / "payment").rglob("*.py")]
+    for path in paths:
+        assert not re.search(r"[*/]\s*100\b|\b100\s*[*/]", path.read_text(encoding="utf-8")), path
+
+
+@pytest.mark.anyio
+async def test_the_201_body_carries_integer_paise_and_no_formatted_money(migrated_db):
+    """The five-seat fixture of S-PAY-02 (base 275.00 rupees = 27500 paise; 1,661.46 rupees = 166146 paise): every
+    money value in the 201 is a JSON integer, no formatted or ambiguous money key exists, and no rupee sign is sent."""
+    from tests.pay.kit import FIVE, api, clock_at, confirm, hold, owner_sql, user, world7
+
+    db = world7(migrated_db)["db"]
+    u = user(db)
+    async with api(db, clock_at()) as c:
+        r = await confirm(c, u, (await hold(c, u, FIVE))["hold_token"])
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert type(body["total_paise"]) is int and body["total_paise"] == 166146 and '"total_paise":166146' in r.text
+    for seat in body["seats"]:
+        assert type(seat["price_paise"]) is int and type(seat["base_price_paise_applied"]) is int
+        assert seat["base_price_paise_applied"] == 27500
+    assert not {"total", "amount", "price", "total_formatted", "currency_display"} & set(body)
+    assert "₹" not in r.text and "\\u20b9" not in r.text
+    assert owner_sql(db, "SELECT total_paise FROM booking") == [(166146,)]

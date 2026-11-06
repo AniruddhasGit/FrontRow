@@ -1,9 +1,7 @@
 """S-ACC-09 - the credential endpoints' token buckets: Retry-After from the refill rate, the injected
 clock, the real client address, and failing closed (P-ACC-14, FR-ADR-058, EP-ACC-01/02).
 
-NOT covered here: the reset-request and reset-confirm buckets (the 6th reset request, the 11th
-confirm, the separate confirm bucket, a token spent by every confirm). EP-ACC-05/06 ship in Phase 5
-(SRC-004 JC-R6-02) and are asserted there.
+The reset-request and reset-confirm buckets (EP-ACC-05/06) are the last three tests.
 """
 
 from __future__ import annotations
@@ -81,7 +79,7 @@ async def test_refill_follows_the_injected_clock_and_the_key_ttl_is_only_a_backs
         refused = await c.post("/api/auth/login", json=_login("refill@example.com"))
         clock.advance(90)
         admitted = await c.post("/api/auth/login", json=_login("refill@example.com"))
-        ttls = redis_pttl_of_keys("rl:login-email:*")
+        ttls = redis_pttl_of_keys("rl:login:user:*")
     assert refused.status_code == 429
     assert admitted.status_code == 401  # admitted by the limiter; the password is still wrong
     assert ttls and all(ttl > 0 for ttl in ttls.values()), ttls
@@ -156,3 +154,34 @@ def test_spans_render_by_s7_20():
     assert [ratelimit.render_span(s) for s in (1, 3, 30, 90, 119, 120, 240, 360, 720, 900)] == [
         "1 second", "3 seconds", "30 seconds", "90 seconds", "119 seconds", "2 minutes", "4 minutes",
         "6 minutes", "12 minutes", "15 minutes"]
+
+
+RESET_CONFIRM = "/api/auth/password-reset/confirm"
+
+
+async def test_the_6th_reset_request_from_one_ip_in_an_hour_waits_12_minutes(migrated_db, clock):
+    async with api(settings_for(migrated_db), clock) as c:
+        rs = [await c.post("/api/auth/password-reset/request", json={"email": f"reset{i}@example.com"}) for i in range(6)]
+    assert [r.status_code for r in rs[:5]] == [202] * 5
+    assert _error(rs[5]) == (429, "RATE_LIMITED", "Too many reset requests from this connection. Try again in 12 minutes.", "720")
+
+
+async def test_the_11th_reset_confirm_waits_6_minutes_and_every_malformed_confirm_spends_a_token(migrated_db, clock):
+    async with api(settings_for(migrated_db), clock) as c:
+        # Nine malformed tokens (422) and one unknown token (400): each refused, and each still spends a token.
+        rs = [await c.post(RESET_CONFIRM, json={"token": "short", "password": PASSWORD}) for _ in range(9)]
+        rs.append(await c.post(RESET_CONFIRM, json={"token": "A" * 43, "password": "x"}))
+        eleventh = await c.post(RESET_CONFIRM, json={"token": "A" * 43, "password": PASSWORD})
+    assert [r.status_code for r in rs] == [422] * 9 + [400]  # the unknown well-formed token is 400, before the password
+    assert _error(eleventh) == (429, "RATE_LIMITED", "Too many attempts from this connection. Try again in 6 minutes.", "360")
+
+
+async def test_the_confirm_bucket_is_separate_from_the_request_bucket(migrated_db, clock):
+    async with api(settings_for(migrated_db), clock) as c:
+        for i in range(5):
+            await c.post("/api/auth/password-reset/request", json={"email": f"sep{i}@example.com"})
+        confirms = [await c.post(RESET_CONFIRM, json={"token": "short", "password": PASSWORD}) for _ in range(6)]
+        sixth_request = await c.post("/api/auth/password-reset/request", json={"email": "sep9@example.com"})
+        more = [await c.post(RESET_CONFIRM, json={"token": "short", "password": PASSWORD}) for _ in range(4)]
+    assert sixth_request.status_code == 429  # the request bucket is empty
+    assert [r.status_code for r in confirms + more] == [422] * 10  # ...and the confirm bucket admitted 4 more

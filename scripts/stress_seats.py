@@ -14,7 +14,7 @@ constraint by hand between runs (docs/07 Architecture/for_llm/03_concurrency_mod
 stage reads the catalogue and reports which state it ran against.
 
 Usage, from a container sharing the api's network so the base URL is loopback:
-    stress_seats.py --showtime 41 --seat 312 --n 50 --database-url <owner or app URL> [--stage B --redis-url <url>]
+    stress_seats.py --showtime 41 --seat 312 --n 50 --database-url <owner or app URL> [--redis-url <url>] [--stage B]
 The deployed run differs from the local one by --base-url alone.
 
 Environment: STRESS_OPERATOR (required, no default - an unattributed run is not evidence), SEED_DEFAULT_PASSWORD
@@ -107,6 +107,18 @@ def warm_up(api: Api, n: int, password: str, domain: str) -> tuple[list[str], fl
     return cookies, round(time.monotonic() - started, 1)
 
 
+def warmup_band(n: int, login_cap: int, window_s: int = 900) -> tuple[int, int] | None:
+    """The warm-up's expected duration (S-XCT-17): `login_cap` sign-ins at once, then one per window_s / login_cap
+    seconds for the rest - at the default 30 per 900 s and n = 50, 20 x 30 s = 600 s, accepted as 570..660. None when
+    the bucket admits every customer at once, so no wait is expected and no band applies.
+    ponytail: the band is the expected wait -30 s / +60 s (the criterion's own margins at the default), not derived
+    from network latency; widen it here if a deployed run's sign-ins are slower than ~1 s each."""
+    if n <= login_cap:
+        return None
+    expected = (n - login_cap) * -(-window_s // login_cap)
+    return expected - 30, expected + 60
+
+
 def fire(api: Api, path: str, body: dict, cookies: list[str]) -> list[dict]:
     """One request per customer, each on its own already-open connection, all released by one barrier."""
     barrier = threading.Barrier(len(cookies))
@@ -126,6 +138,20 @@ def fire(api: Api, path: str, body: dict, cookies: list[str]) -> list[dict]:
     for t in threads:
         t.join()
     return results
+
+
+def limiter_enabled(redis_url: str | None) -> bool | None:
+    """S-XCT-18: OBSERVED, never assumed - True when the hold buckets' keys (rl:hold:user:*, rl:hold:ip:*) exist in the
+    api's Redis after the measured window, i.e. the limiter really ran on those requests. None when no --redis-url was
+    given (not observed; reported as such). It is not read from /metrics: S-XCT-27 fixes that body at exactly eight
+    series, so a ninth limiter series is refused there, and the API's 'configuration resolved' line is in its own stdout.
+    ponytail: a SCAN MATCH over the test or local Redis; against a production keyspace it walks every key once. The
+    upgrade path is reading the two known keys by name if the script ever learns the user ids and the resolved address."""
+    if not redis_url:
+        return None
+    import redis
+
+    return any(True for _ in redis.Redis.from_url(redis_url).scan_iter(match="rl:hold:*", count=1000))
 
 
 def booking_seat_rows(database_url: str, showtime_id: int, seat_id: int) -> int:
@@ -152,6 +178,7 @@ def confirm(api: Api, cookie: str, token: str, showtime_id: int) -> tuple[int, d
 
 def stage_a(args, api: Api, operator: str, limit_ms: int) -> int:
     cookies, warmup = warm_up(api, args.n, required("SEED_DEFAULT_PASSWORD"), args.email_domain)
+    band = warmup_band(args.n, args.login_cap)
     results = fire(api, f"/api/showtimes/{args.showtime}/holds", {"seat_ids": [args.seat]}, cookies)
     starts = [r["start_ns"] for r in results]
     spread_ms = round((max(starts) - min(starts)) / 1e6, 1)
@@ -164,9 +191,14 @@ def stage_a(args, api: Api, operator: str, limit_ms: int) -> int:
                "winners": len(winners), "losers": len(losers), "loser_unavailable_seats": sorted(labels),
                "other_statuses": others, "spread_ms": spread_ms, "spread_limit_ms": limit_ms,
                "distinct_users": len({r["user"] for r in results}), "warmup_elapsed_seconds": warmup}
+    outcome["limiter_enabled"] = limiter_enabled(args.redis_url)
     problems = []
+    if outcome["limiter_enabled"] is False:
+        problems.append("LIMITER NOT ENABLED: no hold bucket key in Redis after the measured window")
     if spread_ms > limit_ms:
         problems.append(f"NOT CONCURRENT: spread {spread_ms} ms exceeds {limit_ms} ms")
+    if band and not band[0] <= warmup <= band[1]:
+        problems.append(f"WARM-UP OUT OF BAND: {warmup} s, expected {band[0]}..{band[1]} s for the login bucket in force")
     if 429 in others:
         problems.append("RUN VOID: 429 inside the measured window")
     if len(winners) != 1 or len(losers) != args.n - 1 or len(labels) != 1:
@@ -237,8 +269,12 @@ def stage_b(args, api: Api, operator: str) -> int:
                "confirms_201": statuses.count(201),
                "confirms_409_seat_unavailable": sum(1 for s, body in confirms.values()
                                                     if s == 409 and (body or {}).get("error", {}).get("code") == "SEAT_UNAVAILABLE"),
-               "confirm_statuses": statuses, "booking_seat_rows": rows}
+               "confirm_statuses": statuses, "booking_seat_rows": rows,
+               "limiter_enabled": limiter_enabled(args.redis_url)}
     print(json.dumps(outcome))
+    if outcome["limiter_enabled"] is False:
+        print("LIMITER NOT ENABLED: no hold bucket key in Redis after the run", file=sys.stderr)
+        return 1
     if not constraints and rows == 1:
         print("DRILL VOID: constraint dropped and count(*) is 1", file=sys.stderr)
         return 1
@@ -262,9 +298,10 @@ def main() -> int:
     parser.add_argument("--evict-after-ms", type=int, default=300)
     args = parser.parse_args()
     operator = required("STRESS_OPERATOR")
-    print("RATE_LIMIT_LOGIN_IP_PER_15MIN=" + required("RATE_LIMIT_LOGIN_IP_PER_15MIN"), file=sys.stderr)
+    print("RATE_LIMIT_LOGIN_IP_PER_15MIN=" + (login_cap := required("RATE_LIMIT_LOGIN_IP_PER_15MIN")), file=sys.stderr)
     print("RATE_LIMIT_HOLD_IP_PER_MIN=" + required("RATE_LIMIT_HOLD_IP_PER_MIN"), file=sys.stderr)
     limit_ms = int(os.environ.get("STRESS_CONCURRENCY_SPREAD_MS", "100"))
+    args.login_cap = int(login_cap)
     api = Api(args.base_url)
     return stage_a(args, api, operator, limit_ms) if args.stage == "A" else stage_b(args, api, operator)
 

@@ -160,9 +160,17 @@ def main(service: str = "api") -> int:
     app = create_app(settings, clock=clock)
     # The receipt fast path (P-TKT-04 step 3). Installed HERE, on the real process only, not in create_app: a test
     # app built by create_app has no queue unless the test installs one, so no test sends to a real queue by accident.
-    from app.workers import receipt_port
+    from app.workers import RESET, receipt_port
 
     app.state.receipt_queue = receipt_port(app.state, settings, clock)
+    # The reset message's post-commit send (P-ACC-07 step 6): the same port, the other topic.
+    app.state.reset_queue = receipt_port(app.state, settings, clock, topic=RESET)
+    if settings.MAIL_PROVIDER != "resend":
+        # /metrics queue_depth (P-XCT-13). The Render copy has no queue, so there it renders NaN.
+        from app.core.metrics import QueueDepth
+        from app.workers.queue import SqsQueue
+
+        app.state.queue_depth = QueueDepth(SqsQueue(settings).depth, clock.monotonic)
     return serve(settings, app)
 
 

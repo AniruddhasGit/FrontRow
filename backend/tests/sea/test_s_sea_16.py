@@ -103,3 +103,31 @@ async def test_redis_unreachable_at_confirm_is_503_and_nothing_is_charged(world)
     assert (r.status_code, r.json()["error"]["code"]) == (503, "DEPENDENCY_UNAVAILABLE")
     assert owner_sql(world["db"], "SELECT count(*) FROM payment") == [(0,)]
     assert owner_sql(world["db"], "SELECT count(*) FROM booking_seat WHERE showtime_id = 77") == [(0,)]
+
+
+async def test_redis_failing_at_the_hold_read_of_a_real_hold_is_503_and_nothing_is_charged(world, monkeypatch):
+    """The clause as written: a REAL hold, the limiter answered, and Redis failing at holds.load - the read of the
+    stored prices - so the confirm cannot know what to charge. 503, nothing charged, nothing booked."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from tests.sea.kit import T0
+
+    clock = SetClock()
+    clock.set(T0)
+    customer = user(world["db"])
+    steps: list[str] = []
+    async with api(world["db"], clock) as c:
+        token = (await c.post(URL, json={"seat_ids": [416, 417]}, cookies=session(c, customer))).json()["hold_token"]
+
+        async def unreachable(*args, **kwargs):
+            raise RedisConnectionError("Redis unreachable (test double at the hold read)")
+
+        monkeypatch.setattr(c.application.state.redis, "hgetall", unreachable)
+        c.application.state.confirm_observer = steps.append
+        r = await confirm(c, customer, token)
+    assert (r.status_code, r.json()["error"]["code"]) == (503, "DEPENDENCY_UNAVAILABLE")
+    assert steps == ["idempotency insert", "hold re-validation"]  # past the limiter, failing at the hold read
+    assert r_call("EXISTS", f"hold:{token}") == 1  # the hold and its stored prices are still there, just unreadable
+    assert owner_sql(world["db"], "SELECT count(*) FROM payment") == [(0,)]
+    assert owner_sql(world["db"], "SELECT count(*) FROM booking_seat WHERE showtime_id = 77") == [(0,)]
+    assert owner_sql(world["db"], "SELECT count(*) FROM idempotency_record") == [(0,)]

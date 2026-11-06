@@ -4,8 +4,8 @@ The clauses already proved by tests/test_logging.py are cited there, not repeate
 captured lines, the 8-hex id, the forged inbound id, one completion line. This file adds the real
 process's own stdout, the header on 200/404/500, the file-handler scans and the health-poll rules.
 
-Not covered, because the code does not exist yet: SEAT_UNAVAILABLE at INFO with seat_conflicts_total
-(Phase 4) and the pg_indexes check on request_id (no schema is applied by this lane).
+SEAT_UNAVAILABLE at INFO with seat_conflicts_total and the pg_indexes check on request_id are the last two tests.
+Not covered: "capturing stdout for a FULL TEST RUN" - the seven-key check runs over one real process's stdout.
 """
 
 from __future__ import annotations
@@ -126,3 +126,36 @@ def test_two_live_polls_write_no_info_line_and_a_ready_failure_writes_a_warning(
 
 def test_request_id_is_never_a_join_key():
     assert rg(r"JOIN[^;]*request_id", "backend/app") == []
+
+
+# ---- the Phase 4/7 clauses: a seat conflict at INFO with its counter, and no unique index on request_id ----------
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.anyio
+async def test_a_seat_unavailable_outcome_logs_info_no_warning_and_counts_a_conflict(migrated_db, log_capture):
+    from app.core import metrics
+    from tests.pay.kit import C1, api, book, clock_at, confirm, hold, user, world7
+
+    world7(migrated_db)
+    u, other = user(migrated_db), user(migrated_db)
+    async with api(migrated_db, clock_at()) as c:
+        lone = await hold(c, u, [C1])
+        book(migrated_db, other, 7, [C1])  # the lock was won; the constraint decides
+        before = sum(v for (n, _), v in metrics._counters.items() if n == "seat_conflicts_total")
+        lost = await confirm(c, u, lone["hold_token"], key="k-xct24")
+        after = sum(v for (n, _), v in metrics._counters.items() if n == "seat_conflicts_total")
+    assert lost.status_code == 409 and lost.json()["error"]["code"] == "SEAT_UNAVAILABLE"
+    lines = [ln for ln in log_capture.lines() if ln.get("request_id") == lost.headers["x-request-id"]]
+    assert any(ln["message"] == "seat taken at confirm" and ln["level"] == "INFO" for ln in lines)
+    assert not [ln for ln in lines if ln["level"] == "WARNING"]
+    assert after == before + 1
+
+
+def test_no_unique_index_carries_request_id(migrated_db):
+    from tests.dbkit import owner_sql
+
+    assert owner_sql(migrated_db, "SELECT count(*) FROM pg_indexes WHERE indexdef LIKE '%%request_id%%' "
+                                  "AND indexdef LIKE 'CREATE UNIQUE INDEX%%'") == [(0,)]

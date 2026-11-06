@@ -13,11 +13,13 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // A FormData body (the poster upload) goes as multipart; the browser sets its boundary and its Content-Length.
+  const form = body instanceof FormData;
   const response = await fetch(path, {
     method,
     credentials: "same-origin",
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || form ? {} : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   if (response.status === 204) return undefined as T;
   const data = await response.json().catch(() => null);

@@ -137,3 +137,106 @@ def body_fields(route) -> set[str]:
 def strip_request_id(body: dict) -> dict:
     body["error"].pop("request_id")
     return body
+
+
+# ---- Phase 6: films, lookups, posters (S-ADM-21..28) ---------------------------------------------------------------
+
+
+def set_clock(clock, instant: str) -> None:
+    """Put the injected clock at an exact instant (never the wall clock)."""
+    from datetime import datetime
+
+    clock._now = datetime.fromisoformat(instant)
+
+
+def make_lookup(db, kind: str, name: str | None = None, active: bool = True) -> int:
+    assert kind in ("language", "certification", "genre", "format")
+    return one(db, f"INSERT INTO {kind} (name, is_active) VALUES (%s, %s) RETURNING id", (name or f"{kind} {tag()}", active))
+
+
+def vocab(db, genres: int = 2) -> dict:
+    return {"language_id": make_lookup(db, "language"), "certification_id": make_lookup(db, "certification"),
+            "genre_ids": [make_lookup(db, "genre") for _ in range(genres)]}
+
+
+def film_body(db, **over) -> dict:
+    return {"title": f"DEMO MOVIE {tag()}", "synopsis": "Demonstration film.", "runtime_minutes": 148, **vocab(db), **over}
+
+
+def new_film(client, **over) -> dict:
+    r = client.post("/api/admin/movies", json=film_body(client.db, **over))
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def movie_row(db, movie_id: int) -> tuple:
+    return owner_sql(db, "SELECT * FROM movie WHERE id = %s", (movie_id,))[0]
+
+
+def png(width: int, height: int, size: int | None = None) -> bytes:
+    """A real 1-bit greyscale PNG, padded with an ancillary tEXt chunk to exactly `size` bytes when given."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+    raw = (b"\x00" + b"\x00" * ((width + 7) // 8)) * height
+    head = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 1, 0, 0, 0, 0))
+    tail = chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    if size is None:
+        return head + tail
+    pad = size - len(head) - len(tail) - 12
+    assert pad >= 0
+    return head + chunk(b"tEXt", b"c\x00" + b"x" * (pad - 2)) + tail
+
+
+def multipart(*parts: tuple) -> tuple[bytes, str]:
+    """(name, filename-or-None, content-type-or-None, bytes) parts -> (body, Content-Type header)."""
+    boundary = "frontrowboundary7d1"
+    out = b""
+    for name, filename, ctype, data in parts:
+        disposition = f'form-data; name="{name}"' + (f'; filename="{filename}"' if filename is not None else "")
+        out += f"--{boundary}\r\nContent-Disposition: {disposition}\r\n".encode()
+        out += (f"Content-Type: {ctype}\r\n" if ctype else "").encode() + b"\r\n" + data + b"\r\n"
+    return out + f"--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
+
+
+class MemoryPosters:
+    """The in-memory stand-in for the private bucket: PutObject, GetObject and ListObjectsV2 by prefix."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+    def presign(self, key: str) -> str:
+        return f"https://posters.invalid/{key}?X-Amz-Expires=3600"
+
+    def keys(self, prefix: str) -> list[str]:
+        return sorted(k for k in self.objects if k.startswith(prefix))
+
+
+def cached_redis_url() -> str:
+    """Redis database 9 of this compose project's Redis for the listing-cache tests (other lanes hard-code 10-15)."""
+    import os
+    import re
+
+    return re.sub(r"/\d+$", "/9", os.environ["TEST_REDIS_URL"])
+
+
+@pytest.fixture
+def cached_client(migrated_db, clock):
+    """The real app with a live Redis and the listing cache ON (60 s), so 'the first GET after the write' is a real
+    cache read, not a cache miss. Database 9 is flushed first: listings are keyed by generation, not by database."""
+    import redis
+
+    flush = redis.Redis.from_url(cached_redis_url())
+    flush.flushdb()
+    flush.close()
+    settings = app_settings(migrated_db, REDIS_URL=cached_redis_url(), LISTING_CACHE_TTL_SECONDS="60")
+    application = create_app(settings, clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    with TestClient(application, raise_server_exceptions=False) as c:
+        c.clock, c.db = clock, migrated_db
+        yield c

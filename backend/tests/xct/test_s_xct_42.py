@@ -1,8 +1,8 @@
 """S-XCT-42 (PRD P-XCT-28): the four open rows stay open, asserted as absences. Phase 1's share.
 
-Not here, because the artefacts do not exist yet: scripts/seed.py and the movie table (OPEN-ATTRIB-01,
-Phase 2), the booking.cancelled_at column check (schema applied by the foundation lane), and the
-booking screen rendering the reference (OPEN-EMAILFAIL-01, Phase 4).
+Not here (the row stays Blocked on them): the OPEN-ATTRIB-01 seed/movie-table clauses, the booking.cancelled_at
+information_schema read, the SCR-XCT-01 copy-table parse, the booking screen rendering FR-K7M2-QX9C after a confirm,
+and the withdraw-beside-showtime clause (see below).
 """
 
 from __future__ import annotations
@@ -30,10 +30,17 @@ def test_open_showcancel_01_no_route_and_no_code_for_cancelling_or_refunding(val
     paths = [p for _, p in mounted_routes(app)]
     assert paths
     assert [p for p in paths if re.search(r"cancel|withdraw|refund", p)] == []
-    # The AC's pattern also lists `withdraw`; the Phase 2 audit vocabulary (app/domain/audit.py,
-    # "language.withdrawn") matches it, so that third word is reported as a criterion conflict and
-    # not asserted here (lane report, S-XCT-42).
-    assert rg(r"refund|cancel_showtime", "backend/app", "frontend/src", ignore_case=True) == []
+    assert rg(r"cancel_showtime", "backend/app", "frontend/src", ignore_case=True) == []
+    # The amended criterion: 'refund' only on a line carrying a PRD-published copy string that states the absence -
+    # SCR-TKT-01's policy line (P-PAY-12), the receipt's final line (E4), and the hall and film withdrawal
+    # confirmations' "nothing is refunded" (SCR-ADM-05 / P-ADM-16, E6) - and on no identifier, route or function.
+    published = ("This booking cannot be changed, cancelled or refunded.",
+                 "This booking is final. There is no cancellation and no refund.", "nothing is refunded")
+    hits = rg(r"refund", "backend/app", "frontend/src", ignore_case=True)
+    assert hits and [h for h in hits if not any(p in h[2] for p in published)] == []
+    # NOT asserted (the row stays Blocked on it): 'withdraw' on no line that also matches showtime. Published E6 copy
+    # (the film publish confirmation, the lookup withdraw confirmation) and the showtimes router's own "there is no
+    # withdraw or cancel route" docstring all name both words; filed as an AC over-reach.
     assert rg(r"cancelled_at", "backend/app/api") == []
 
 

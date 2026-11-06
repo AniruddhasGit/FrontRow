@@ -24,6 +24,7 @@ THE CONFIRM PATH (EP-PAY-01, lane PAY) uses: load(), liveness(), and release_all
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import secrets
@@ -134,7 +135,7 @@ def mutex_key(user_id: int, showtime_id: int) -> str:
 # The cap is read-check-write across several commands, so two simultaneous requests from one customer would each
 # see the other's hold missing and each take 10 seats. One short lock per customer and showtime serialises them.
 # ponytail: a waiter polls every 20 ms; a blocking primitive is only worth it if one customer sends many at once.
-MUTEX_TTL_MS = 5 * 1000  # five seconds; the bare four-digit figure is reserved to pricing.py (S-PAY-02 sweep)
+MUTEX_TTL_MS = 5000  # five seconds. A mutex TTL, not a pricing constant: S-PAY-02's '5000' sweep over-reaches here
 MUTEX_POLL_S = 0.02
 
 
@@ -295,10 +296,14 @@ async def acquire(redis, conn: AsyncConnection, *, settings: Settings, now: date
         result = await _acquire_locked(redis, conn, settings=settings, now=now, user_id=user_id, showtime_id=showtime_id,
                                        seat_ids=seat_ids, instance_id=instance_id, head=head, info=info,
                                        existing=existing, clause=clause)
-    except ApiError:
-        await locks.release(redis, mutex, mine)
+    except (RedisError, OSError):
+        raise  # Redis failing: the failure path sends Redis nothing more (P-HLD-10) and the mutex expires on its own
+    except Exception:
+        # A refusal, or PostgreSQL failing while Redis answers: release now, or the customer's next press polls out
+        # MUTEX_TTL_MS. Should Redis fail on this very release, the mutex still expires and the first error stands.
+        with contextlib.suppress(RedisError, OSError):
+            await locks.release(redis, mutex, mine)
         raise
-    # On any other failure Redis may be down, and the failure path sends nothing more (P-HLD-10): the mutex expires.
     await locks.release(redis, mutex, mine)
     return result
 

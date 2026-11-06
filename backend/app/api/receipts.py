@@ -14,15 +14,14 @@ NOTHING HERE READS OR SHOWS THE DISPATCH STATE to the customer except the resend
 
 from __future__ import annotations
 
-import asyncio
-import logging
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, Request, Response
-from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import CurrentUser, current_user, db, get_clock, get_settings
+from app.api.bookings import send_receipt
 from app.api.errors import ApiError
 from app.api.me import LOOKUP_IP, LOOKUP_USER, NOT_YOURS, SIGN_IN
 from app.core.clock import Clock
@@ -31,8 +30,6 @@ from app.core.logging import get_request_id
 from app.core.ratelimit import Bucket, client_ip, enforce
 from app.domain import booking as bk
 from app.domain.browse.catalogue import local_iso
-
-log = logging.getLogger("app.receipts")
 
 UNAVAILABLE = "This page is unavailable right now. Your booking is not affected."
 SUPPRESSED = ("This is demonstration data. No receipt was sent for this booking and none can be — the address is a "
@@ -48,20 +45,17 @@ class _Interval(Bucket):
         return Bucket(self.name, self.setting, getattr(settings, self.setting), self.message, 1)
 
 
-RESEND_BOOKING = _Interval("resend-booking", "RECEIPT_RESEND_MIN_INTERVAL_SECONDS", 0,
+# EP-TKT-01/02 share EP-ACC-08's two lookup buckets - the same Redis keys, so one pool of tokens (FR-ADR-058) - but speak
+# P-TKT-02's own sentence (row 6), not P-ACC-12's "Too many lookups."
+LOOKUP_USER = replace(LOOKUP_USER, message="Too many attempts. Try again in {span}.")
+LOOKUP_IP = replace(LOOKUP_IP, message="Too many attempts. Try again in {span}.")
+
+RESEND_BOOKING = _Interval("resend:booking", "RECEIPT_RESEND_MIN_INTERVAL_SECONDS", 0,
                            "A receipt was requested recently. You can request another in {span}.")
 
 
 def _not_found() -> ApiError:
     return ApiError(404, "NOT_FOUND", NOT_YOURS)
-
-
-async def _limit(request: Request, checks: list[tuple[Bucket, str]]) -> None:
-    """Fail closed: Redis unreachable is 503, never a pass (FR-ADR-028)."""
-    try:
-        await enforce(request, checks, UNAVAILABLE)
-    except RedisError:
-        raise ApiError(503, "DEPENDENCY_UNAVAILABLE", UNAVAILABLE) from None
 
 
 async def owned_reference(request: Request, conn: AsyncConnection = Depends(db), settings: Settings = Depends(get_settings),
@@ -82,7 +76,8 @@ async def owned_reference(request: Request, conn: AsyncConnection = Depends(db),
     if request.method == "GET":
         # EP-TKT-01's buckets. The resend spends its tokens itself, and only when it accepts: a refused resend - a
         # suppressed row pressed a hundred times - must spend nothing (EP-TKT-02 idempotency, S-TKT-10).
-        await _limit(request, [(LOOKUP_USER, str(user.id)), (LOOKUP_IP, client_ip(request, settings))])
+        # enforce fails closed by itself: Redis unreachable is 503, never a pass (FR-ADR-028).
+        await enforce(request, [(LOOKUP_USER, str(user.id)), (LOOKUP_IP, client_ip(request, settings))], UNAVAILABLE)
     booking_id = (await conn.execute(text("SELECT id FROM booking WHERE reference = :r AND user_id = :u"),
                                      {"r": stored, "u": user.id})).scalar()
     await conn.rollback()
@@ -147,7 +142,7 @@ async def resend(request: Request, reference: str, conn: AsyncConnection = Depen
             # pending (first receipt not attempted yet, or a resend in flight) or sending: nothing to enqueue.
             return _accepted(False, row.email)
         # Accepting: the per-booking interval and the owner's lookup bucket, both or neither (EP-TKT-02 rate_limit).
-        await _limit(request, [(RESEND_BOOKING, str(row.booking_id)), (LOOKUP_USER, str(row.user_id))])
+        await enforce(request, [(RESEND_BOOKING, str(row.booking_id)), (LOOKUP_USER, str(row.user_id))], UNAVAILABLE)
         seq = row.dispatch_seq + 1
         await conn.execute(text("UPDATE receipt_dispatch SET dispatch_seq = :s, status = 'pending' WHERE id = :id"),
                            {"s": seq, "id": row.id})
@@ -156,22 +151,11 @@ async def resend(request: Request, reference: str, conn: AsyncConnection = Depen
             "INSERT INTO outbox_message (topic, payload, status, attempts, created_at) "
             "VALUES ('receipt.send', CAST(:p AS jsonb), 'pending', 0, :at) RETURNING id"),
             {"p": bk.canonical_json(payload).decode(), "at": clock.now()})).scalar_one()
-    await _fast_path(state, settings, clock, conn, outbox_id, payload)
+    await send_receipt(state, settings, clock, conn, outbox_id, payload)  # the confirm's own bounded fast path
     return _accepted(True, row.email)
 
 
 def _accepted(queued: bool, email: str) -> Response:
     return Response(bk.canonical_json({"queued": queued, "email_address": email}), status_code=202, media_type="application/json")
 
-
-async def _fast_path(state, settings: Settings, clock: Clock, conn: AsyncConnection, outbox_id: int, payload: dict) -> None:
-    """The same bounded post-commit send the confirm makes (P-TKT-04 step 3); a failure leaves the row for the relay."""
-    queue = getattr(state, "receipt_queue", None)
-    if queue is None:
-        return
-    try:
-        await asyncio.wait_for(queue(payload), timeout=settings.QUEUE_SEND_TIMEOUT_MS / 1000)
-        await bk.mark_sent(conn, outbox_id, clock.now())
-    except Exception:  # noqa: BLE001 - committed; the relay sends what this leaves behind
-        log.error("resend fast-path send failed; the outbox row stays pending for the relay", exc_info=True)
 
