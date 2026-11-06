@@ -10,7 +10,7 @@ What it manages, by name (idempotent: an existing service is updated, never dupl
   frontrow-api  Render free web service: backend/Dockerfile from the repository root (the same image as AWS)
   frontrow-redis is NOT created: it already exists (Render Key Value, Singapore); only its internal URL is read.
 
-Secrets come from passwords.txt (default D:/Project/SpendWise/passwords.txt, or --passwords): RENDER_API_KEY,
+Secrets come from passwords.txt (default D:/Project/FrontRow/passwords.txt, or --passwords): RENDER_API_KEY,
 RESEND_API_KEY and FRONTROW_NEON_APP_URL. No secret is written to this file, printed, or put in an error message.
 autoDeployTrigger is "off": the owner's free-tier rule is that deploys are triggered by hand and batched.
 """
@@ -162,7 +162,7 @@ def api_details() -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--passwords", type=Path, default=Path("D:/Project/SpendWise/passwords.txt"))
+    ap.add_argument("--passwords", type=Path, default=Path("D:/Project/FrontRow/passwords.txt"))
     ap.add_argument("--apply", action="store_true", help="create or update the services (default: dry run)")
     ap.add_argument("--deploy", action="store_true", help="trigger one deploy of each service not created in this run")
     args = ap.parse_args(argv)

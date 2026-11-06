@@ -49,7 +49,7 @@ python scripts/render_deploy.py --deploy   # trigger ONE deploy of each service 
 
 ## 2. Environment, `frontrow-api`
 
-**No value appears here.** Secrets come from `D:/Project/SpendWise/passwords.txt` and nowhere else. Every variable
+**No value appears here.** Secrets come from `D:/Project/FrontRow/passwords.txt` and nowhere else. Every variable
 with a ruled default in `backend/app/core/config.py` is left to the code.
 
 | Variable | Value comes from |
@@ -90,7 +90,7 @@ already applied, and the seed skips rows that exist.
 ```sh
 # from D:/Project/FrontRow/frontrow, Git Bash
 docker build -f backend/Dockerfile -t frontrow-api:render .
-P=D:/Project/SpendWise/passwords.txt
+P=D:/Project/FrontRow/passwords.txt
 export DATABASE_URL="$(grep '^FRONTROW_NEON_OWNER_URL=' $P | cut -d= -f2- | sed 's/-pooler\././')"
 export SEED_DEFAULT_PASSWORD="$(grep '^SEED_DEFAULT_PASSWORD=' $P | cut -d= -f2-)"
 docker run --rm -e DATABASE_URL frontrow-api:render migrate
