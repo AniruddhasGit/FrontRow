@@ -282,12 +282,41 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
   return art;
 }
 
+/** A screen picture the caller paints (SRC-008 WAIT-1, the cold-start countdown): one canvas, repainted whenever
+ *  `paint` changes - the caller changes it once a second - and one frame drawn per repaint (frameloop "demand"). */
+export type Paint = (g: CanvasRenderingContext2D, w: number, h: number) => void;
+function usePainted(paint: Paint | null, aspect: number): Texture | null {
+  const invalidate = useThree((s) => s.invalidate);
+  const on = !!paint;
+  const tex = useMemo(() => {
+    if (!on) return null;
+    const c = document.createElement("canvas");
+    c.width = 2048;
+    c.height = Math.round(2048 / aspect);
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }, [on, aspect]);
+  useEffect(() => () => tex?.dispose(), [tex]);
+  useEffect(() => {
+    if (!tex || !paint) return;
+    const c = tex.image as HTMLCanvasElement;
+    paint(c.getContext("2d")!, c.width, c.height);
+    tex.needsUpdate = true;
+    invalidate();
+  }, [tex, paint, invalidate]);
+  return tex;
+}
+
 /** CR-003: the Blender-baked room, /halls/hallN.glb. bake_* meshes carry their light in the texture and draw unlit;
  *  emit_* (LED strips, step lights, signs) are flat colour above 1 for the bloom; the screen shows the same picture as
  *  the procedural hall. Seats are not in the file - SeatKind draws them, live, lit by the lights below. */
-function BakedRoom({ n, film, tone, meta }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta }) {
+function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null }) {
   const invalidate = useThree((s) => s.invalidate);
-  const art = useScreenArt(film, tone);
+  const painted = usePainted(paint, meta.screen.w / meta.screen.h);
+  const still = useScreenArt(film, tone);
+  const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
   useEffect(() => {
@@ -305,7 +334,8 @@ function BakedRoom({ n, film, tone, meta }: { n: number; film: Film | null; tone
           geo.computeBoundingBox();
           const bb = geo.boundingBox!, pos = geo.attributes.position, uv = new Float32Array(pos.count * 2);
           for (let i = 0; i < pos.count; i++) {
-            uv[2 * i] = (pos.getX(i) - bb.min.x) / (bb.max.x - bb.min.x);
+            // the seats look along -z at a screen facing +z, so the picture's left is the mesh's +x (unmirrored)
+            uv[2 * i] = (bb.max.x - pos.getX(i)) / (bb.max.x - bb.min.x);
             uv[2 * i + 1] = (pos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y);
           }
           geo.setAttribute("uv", new BufferAttribute(uv, 2));
@@ -338,9 +368,11 @@ function BakedRoom({ n, film, tone, meta }: { n: number; film: Film | null; tone
 }
 
 /** Floor tiers on the rake, the stage floor, dark walls, the glowing screen, brass step lights in every aisle. */
-function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null }) {
+function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film | null; paint: Paint | null }) {
   const ref = useRef<InstancedMesh>(null);
-  const art = useScreenArt(film, tone);
+  const painted = usePainted(paint, 2.39);
+  const still = useScreenArt(film, tone);
+  const art = painted ?? still;
   const w = hall.halfWidth + 1.8;
   const { screen, depth, top } = hall;
   const height = screen.y + screen.height / 2 + 2.5;
@@ -416,10 +448,10 @@ function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null
   );
 }
 
-export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null }: {
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null }: {
   map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
-  onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null;
+  onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null; paint?: Paint | null;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
@@ -470,7 +502,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
-      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} /> : <Room hall={hall} tone={tone} film={film} />}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
       {KINDS.map((k) => (byKind[k].length ? (
         <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} baked={!!baked} />
       ) : null))}
