@@ -1,6 +1,6 @@
 // The app: the shell around whichever screen the path selects. Feature screens live in
 // src/features/<feature>/ and register their paths in that feature's routes.tsx.
-import { Layout } from "./layout";
+import { Shell } from "./Shell";
 import { Outlet, allRoutes } from "./router";
 
 function NotFound() {
@@ -13,8 +13,8 @@ function NotFound() {
 
 export function App() {
   return (
-    <Layout>
+    <Shell>
       <Outlet routes={allRoutes()} notFound={<NotFound />} />
-    </Layout>
+    </Shell>
   );
 }

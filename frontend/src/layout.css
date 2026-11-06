@@ -71,3 +71,16 @@
   margin: 0 auto;
   max-width: var(--fr-page-max);
 }
+
+/* SCR-XCT-05 nav and account area (Shell.tsx). Current area: weight + aria-current, never colour alone. */
+.fr-nav { display: flex; flex-wrap: wrap; gap: var(--fr-space-4); font-size: var(--fr-text-sm); }
+.fr-nav-link { color: var(--fr-ink); text-decoration: none; min-height: var(--fr-tap-min); display: inline-flex; align-items: center; }
+.fr-nav-link:hover { color: var(--fr-ink-strong); }
+.fr-nav-current { font-weight: var(--fr-weight-bold); color: var(--fr-ink-strong); }
+.fr-account { margin-left: auto; display: flex; align-items: center; gap: var(--fr-space-3); font-size: var(--fr-text-sm); }
+.fr-account-email { color: var(--fr-ink); }
+.fr-signin { color: var(--fr-accent-ink); text-decoration: underline; min-height: var(--fr-tap-min); display: inline-flex; align-items: center; }
+.fr-signout { background: transparent; border: var(--fr-stroke-hair) solid var(--fr-control-edge); color: var(--fr-accent-ink);
+  border-radius: var(--fr-radius-md); min-height: var(--fr-tap-min); padding: 0 var(--fr-space-3); font: inherit; cursor: pointer; }
+.fr-signout:disabled { opacity: 0.6; cursor: progress; }
+.fr-shell-wait { display: inline-block; width: 8rem; height: var(--fr-tap-min); border-radius: var(--fr-radius-sm); background: var(--fr-surface-inset); }
