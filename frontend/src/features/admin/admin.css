@@ -36,6 +36,9 @@
   border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet); }
 .admin-withdrawn { background: var(--fr-surface-inset); color: var(--fr-ink-muted); }
 [role="tab"][aria-selected="true"] { border-bottom: var(--fr-stroke-bold) solid var(--fr-surface-accent); }
+.admin-grant { grid-template-columns: 1fr auto; align-items: center; }
+.admin-grant-email { overflow-wrap: anywhere; }
+.admin-grant button { min-height: var(--fr-tap-min); }
 .admin textarea { font: inherit; min-height: 6rem; max-width: var(--fr-measure); }
 /* Phones: a grid child's default min-width is its content, so a wide control (the genre list) pushed the form past
    375px. Let the form and its controls shrink to the column. */

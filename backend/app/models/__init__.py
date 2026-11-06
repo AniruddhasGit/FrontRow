@@ -1,4 +1,4 @@
-"""SQLAlchemy Core mirror of the 22 tables in docs/06 DataModel/schema.sql. NOT the schema.
+"""SQLAlchemy Core mirror of the 23 tables in docs/06 DataModel/schema.sql. NOT the schema.
 
 The ORM mirrors the schema; it never defines it (AGENT_CONTRACT rule 8). The database - built by the
 migration from schema.sql - owns every constraint, default, index and grant; this module only names
@@ -126,6 +126,16 @@ users = Table(
     Column('password_version', Integer, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Column('last_signed_in_at', TIMESTAMP(timezone=True), nullable=True),
+)
+
+
+admin_grant = Table(
+    'admin_grant',
+    metadata,
+    Column('id', BigInteger, Identity(always=True), primary_key=True, nullable=False),
+    Column('email', Text, nullable=False),
+    Column('granted_by', BigInteger, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )
 
 

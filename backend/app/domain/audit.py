@@ -38,6 +38,8 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "manager.created",
     "manager.screen_assigned",
     "manager.screen_unassigned",
+    "admin_grant.created",  # SRC-008 ROLE-1, S-ADM-30 (E6 P-ADM-19 table)
+    "admin_grant.deleted",
     "language.created",
     "certification.created",
     "genre.created",

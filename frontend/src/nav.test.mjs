@@ -10,7 +10,7 @@ test("each role sees exactly its links, in order, and a guest sees none", () => 
   assert.deepEqual(labels(null), []);
   assert.deepEqual(labels("customer"), ["My bookings"]);
   assert.deepEqual(labels("manager"), ["Dashboard", "My bookings"]);
-  assert.deepEqual(labels("admin"), ["Dashboard", "Change log", "Films", "Showtimes", "Pricing", "Halls", "Managers", "Lists", "My bookings"]);
+  assert.deepEqual(labels("admin"), ["Dashboard", "Change log", "Films", "Showtimes", "Pricing", "Halls", "Managers", "Lists", "Admin access", "My bookings"]);
   assert.ok(!labels("manager").includes("Change log"), "the change log is the admin's alone");
   assert.deepEqual(labels("staff"), []);
 });

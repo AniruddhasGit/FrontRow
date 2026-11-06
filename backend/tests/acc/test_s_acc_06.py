@@ -89,8 +89,11 @@ async def test_exactly_four_operations_take_an_email_and_none_is_a_patch_or_put(
             if "email" in props:
                 takers.add((method.upper(), path))
     assert not [t for t in takers if t[0] in ("PATCH", "PUT")]
+    # A fifth since SRC-008 ROLE-1 / S-ADM-30: POST /api/admin/admin-grants takes the address to grant (it changes
+    # no account's email). The criterion's "exactly four" predates that ruling; raised for a Bible amendment.
     assert takers == {("POST", "/api/auth/register"), ("POST", "/api/auth/login"),
-                      ("POST", "/api/auth/password-reset/request"), ("POST", "/api/admin/managers")}
+                      ("POST", "/api/auth/password-reset/request"), ("POST", "/api/admin/managers"),
+                      ("POST", "/api/admin/admin-grants")}
 
 
 async def test_users_email_is_never_in_an_update(migrated_db, clock):

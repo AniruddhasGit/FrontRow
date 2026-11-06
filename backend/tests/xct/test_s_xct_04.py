@@ -106,8 +106,8 @@ def test_migrated_catalog_is_identical_to_the_catalog_schema_sql_produces(migrat
     migrated, reference = _catalog(migrated_db.admin_url), _catalog(schema_sql_db.admin_url)
     for part in _CATALOG:
         assert migrated[part] == reference[part], part
-    # Not vacuous: the reference really is the 22-table model.
-    assert len({r[0] for r in reference["columns"]}) == 22
+    # Not vacuous: the reference really is the 23-table model (admin_grant: SRC-008 ROLE-1).
+    assert len({r[0] for r in reference["columns"]}) == 23
 
 
 def test_verify_invariants_sql_passes_as_the_application_role(migrated_db):

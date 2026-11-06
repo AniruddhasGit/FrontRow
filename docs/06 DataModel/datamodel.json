@@ -28,7 +28,8 @@
     "genre": "P-ADM-23, one of four admin-maintained vocabularies.",
     "language": "P-ADM-23.",
     "certification": "P-ADM-23.",
-    "format": "P-ADM-23."
+    "format": "P-ADM-23.",
+    "admin_grant": "SRC-008 ROLE-1 and its ADDENDUM, S-ADM-30: the list of granted admin emails. The Bible names the behaviour, not the table."
   },
   "bible_reference_exceptions": {
     "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
@@ -78,7 +79,9 @@
     "genre.withdrawn",
     "genre.restored",
     "format.withdrawn",
-    "format.restored"
+    "format.restored",
+    "admin_grant.created",
+    "admin_grant.deleted"
   ],
   "roles": [
     {
@@ -93,6 +96,7 @@
       "cite": "S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11 · least-privilege matrix: checks/roles_local.sql section 3 (each table's privileges cited there; verify_invariants.sql A4 fails on any excess) · CREATED BY THE OPERATOR, NOT BY schema.sql: checks/roles_local.sql locally, the client on RDS (AWS_PREP_QUEUE row 20); schema.sql only GRANTs and fails loudly if the role is absent.",
       "grants": [
         "GRANT USAGE ON SCHEMA public TO frontrow_app",
+        "GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app",
         "GRANT SELECT, INSERT ON audit_log TO frontrow_app",
         "GRANT SELECT, INSERT ON booking TO frontrow_app",
         "GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
@@ -768,6 +772,10 @@
         "rows": null,
         "cite": "none - no document states a figure",
         "note": "Nothing in P-XCT-30 or P-XCT-32 creates a reset token, but no sentence says zero; null rather than an inferred 0. OPEN-RESETTOKEN-01 is ruled by SRC-004 R-3 (the token rides in the queue message only, never in the database), which adds no seeded row here."
+      },
+      "admin_grant": {
+        "rows": 0,
+        "cite": "S-ADM-30 ('after a fresh seed the list holds 0 rows') · SRC-008 ROLE-1 ADDENDUM (the seeded admin is not on the list)"
       }
     },
     "invariants": [
@@ -917,6 +925,83 @@
     ]
   },
   "tables": [
+    {
+      "name": "admin_grant",
+      "purpose": "One row per email address an existing admin has granted admin access to. A sign-up or sign-in with that address (trimmed, case-insensitive) makes the account admin; deleting the row makes an admin account with that address a customer again.",
+      "cite": "SRC-008 ROLE-1 and its ADDENDUM · S-ADM-30 · P-ADM-18 · P-ADM-19",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table) · S-ADM-30 (removing one deletes that grant row)",
+          "note": "The audit row of a removal records the id the deleted row held, as manager.screen_unassigned does.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "SRC-008 ROLE-1 ('typing their email into a section in setting') · S-ADM-30 (stored and compared trimmed and case-insensitively)",
+          "note": "Stored trimmed and lower-cased by the application, so the unique index on lower(email) and the comparison with users.email agree.",
+          "reserved_row": null
+        },
+        {
+          "name": "granted_by",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "SRC-008 ROLE-1 ('only an existing admin can make someone an admin') · S-ADM-02 (who made the change)",
+          "note": "The admin who typed the address. The audit row carries the same id as actor_user_id.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 · no table in `public` other than `alembic_version` may lack a `created_at` · FR-ADR-018",
+          "note": "Row metadata; the list orders by email, not by this.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(email)"
+          ],
+          "cite": "SRC-008 ROLE-1 and its ADDENDUM · S-ADM-30 (a second add of the same address in another case leaves exactly one grant row)",
+          "why": "One grant per address, case-insensitively. The guard, not the read before it: a simultaneous twin add is a unique violation translated to 422.",
+          "name": "uq_admin_grant__email_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "granted_by"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (every FK in the schema is confdeltype 'r') · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_admin_grant__granted_by"
+        }
+      ],
+      "checks": [],
+      "indexes": []
+    },
     {
       "name": "audit_log",
       "purpose": "One append-only row per privileged write, inserted in the same database transaction as the change itself, recording who, when, which action, which row, and the changed fields before and after.",

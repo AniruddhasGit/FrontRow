@@ -110,7 +110,7 @@ async def test_a_user_with_no_booking_can_be_deleted_and_its_session_then_ends(m
 
 async def test_no_route_takes_a_booking_owner_from_the_request(migrated_db, clock):
     endpoints = json.loads(CONTRACT.read_text(encoding="utf-8"))["endpoints"]
-    assert len(endpoints) == 58
+    assert len(endpoints) == 61  # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30)
     assert [(e["id"], e["method"], e["path"]) for e in endpoints if "{user_id}" in e["path"]] == \
         [("EP-ADM-24", "PUT", "/api/admin/managers/{user_id}/screens")]
     owner_names = {"user_id", "owner_id", "on_behalf_of"}
@@ -120,7 +120,7 @@ async def test_no_route_takes_a_booking_owner_from_the_request(migrated_db, cloc
             declared = set(req.get("path_params") or {}) | set(req.get("query") or {}) | set(req.get("body") or {})
             assert not (declared & owner_names), e["id"]
     deletes = [(e["id"], e["path"]) for e in endpoints if e["method"] == "DELETE"]
-    assert deletes == [("EP-ADM-21", "/api/admin/seats/{seat_id}"), ("EP-HLD-03", "/api/holds/{hold_token}/seats/{seat_id}"),
+    assert deletes == [("EP-ADM-21", "/api/admin/seats/{seat_id}"), ("EP-ADM-32", "/api/admin/admin-grants/{grant_id}"), ("EP-HLD-03", "/api/holds/{hold_token}/seats/{seat_id}"),
                        ("EP-HLD-04", "/api/holds/{hold_token}")]
     assert not [p for _, p in deletes if "{user_id}" in p or p.startswith("/api/admin/users")]
     # The running app agrees with the inventory: no mounted route deletes a user or carries an owner.

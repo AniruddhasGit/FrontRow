@@ -94,7 +94,8 @@ DECLARE
     "language":                  ["INSERT","SELECT","UPDATE"],
     "genre":                     ["INSERT","SELECT","UPDATE"],
     "format":                    ["INSERT","SELECT","UPDATE"],
-    "manager_screen_assignment": ["DELETE","INSERT","SELECT"]
+    "manager_screen_assignment": ["DELETE","INSERT","SELECT"],
+    "admin_grant":               ["DELETE","INSERT","SELECT"]
   }';
 BEGIN
 
