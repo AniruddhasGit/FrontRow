@@ -11,7 +11,6 @@ per user (20/min) and per real client IP (60/min), in Redis, failing closed (EP-
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from redis.exceptions import RedisError
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -27,8 +26,8 @@ NOT_YOURS = "No booking with that reference is on your account."
 UNAVAILABLE = "Your bookings cannot be loaded right now. Try again shortly."
 BAD_GROUP, BAD_PAGE, BAD_PAGE_SIZE = "That is not a valid filter.", "That is not a valid page.", "That is not a valid page size."
 
-LOOKUP_USER = Bucket("lookup-user", "RATE_LIMIT_LOOKUP_USER_PER_MIN", 60, "Too many lookups. Try again in {span}.")
-LOOKUP_IP = Bucket("lookup-ip", "RATE_LIMIT_LOOKUP_IP_PER_MIN", 60, "Too many lookups. Try again in {span}.")
+LOOKUP_USER = Bucket("lookup:user", "RATE_LIMIT_LOOKUP_USER_PER_MIN", 60, "Too many lookups. Try again in {span}.")
+LOOKUP_IP = Bucket("lookup:ip", "RATE_LIMIT_LOOKUP_IP_PER_MIN", 60, "Too many lookups. Try again in {span}.")
 
 
 async def caller(request: Request, conn: AsyncConnection = Depends(db), settings: Settings = Depends(get_settings),
@@ -81,10 +80,8 @@ async def my_booking(request: Request, reference: str, conn: AsyncConnection = D
     """EP-ACC-08. Another customer's reference and one that never existed get the same 404, byte for byte."""
     me = request.state.caller
     settings: Settings = request.app.state.settings
-    try:
-        await enforce(request, [(LOOKUP_USER, str(me.id)), (LOOKUP_IP, client_ip(request, settings))], UNAVAILABLE)
-    except RedisError:
-        raise ApiError(503, "DEPENDENCY_UNAVAILABLE", UNAVAILABLE) from None
+    # Fails closed by itself: Redis unreachable is 503 DEPENDENCY_UNAVAILABLE inside enforce (FR-ADR-028).
+    await enforce(request, [(LOOKUP_USER, str(me.id)), (LOOKUP_IP, client_ip(request, settings))], UNAVAILABLE)
     stored = bk.normalise_reference(reference)
     found = None
     if stored is not None:

@@ -3,11 +3,13 @@
     python scripts/seed.py                    create what is missing, skip what exists
     python scripts/seed.py --wipe-and-reseed  LOCAL ONLY: empty every table, then seed
 
-What it writes, all of it obviously demonstration data: DEMO CINEMA (Asia/Kolkata), six screens of
-90..220 seats, three seat categories, eleven DEMO lookup rows, eight published DEMO MOVIE films sharing one
-placeholder poster, 1 admin + 12 managers + 50 customers at SEED_EMAIL_DOMAIN, 720 showtimes centred on the
-injected clock's local date, and 11,003 captured bookings at a deterministic occupancy. The figures a
-correct run must produce are docs/06 DataModel/seed/expected_summary.json.
+What it writes, all of it obviously demonstration data: DEMO CINEMA (Asia/Kolkata), six differently shaped
+screens of 90..220 seats (CR-001 A.3), three seat categories, eleven DEMO lookup rows, four published DEMO MOVIE
+films sharing one placeholder poster, each on its own fixed screen(s) (CR-001 A.2), 1 admin + 12 managers + 50
+customers at SEED_EMAIL_DOMAIN, 720 showtimes centred on the injected clock's local date, and 11,003 captured
+bookings at a deterministic occupancy. The figures a correct run must produce are docs/06 DataModel/seed/
+expected_summary.json, except where CR-001 (hall shapes, films) and SRC-006 (the base price) have moved them and
+that generated file has not yet been re-derived.
 
 Rules this file keeps, each one an acceptance criterion:
 - Idempotent, keyed on the ONE cinema row (whatever the admin has since renamed it to) and below it on the
@@ -51,18 +53,36 @@ from app.domain.pricing import seat_price_paise  # noqa: E402
 # Set by run() from CINEMA_TIMEZONE (P-ADM-26 point 1, FR-ADR-067: the value the seed writes into the cinema row).
 ZONE = ""
 CINEMA_NAME = "DEMO CINEMA"
-# (screen number, seats, rows, columns) - ASSUMED, OPEN-SCALE-02 "pick random". Never a constraint.
-LAYOUT = [(1, 90, 9, 10), (2, 120, 10, 12), (3, 150, 10, 15), (4, 180, 12, 15), (5, 200, 10, 20), (6, 220, 11, 20)]
+
+
+def _rows(n: int, *blocks: int, width: int = 1) -> list:
+    return [(blocks, width)] * n
+
+
+# (screen number, seats, rows front to back) - ASSUMED, OPEN-SCALE-02 "pick random"; shapes CR-001 A.3. Never a
+# constraint. A row is (seat blocks left to right, grid columns per seat); an aisle is one empty grid column between
+# blocks, and None is an empty grid row (a walkway), which takes no row letter.
+LAYOUT = [
+    (1, 90, _rows(9, 10)),                                                     # Studio
+    (2, 120, _rows(10, 6, 6)),                                                 # Centre aisle
+    (3, 150, _rows(10, 4, 7, 4)),                                              # Twin aisle
+    (4, 180, [((n - n // 2, n // 2), 1) for n in (10, 11, 12, 13, 14, 15, 15, 16, 17, 18, 19, 20)]),  # Fan
+    (5, 200, _rows(4, 5, 10, 5) + [None] + _rows(6, 5, 10, 5)),                # Stadium, walkway after D
+    (6, 220, _rows(2, 4, 8, 4) + _rows(8, 4, 14, 4) + _rows(1, 12, width=2)),  # Grand, K = double-width recliners
+]
 # Row letters skip I (a seed habit only; SRC-004 R-4 permits I in the product).
 ROW_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 # (name, uplift basis points) - ASSUMED, OPEN-SEAT-01 "you pick". The same three numbers as the pricing examples.
 CATEGORIES = [("Standard", 0), ("Premium", 1250), ("Recliner", 3333)]
-BASE_PRICE_PAISE = 24999  # ASSUMED seed value; integer minor unit
+BASE_PRICE_PAISE = 1299  # ASSUMED seed value; integer minor unit - USD cents under SRC-006 (prices in US dollars)
 LANGUAGES = ["DEMO LANGUAGE A", "DEMO LANGUAGE B", "DEMO LANGUAGE C"]
 CERTIFICATIONS = ["DEMO RATING 1", "DEMO RATING 2"]
 GENRES = ["DEMO GENRE 1", "DEMO GENRE 2", "DEMO GENRE 3", "DEMO GENRE 4"]
 FORMATS = ["DEMO FORMAT 1", "DEMO FORMAT 2"]
-FILMS = 8
+FILMS = 4
+# Per screen 1..6: (film index, minutes after SLOTS) - CR-001 A.2. Film 1 on Screens 6 and 5, Film 2 on 4 and 3,
+# Film 3 on 2, Film 4 on 1; the second screen of a two-screen film starts 105 minutes later.
+PROGRAMME = [(3, 0), (2, 0), (1, 105), (1, 0), (0, 105), (0, 0)]
 DAYS = 30
 SLOTS = [time(11, 0), time(14, 30), time(18, 0), time(21, 30)]  # ASSUMED local starts, 210 minutes apart
 # The one placeholder poster, committed beside this file: a flat design-system shape (--fr-surface-inset),
@@ -101,10 +121,12 @@ def bands(rows: int) -> tuple[int, int, int]:
 
 def check_layout(layout) -> None:
     """The layout checked against itself before the first write (P-XCT-30 exception 9)."""
-    for number, seats, rows, cols in layout:
+    for number, seats, plan in layout:
         name = f"SCREEN {number}"
-        if rows * cols != seats:
-            raise SeedError(f"{name}: {rows} rows x {cols} columns is {rows * cols} seats, not {seats}")
+        rows = sum(1 for row in plan if row)
+        counted = sum(sum(row[0]) for row in plan if row)
+        if counted != seats:
+            raise SeedError(f"{name}: its rows hold {counted} seats, not {seats}")
         b = bands(rows)
         if sum(b) != rows or min(b) < 1:
             raise SeedError(f"{name}: category bands {b} do not cover {rows} rows with at least one row each")
@@ -189,19 +211,29 @@ def insert_halls(db: Db, cinema_id: int) -> tuple[list[int], dict[str, int]]:
             CATEGORIES)
     categories = dict(db.all("SELECT name, id FROM seat_category WHERE name = ANY(%s)", ([n for n, _ in CATEGORIES],)))
     screen_ids = []
-    for number, _seats, rows, cols in LAYOUT:
+    for number, _seats, plan in LAYOUT:
         name = f"SCREEN {number}"
         sid = db.one("SELECT id FROM screen WHERE cinema_id = %s AND name = %s", (cinema_id, name))
         if sid is None:
             sid = db.one("INSERT INTO screen (cinema_id, name, is_active, version) VALUES (%s, %s, true, 1) RETURNING id",
                          (cinema_id, name))
         screen_ids.append(sid)
-        standard, premium, _ = bands(rows)
-        seats = []
-        for r in range(rows):
+        standard, premium, _ = bands(sum(1 for row in plan if row))
+        # grid width of a row: its seats, times their width, plus one empty column per aisle
+        span = [sum(blocks) * w + len(blocks) - 1 for blocks, w in filter(None, plan)]
+        seats, r = [], 0
+        for grid_row, row in enumerate(plan, 1):
+            if not row:
+                continue  # the walkway: an empty grid row, no row letter used
+            blocks, w = row
             cat = "Standard" if r < standard else "Premium" if r < standard + premium else "Recliner"
-            for c in range(1, cols + 1):
-                seats.append((sid, ROW_LETTERS[r], c, r + 1, c, categories[cat]))
+            col, n = 1 + (max(span) - span[r]) // 2, 1  # centred on the widest row
+            for block in blocks:
+                for _ in range(block):
+                    seats.append((sid, ROW_LETTERS[r], n, grid_row, col, categories[cat]))
+                    col, n = col + w, n + 1
+                col += 1  # the aisle
+            r += 1
         db.many("INSERT INTO seat (screen_id, row_label, seat_number, grid_row, grid_col, seat_category_id, is_active) "
                 "VALUES (%s, %s, %s, %s, %s, %s, true) ON CONFLICT DO NOTHING", seats)
     return screen_ids, categories
@@ -229,7 +261,7 @@ def local(day, at: time) -> datetime:
 
 
 def insert_films(db: Db, vocab, first_day, now: datetime) -> list[int]:
-    """DEMO MOVIE 01..08, published from the injected clock, inside a window covering the whole schedule."""
+    """DEMO MOVIE 01..04, published from the injected clock, inside a window covering the whole schedule."""
     display_from, display_until = local(first_day, time(0)), local(first_day + timedelta(days=DAYS), time(0))
     ids = []
     for i in range(FILMS):
@@ -277,8 +309,8 @@ def schedule(first_day, screen_ids, film_ids, runtimes, format_ids, padding_minu
     for d in range(DAYS):
         for slot, at in enumerate(SLOTS):
             for screen_index, sid in enumerate(screen_ids):
-                film = (k + d) % FILMS
-                starts = local(first_day + timedelta(days=d), at)
+                film, offset = PROGRAMME[screen_index]
+                starts = local(first_day + timedelta(days=d), at) + timedelta(minutes=offset)
                 yield {"k": k, "screen_index": screen_index, "screen_id": sid, "movie_id": film_ids[film],
                        "starts_at": starts, "ends_at": starts + timedelta(minutes=runtimes[film] + padding_minutes),
                        "format_id": format_ids[(d * len(SLOTS) + slot) % 2]}

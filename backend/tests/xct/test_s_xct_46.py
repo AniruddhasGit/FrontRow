@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.core.security import SESSION_COOKIE, issue_session_token
 from app.main import create_app
-from tests.adm.kit import routes
+from tests.adm.kit import MemoryPosters, multipart, png, routes
 from tests.conftest import FakeClock
 from tests.dbkit import app_settings, create_database, drop_database, owner_sql
 from tests.seed.kit import DOMAIN, NOW, empty_db, one, run_seed, run_seed_process, seed, seeded, table_counts  # noqa: F401
@@ -166,6 +166,9 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
     day = (NOW + timedelta(days=5)).astimezone(ZoneInfo("Asia/Kolkata")).date().isoformat()
     state: dict[str, int] = {}
 
+    def vocab(kind: str) -> int:
+        return one(db, f"SELECT min(id) FROM {kind} WHERE is_active")
+
     def audits() -> int:
         return one(db, "SELECT count(*) FROM audit_log")
 
@@ -188,6 +191,20 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
         ("PUT", "/api/admin/managers/{user_id}/screens", lambda: (f"/api/admin/managers/{state['manager']}/screens",
                                                                   {"screen_ids": [state["screen"]]})),
         ("DELETE", "/api/admin/seats/{seat_id}", lambda: (f"/api/admin/seats/{state['spare_seat']}", None)),
+        # Phase 6 (S-ADM-21..28): the vocabularies and the film lifecycle, each write one audit row.
+        ("POST", "/api/admin/lookups/{kind}", lambda: ("/api/admin/lookups/genre", {"name": "SWEEP GENRE"})),
+        ("PATCH", "/api/admin/lookups/{kind}/{id}", lambda: (f"/api/admin/lookups/genre/{state['genre']}", {"is_active": False})),
+        ("POST", "/api/admin/movies", lambda: ("/api/admin/movies", {
+            "title": "DEMO MOVIE SWEEP", "synopsis": "", "runtime_minutes": 100, "genre_ids": [vocab("genre")],
+            "language_id": vocab("language"), "certification_id": vocab("certification")})),
+        # The window alone: exactly one movie.display_window_changed row (a title change too would be a second row).
+        ("PATCH", "/api/admin/movies/{movie_id}", lambda: (f"/api/admin/movies/{state['film']}", {
+            "version": state["film_version"], "display_from": "2026-10-01T00:00:00", "display_until": "2026-12-01T00:00:00"})),
+        ("POST", "/api/admin/movies/{movie_id}/poster", lambda: (f"/api/admin/movies/{state['film']}/poster", None)),
+        ("POST", "/api/admin/movies/{movie_id}/publish", lambda: (f"/api/admin/movies/{state['film']}/publish",
+                                                                  {"version": state["film_version"]})),
+        ("POST", "/api/admin/movies/{movie_id}/unpublish", lambda: (f"/api/admin/movies/{state['film']}/unpublish",
+                                                                    {"version": state["film_version"]})),
     ]
     assert {(m, p) for m, p, _ in steps} == mounted
     for method, template, build in steps:
@@ -201,7 +218,13 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
             state["spare_seat"] = r.json()["items"][0]["id"]
         path, body = build()
         before = audits()
-        r = c.request(method, path, json=body)
+        if template.endswith("/poster"):
+            c.app_.state.posters = MemoryPosters()  # the in-memory bucket: no AWS call (S-ADM-25)
+            content, ctype = multipart(("version", None, None, str(state["film_version"]).encode()),
+                                       ("file", "sweep.png", "image/png", png(200, 300)))
+            r = c.post(path, content=content, headers={"Content-Type": ctype})
+        else:
+            r = c.request(method, path, json=body)
         assert r.status_code < 300, (method, path, r.status_code, r.text)
         assert audits() == before + 1, (method, path)
         data = r.json() if r.content else {}
@@ -215,6 +238,10 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
             state["showtime"] = data["id"]
         elif template == "/api/admin/managers":
             state["manager"] = data["user_id"]
+        elif template == "/api/admin/lookups/{kind}":
+            state["genre"] = data["id"]
+        elif template.startswith("/api/admin/movies"):
+            state["film"], state["film_version"] = data["id"], data["version"]
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", day)
     # S-XCT-46/S-ADM-02: no audit row without an actor at ANY point - re-checked here, where audit rows exist.
     assert audits() > 0

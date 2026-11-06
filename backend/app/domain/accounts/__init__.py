@@ -13,8 +13,11 @@ The functions are looked up on the `security` module at call time, so a test can
 from __future__ import annotations
 
 import enum
+import hashlib
 import logging
+import re
 import secrets
+from datetime import datetime, timedelta
 from typing import Any
 
 import anyio
@@ -25,7 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.api.errors import ApiError
 from app.core import security
 from app.core.config import Settings
-from app.models import users
+from app.domain.booking import MESSAGE_VERSION  # the one version the worker accepts, for both topics
+from app.models import outbox_message, password_reset_token, users
 
 log = logging.getLogger("app.accounts")
 
@@ -150,3 +154,93 @@ async def sign_in(conn: AsyncConnection, state: Any, settings: Settings, email: 
         # The one write on the sign-in path, and not an audit row: signing in is not a privileged write.
         await conn.execute(update(users).where(users.c.id == row.id).values(last_signed_in_at=now))
     return {"id": row.id, "email": row.email, "role": row.role, "password_version": row.password_version}
+
+
+# ---- password reset (P-ACC-07 / P-ACC-08, EP-ACC-05 / EP-ACC-06) ----------------------------------------------------
+
+RESET_UNAVAILABLE = "Password reset is unavailable right now. Try again shortly."
+RESET_NOT_VALID = "That reset link is not valid. Request a new one."
+RESET_USED = "That reset link has already been used. Request a new one."
+RESET_EXPIRED = "That reset link has expired. Request a new one."
+RESET_TOPIC = "password_reset.send"
+_TOKEN_SHAPE = re.compile(r"[A-Za-z0-9_-]{43}")  # 32 bytes, URL-safe base64, unpadded
+
+
+def reset_sent(settings: Settings) -> str:
+    """The one shared sentence (P-ACC-07 rows 1-2): the minutes are PASSWORD_RESET_TTL_SECONDS // 60, never typed."""
+    return ("If that email address has an account, a reset link is on its way to it. "
+            f"The link works once and expires in {settings.PASSWORD_RESET_TTL_SECONDS // 60} minutes.")
+
+
+def new_reset_token() -> str:
+    """32 bytes from the CSPRNG, 43 URL-safe characters (P-ACC-07 step 4). Looked up at call time so a test can stub it.
+    Shortening this or swapping `secrets` out is the one change no functional test catches; the confirm bucket is the
+    control that survives it (P-ACC-08 row 8)."""
+    return secrets.token_urlsafe(32)
+
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+
+def reset_email(raw: Any) -> str:
+    """P-ACC-07 row 3: every shape failure - empty, too long, not an address - reads 'Enter an email address.'"""
+    try:
+        return checked_email(raw)
+    except ApiError:
+        raise _invalid("Enter an email address.", "email") from None
+
+
+def reset_token(raw: Any) -> str:
+    """P-ACC-08 row 4: anything but exactly 43 URL-safe characters is 422 with no database read."""
+    if not isinstance(raw, str) or not _TOKEN_SHAPE.fullmatch(raw):
+        raise _invalid(RESET_NOT_VALID, "token")
+    return raw
+
+
+async def request_reset(conn: AsyncConnection, settings: Settings, email: str, now: datetime,
+                        request_id: str) -> tuple[int, dict[str, Any]] | None:
+    """P-ACC-07 steps 1-6, one transaction. None for an unknown address (nothing written). Otherwise (outbox id, the
+    queue body): the outbox payload carries NO token; the queue body is that payload plus the token (SRC-004 R-3)."""
+    async with conn.begin():
+        user_id = (await conn.execute(select(users.c.id).where(func.lower(users.c.email) == email.lower()))).scalar()
+        if user_id is None:
+            return None
+        # Step 3: at most one live token per account.
+        await conn.execute(update(password_reset_token).where(password_reset_token.c.user_id == user_id,
+                                                              password_reset_token.c.used_at.is_(None)).values(used_at=now))
+        token = new_reset_token()
+        token_id = (await conn.execute(insert(password_reset_token).values(
+            user_id=user_id, token_sha256=token_digest(token), created_at=now,
+            expires_at=now + timedelta(seconds=settings.PASSWORD_RESET_TTL_SECONDS)).returning(password_reset_token.c.id))).scalar_one()
+        payload = {"message_version": MESSAGE_VERSION, "request_id": request_id, "reset_token_id": token_id, "user_id": user_id}
+        outbox_id = (await conn.execute(insert(outbox_message).values(
+            topic=RESET_TOPIC, payload=payload, status="pending", attempts=0, created_at=now).returning(outbox_message.c.id))).scalar_one()
+    return outbox_id, {**payload, "reset_token": token}
+
+
+async def confirm_reset(conn: AsyncConnection, state: Any, settings: Settings, token: str, password: Any,
+                        now: datetime) -> dict[str, Any]:
+    """P-ACC-08. The single-use guarantee is the conditional UPDATE inside the transaction, never the read before it."""
+    row = (await conn.execute(select(password_reset_token.c.id, password_reset_token.c.user_id, password_reset_token.c.expires_at,
+                                     password_reset_token.c.used_at)
+                              .where(password_reset_token.c.token_sha256 == token_digest(token)))).first()
+    await conn.rollback()  # no transaction stays open across the bcrypt wait
+    if row is None:
+        raise ApiError(400, "RESET_TOKEN_INVALID", RESET_NOT_VALID)
+    if row.used_at is not None:
+        raise ApiError(400, "RESET_TOKEN_INVALID", RESET_USED)
+    if now >= row.expires_at:
+        raise ApiError(400, "RESET_TOKEN_INVALID", RESET_EXPIRED)
+    password = check_new_password(password, settings.PASSWORD_MIN_LENGTH)
+    password_hash = await _bcrypt(state, settings, RESET_UNAVAILABLE, "hash_password", password, settings.BCRYPT_COST)
+    async with conn.begin():
+        spent = await conn.execute(update(password_reset_token).where(password_reset_token.c.id == row.id,
+                                                                      password_reset_token.c.used_at.is_(None)).values(used_at=now))
+        if spent.rowcount != 1:
+            raise ApiError(400, "RESET_TOKEN_INVALID", RESET_USED)  # lost the race (row 7): the block rolls back
+        # password_version + 1 is what ends every older session: deps.current_user refuses a token whose pv differs.
+        user = (await conn.execute(update(users).where(users.c.id == row.user_id).values(
+            password_hash=password_hash, password_version=users.c.password_version + 1, last_signed_in_at=now)
+            .returning(users.c.id, users.c.email, users.c.role, users.c.password_version))).one()
+    return {"id": user.id, "email": user.email, "role": user.role, "password_version": user.password_version}

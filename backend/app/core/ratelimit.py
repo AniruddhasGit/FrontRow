@@ -16,7 +16,6 @@ everything through when Redis is down removes the control exactly when the syste
 
 from __future__ import annotations
 
-import hashlib
 import ipaddress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -73,7 +72,7 @@ def render_span(seconds: int) -> str:
 
 @dataclass(frozen=True)
 class Bucket:
-    name: str  # part of the Redis key
+    name: str  # "<bucket>:<dimension>" - the key's middle (S-XCT-15), e.g. "hold:user", "hold:ip"
     setting: str  # the Settings field holding the capacity
     window_seconds: int
     message: str  # "{span}" is replaced by render_span(Retry-After)
@@ -83,12 +82,19 @@ class Bucket:
         return Bucket(self.name, self.setting, self.window_seconds, self.message, getattr(settings, self.setting))
 
 
-LOGIN_EMAIL = Bucket("login-email", "RATE_LIMIT_LOGIN_USER_PER_15MIN", 900,
+# The per-user sign-in bucket is keyed on the SUBMITTED address (no user is known before sign-in), hashed by the caller
+# (app/api/auth.py) so an email address never sits in Redis in the clear.
+LOGIN_EMAIL = Bucket("login:user", "RATE_LIMIT_LOGIN_USER_PER_15MIN", 900,
                      "Too many sign-in attempts for that email address. Try again in {span}.")
-LOGIN_IP = Bucket("login-ip", "RATE_LIMIT_LOGIN_IP_PER_15MIN", 900,
+LOGIN_IP = Bucket("login:ip", "RATE_LIMIT_LOGIN_IP_PER_15MIN", 900,
                   "Too many sign-in attempts from this connection. Try again in {span}.")
-REGISTER_IP = Bucket("register-ip", "RATE_LIMIT_REGISTER_IP_PER_HOUR", 3600,
+REGISTER_IP = Bucket("register:ip", "RATE_LIMIT_REGISTER_IP_PER_HOUR", 3600,
                      "Too many accounts have been created from this connection. Try again in {span}.")
+# P-ACC-07 row 4 and P-ACC-08 row 8: two buckets, never one (a recovery must not spend the request bucket twice).
+RESET_REQUEST_IP = Bucket("reset_request:ip", "RATE_LIMIT_RESET_IP_PER_HOUR", 3600,
+                          "Too many reset requests from this connection. Try again in {span}.")
+RESET_CONFIRM_IP = Bucket("reset_confirm:ip", "RATE_LIMIT_RESET_CONFIRM_IP_PER_HOUR", 3600,
+                          "Too many attempts from this connection. Try again in {span}.")
 
 
 def _trusted(peer: str, allowed: str) -> bool:
@@ -120,8 +126,9 @@ def client_ip(request: Request, settings: Settings) -> str:
 
 
 def _key(bucket: Bucket, subject: str) -> str:
-    # Hashed: an email address (a submitted login key) never sits in Redis in the clear.
-    return f"rl:{bucket.name}:{hashlib.sha256(subject.encode('utf-8')).hexdigest()}"
+    # rl:<bucket>:<dimension>:<identifier> (S-XCT-15): the bucket name is required, or the sign-in bucket would spend
+    # the seat-hold bucket's tokens. The identifier is a user id or an address - nothing a client chose.
+    return f"rl:{bucket.name}:{subject or 'unknown'}"
 
 
 async def enforce(request: Request, checks: list[tuple[Bucket, str]], unavailable: str) -> None:
@@ -140,5 +147,6 @@ async def enforce(request: Request, checks: list[tuple[Bucket, str]], unavailabl
     if refused:
         retry_after = max(1, -(-int(wait_ms) // 1000))
         bucket = sized[int(refused) - 1]
+        # The header and details.retry_after_seconds carry the same integer (P-XCT-07); the sentence renders it (S7.20).
         raise ApiError(429, "RATE_LIMITED", bucket.message.format(span=render_span(retry_after)),
-                       headers={"Retry-After": str(retry_after)})
+                       {"retry_after_seconds": retry_after}, headers={"Retry-After": str(retry_after)})

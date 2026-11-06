@@ -5,7 +5,10 @@ import type { AppRoute } from "../../router";
 import { Link } from "../../router";
 import "./admin.css";
 import { CategoriesScreen } from "./CategoriesScreen";
+import { FilmEditor } from "./FilmEditor";
+import { FilmsScreen } from "./FilmsScreen";
 import { HallsScreen } from "./HallsScreen";
+import { ListsScreen } from "./ListsScreen";
 import { ManagersScreen } from "./ManagersScreen";
 import { ShowtimesScreen } from "./ShowtimesScreen";
 import { VenueScreen } from "./VenueScreen";
@@ -15,6 +18,8 @@ function AdminHome() {
     <section className="admin">
       <h1>Administration</h1>
       <ul className="admin-list">
+        <li><Link to="/admin/movies">Films</Link></li>
+        <li><Link to="/admin/lookups">Lists</Link></li>
         <li><Link to="/admin/venue">Venue</Link></li>
         <li><Link to="/admin/halls">Halls</Link></li>
         <li><Link to="/admin/seat-categories">Seat categories and pricing</Link></li>
@@ -27,6 +32,11 @@ function AdminHome() {
 
 export const adminRoutes: AppRoute[] = [
   { path: "/admin", render: () => <AdminHome /> },
+  { path: "/admin/movies", render: () => <FilmsScreen /> },
+  // "new" is matched first: /admin/movies/:movieId would otherwise take it as an id.
+  { path: "/admin/movies/new", render: () => <FilmEditor key="new" /> },
+  { path: "/admin/movies/:movieId", render: (p) => <FilmEditor key={p.movieId} movieId={p.movieId} /> },
+  { path: "/admin/lookups", render: () => <ListsScreen /> },
   { path: "/admin/venue", render: () => <VenueScreen /> },
   { path: "/admin/halls", render: () => <HallsScreen /> },
   { path: "/admin/seat-categories", render: () => <CategoriesScreen /> },

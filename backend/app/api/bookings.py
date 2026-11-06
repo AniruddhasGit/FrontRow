@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import CurrentUser, current_user, db, get_clock, get_settings
 from app.api.errors import ApiError
+from app.core import metrics
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.logging import get_request_id
@@ -67,8 +68,8 @@ EMITS = frozenset({
 })
 
 # The booking-confirm bucket (S7.4): per user and per real client IP, both per minute.
-CONFIRM_USER = Bucket("confirm-user", "RATE_LIMIT_CONFIRM_USER_PER_MIN", 60, bk.RATE_LIMITED)
-CONFIRM_IP = Bucket("confirm-ip", "RATE_LIMIT_CONFIRM_IP_PER_MIN", 60, bk.RATE_LIMITED)
+CONFIRM_USER = Bucket("confirm:user", "RATE_LIMIT_CONFIRM_USER_PER_MIN", 60, bk.RATE_LIMITED)
+CONFIRM_IP = Bucket("confirm:ip", "RATE_LIMIT_CONFIRM_IP_PER_MIN", 60, bk.RATE_LIMITED)
 KEY_MAX = 255  # EP-PAY-01: the header is 1..255 characters
 
 
@@ -222,9 +223,12 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
             log.warning("post-commit hold release failed; the locks expire within the hold's TTL", exc_info=True)
         try:
             observe("queue send")
-            await _send_receipt(state, settings, clock, conn, outbox_id, booking_id)
+            await send_receipt(state, settings, clock, conn, outbox_id, bk.outbox_payload(booking_id, get_request_id()))
         except Exception:  # noqa: BLE001
             log.warning("post-commit receipt send failed; the outbox row stays pending for the relay", exc_info=True)
+        # The API's line for this booking (P-XCT-12, S-XCT-25): the request id beside the booking id it produced.
+        log.info("booking confirmed", extra={"route": "/api/bookings", "status_code": 201, "booking_id": booking_id})
+        metrics.inc("booking_confirmations_total", outcome="confirmed")
         return Response(bk.canonical_json(response), status_code=201, media_type="application/json")
     except bk.Duplicate as dup:
         return _duplicate(dup, fingerprint, settings)
@@ -232,13 +236,17 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
         # The booking transaction has rolled back (its idempotency record with it); the attempt itself is recorded.
         async with conn.begin():
             await pay.record_failure(conn, amount_paise=total, idempotency_key=key, now=clock.now())
+        metrics.inc("booking_confirmations_total", outcome="payment_failed")
         raise ApiError(402, ErrorCode.PAYMENT_FAILED, bk.PAYMENT_FAILED) from None
     except bk.SeatsTaken:
         # The guard working (P-PAY-11): expected, logged at info, never retried.
         # A violation means a committed row exists, so this read finds at least one seat. Should it ever find none,
-        # the hold's own seats are named rather than the refusal crashing into a 500.
+        # the hold's own seats are named rather than the refusal crashing into a 500 (S-XCT-03's read-back test).
         labels = await bk.sold_labels(conn, hold.showtime_id, hold) or [hold.seats[i]["label"] for i in sorted(hold.seats)]
         log.info("seat taken at confirm", extra={"error_code": ErrorCode.SEAT_UNAVAILABLE.value, "unavailable_seats": labels})
+        # The database guard working (P-XCT-01): INFO and a counter, never an exception line.
+        metrics.inc("seat_conflicts_total")
+        metrics.inc("booking_confirmations_total", outcome="seat_unavailable")
         raise ApiError(409, ErrorCode.SEAT_UNAVAILABLE, bk.taken_message(labels), {"unavailable_seats": labels}) from None
     except ApiError:
         raise
@@ -249,13 +257,14 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
         raise ApiError(500, ErrorCode.INTERNAL_ERROR, bk.FAILED) from None
 
 
-async def _send_receipt(state, settings: Settings, clock: Clock, conn: AsyncConnection, outbox_id: int, booking_id: int) -> None:
-    """P-PAY-10 step 15: bounded by QUEUE_SEND_TIMEOUT_MS. Any failure leaves the outbox row pending for the relay."""
+async def send_receipt(state, settings: Settings, clock: Clock, conn: AsyncConnection, outbox_id: int, payload: dict) -> None:
+    """The post-commit fast path of the confirm (P-PAY-10 step 15) and of the resend (P-TKT-07, app/api/receipts.py):
+    bounded by QUEUE_SEND_TIMEOUT_MS. Any failure leaves the outbox row pending for the relay and logs one ERROR line."""
     queue = getattr(state, "receipt_queue", None)
     if queue is None:
         return
     try:
-        await asyncio.wait_for(queue(bk.outbox_payload(booking_id, get_request_id())), timeout=settings.QUEUE_SEND_TIMEOUT_MS / 1000)
+        await asyncio.wait_for(queue(payload), timeout=settings.QUEUE_SEND_TIMEOUT_MS / 1000)
         await bk.mark_sent(conn, outbox_id, clock.now())
     except Exception:  # noqa: BLE001 - the booking is committed; the relay sends what this leaves behind
-        log.warning("receipt fast-path send failed; the outbox row stays pending for the relay", exc_info=True)
+        log.error("receipt fast-path send failed; the outbox row stays pending for the relay", exc_info=True)

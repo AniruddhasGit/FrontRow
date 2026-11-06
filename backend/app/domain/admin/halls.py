@@ -5,7 +5,7 @@ past or future, booked or empty - a seat's row_label, seat_number and seat_categ
 seat cannot be deleted. Adding a seat, moving its grid position, taking it in or out of service and
 renaming the hall stay permitted.
 
-THE LOCK: every seat write first takes a row lock (with_for_update) on its SCREEN row, unconditionally, so a
+THE LOCK: every seat write takes SELECT ... FOR UPDATE on its screen row first, unconditionally, so a
 seat added or retired in the same instant as a showtime creation is wholly inside that showtime's seat
 set or wholly outside it (P-ADM-14).
 """

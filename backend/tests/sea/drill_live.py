@@ -33,7 +33,6 @@ import os
 import secrets
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -48,11 +47,9 @@ DB = "fr_drill_" + secrets.token_hex(4)
 FAILURES: list[str] = []
 # The drill waits on REAL containers in real time - a Redis restart, a process exit, a key's own TTL - which is the
 # point of it. It is not a test and asserts nothing against an application clock; every wait is this one helper.
-_WAIT = threading.Event()
-
-
+# (A plain sleep: the S-SEA-08 rg over backend/tests finds it, which is that AC's over-reach - see its doc defect.)
 def pause(seconds: float) -> None:
-    _WAIT.wait(seconds)
+    time.sleep(seconds)
 
 
 def sh(*args: str, check: bool = True, input: str | None = None, env: dict | None = None) -> subprocess.CompletedProcess:

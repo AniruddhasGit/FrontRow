@@ -83,6 +83,7 @@ def test_a_confirm_in_flight_when_sigterm_arrives_completes_and_commits(migrated
     import os
     import signal
     import threading
+    import time
     from urllib.parse import urlsplit
 
     import httpx
@@ -112,7 +113,7 @@ def test_a_confirm_in_flight_when_sigterm_arrives_completes_and_commits(migrated
                               "AND state = 'idle in transaction'", (dbname,))[0][0]
             if open_tx:
                 break
-            threading.Event().wait(0.02)
+            time.sleep(0.02)  # polls another process's transaction; reads no clock
         assert open_tx == 1, "the confirm was never observed inside its transaction"
         assert "status" not in result
         proc.send_signal(signal.SIGTERM)

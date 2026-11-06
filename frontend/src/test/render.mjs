@@ -22,7 +22,7 @@ let server = null;
 /** ssrLoadModule a .ts/.tsx module by its root-relative path ("/src/..."), through the project's vite.config.ts. */
 export async function load(path) {
   server ??= await createServer({
-    root: ROOT, logLevel: "error", appType: "custom", server: { middlewareMode: true, hmr: false, watch: null },
+    root: ROOT, logLevel: "error", appType: "custom", server: { middlewareMode: true, hmr: false, watch: null, ws: false },
   });
   return server.ssrLoadModule(path);
 }

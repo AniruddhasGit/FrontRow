@@ -139,3 +139,27 @@ async def test_the_confirm_answers_503_with_its_own_sentence_and_captures_nothin
     assert one(world["db"], "SELECT count(*) FROM payment") == 0  # the simulated provider recorded no attempt
     assert not [s for s in sql if re.search(r"\b(seat|showtime|booking_seat|showtime_seat)\b", s) or "FOR UPDATE" in s]
     assert [cmd[0] for cmd in sent] == ["EVAL"]
+
+
+async def test_postgres_failing_mid_hold_with_redis_up_releases_the_customer_mutex(world, monkeypatch):
+    """The other failure: PostgreSQL fails part-way while Redis answers. Nothing is held, and the per-customer mutex is
+    released at once - the customer's next press is served, not made to poll out MUTEX_TTL_MS."""
+    import app.domain.holds as holds_module
+    from tests.sea.kit import api, r_keys
+
+    async def pg_down(*args, **kwargs):
+        raise RuntimeError("PostgreSQL failed part-way (test double)")
+
+    clock = SetClock()
+    clock.set(T0)
+    customer = user(world["db"])
+    real = holds_module._price_and_sold
+    async with api(world["db"], clock) as c:
+        monkeypatch.setattr(holds_module, "_price_and_sold", pg_down)
+        failed = await c.post("/api/showtimes/77/holds", json={"seat_ids": [402]}, cookies=session(c, customer))
+        assert failed.status_code == 500
+        assert r_keys(f"{holds_module.mutex_key(customer, 77)}*") == []
+        assert r_keys("lock:seat:77:*") == []
+        monkeypatch.setattr(holds_module, "_price_and_sold", real)
+        held = await c.post("/api/showtimes/77/holds", json={"seat_ids": [402]}, cookies=session(c, customer))
+    assert held.status_code == 201, held.text

@@ -69,6 +69,13 @@ class SqsQueue:
                                       WaitTimeSeconds=wait, MessageAttributeNames=["topic"])
         return [_parse(m) for m in out.get("Messages", [])]
 
+    async def depth(self) -> int:
+        """ApproximateNumberOfMessages, for /metrics queue_depth (cached by app.core.metrics.QueueDepth)."""
+        if self._send is None:
+            self._send = self._client(self.settings.QUEUE_SEND_TIMEOUT_MS / 1000)
+        out = await asyncio.to_thread(self._send.get_queue_attributes, QueueUrl=self.url, AttributeNames=["ApproximateNumberOfMessages"])
+        return int(out["Attributes"]["ApproximateNumberOfMessages"])
+
     async def remove(self, message: Message) -> None:
         if self._recv is None:
             self._recv = self._client(self.settings.QUEUE_POLL_WAIT_SECONDS + 10)

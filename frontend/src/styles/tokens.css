@@ -83,16 +83,16 @@
   --fr-stroke-hair: 1px;
   --fr-stroke-bold: 2px;
 
-  /* Type. System stacks only: a font file is a dependency and SRC-002 §13.1
-     requires the client's permission before one is added. The character comes
-     from the treatment, not from a licence — see DESIGN-SYSTEM.md.
+  /* Type. Inter Tight and JetBrains Mono, self-hosted from npm font packages
+     (FR-ADR-074 4: approved 2026-11-06; no runtime call to a font CDN), each
+     falling back to the platform stack it replaced.
      mono is load-bearing, not decorative: FR-ADR-048 requires the booking
      reference in a monospaced face, and every other number in this product
      (times, rows, seat labels, money, the countdown) belongs to the same
      voice. */
-  --fr-font-display: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --fr-font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --fr-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --fr-font-display: "Inter Tight", ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-body: "Inter Tight", ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
   /* Type scale. Six steps, and the jump from xl to 2xl is deliberate: 2xl is
      reserved for two things only — the display headline and the booking
@@ -128,7 +128,7 @@
   --fr-seat-gutter: 28px;
   --fr-tap-min: 44px;
 
-  --fr-page-max: 44rem;
+  --fr-page-max: 90rem; /* the wide canvas of the CR-001 wireframes; reading text stays capped at --fr-measure */
   --fr-measure: 34rem;
 
   /* A movie poster is 2:3. Every poster slot reserves that box before the
@@ -156,6 +156,7 @@
   --fr-surface-accent: #E39B2E;          /* @ground the primary action. House light. */
   --fr-surface-danger: #FBE6E0;          /* @ground the error banner */
   --fr-surface-notice: #16212B;          /* @ground the simulated-payment slab. Identical in both themes on purpose. */
+  --fr-surface-ticket: #F4EFE6;          /* @ground the paper ticket stub on the confirmation page (SCR-TKT-01). Identical in both themes on purpose: a ticket is paper in any room. */
 
   /* Seat fills. Four states, one lightness staircase, one distinct mark each.
      Order outward from the field is deliberate and is the same in both themes:
@@ -173,6 +174,8 @@
   --fr-ink-on-accent: #1C1204;           /* @text on:surface-accent */
   --fr-ink-on-danger: #7A2110;           /* @text on:surface-danger */
   --fr-ink-on-notice: #E9F2F7;           /* @text on:surface-notice */
+  --fr-ink-on-ticket: #1A1712;           /* @text on:surface-ticket */
+  --fr-ink-on-ticket-muted: #5E574C;     /* @text on:surface-ticket */
   --fr-accent-ink: #7E4C0D;              /* @text on:surface-base,surface-raised */
   --fr-danger-ink: #97270F;              /* @text on:surface-base,surface-raised */
   --fr-screen-ink: #0B5A6E;              /* @text on:surface-base,surface-raised */
@@ -188,6 +191,7 @@
   --fr-screen-bar: #223039;              /* @ui on:surface-inset */
   --fr-countdown-fill: #0F6A80;          /* @ui on:surface-raised */
   --fr-countdown-urgent: #A82E0E;        /* @ui on:surface-raised */
+  --fr-rule-ticket: #8A8070;             /* @ui on:surface-ticket */
 
   /* Exempt, with reasons. contrast.py fails a @decor with no why:"...", so
      this list cannot quietly grow. */
@@ -219,6 +223,7 @@
     --fr-surface-accent: #E8A93F;
     --fr-surface-danger: #2B1310;
     --fr-surface-notice: #16212B;
+    --fr-surface-ticket: #F4EFE6;
 
     --fr-seat-available: #1F242B;
     --fr-seat-sold: #42474D;
@@ -231,6 +236,8 @@
     --fr-ink-on-accent: #1C1204;
     --fr-ink-on-danger: #FFC3B0;
     --fr-ink-on-notice: #E9F2F7;
+    --fr-ink-on-ticket: #1A1712;
+    --fr-ink-on-ticket-muted: #5E574C;
     --fr-accent-ink: #EAB05A;
     --fr-danger-ink: #FF9C7E;
     --fr-screen-ink: #6ED4EA;
@@ -245,6 +252,7 @@
     --fr-screen-bar: #D2ECF4;
     --fr-countdown-fill: #4FC9E0;
     --fr-countdown-urgent: #FF8A63;
+    --fr-rule-ticket: #8A8070;
 
     --fr-screen-glow: #123543;
     --fr-rule-quiet: #232C36;
@@ -268,6 +276,7 @@
   --fr-surface-accent: #E8A93F;
   --fr-surface-danger: #2B1310;
   --fr-surface-notice: #16212B;
+  --fr-surface-ticket: #F4EFE6;
 
   --fr-seat-available: #1F242B;
   --fr-seat-sold: #42474D;
@@ -280,6 +289,8 @@
   --fr-ink-on-accent: #1C1204;
   --fr-ink-on-danger: #FFC3B0;
   --fr-ink-on-notice: #E9F2F7;
+  --fr-ink-on-ticket: #1A1712;
+  --fr-ink-on-ticket-muted: #5E574C;
   --fr-accent-ink: #EAB05A;
   --fr-danger-ink: #FF9C7E;
   --fr-screen-ink: #6ED4EA;
@@ -294,6 +305,7 @@
   --fr-screen-bar: #D2ECF4;
   --fr-countdown-fill: #4FC9E0;
   --fr-countdown-urgent: #FF8A63;
+  --fr-rule-ticket: #8A8070;
 
   --fr-screen-glow: #123543;
   --fr-rule-quiet: #232C36;

@@ -28,16 +28,18 @@ APP = BACKEND_DIR / "app"
 # ---- boot ---------------------------------------------------------------------------------------------
 
 
-def test_inr_with_ratio_100_loads(valid_env):
-    valid_env.setenv("CURRENCY_CODE", "INR")
+@pytest.mark.parametrize("code", ["INR", "USD"])  # USD is the ruled currency (SRC-006 CUR-1)
+def test_inr_or_usd_with_ratio_100_loads(valid_env, code):
+    valid_env.setenv("CURRENCY_CODE", code)
     valid_env.setenv("CURRENCY_MINOR_UNIT_RATIO", "100")
     s = load_settings()
-    assert (s.CURRENCY_CODE, s.CURRENCY_MINOR_UNIT_RATIO) == ("INR", 100)
+    assert (s.CURRENCY_CODE, s.CURRENCY_MINOR_UNIT_RATIO) == (code, 100)
 
 
+@pytest.mark.parametrize("code", ["INR", "USD"])
 @pytest.mark.parametrize("ratio", ["1000", "10", "1"])
-def test_any_other_ratio_with_inr_refuses_to_boot_naming_the_variable(valid_env, ratio):
-    valid_env.setenv("CURRENCY_CODE", "INR")
+def test_any_other_ratio_with_inr_or_usd_refuses_to_boot_naming_the_variable(valid_env, ratio, code):
+    valid_env.setenv("CURRENCY_CODE", code)
     valid_env.setenv("CURRENCY_MINOR_UNIT_RATIO", ratio)
     with pytest.raises(ConfigError) as exc:
         load_settings()
@@ -53,7 +55,7 @@ def test_currency_is_in_the_one_resolved_configuration_line():
     from app.core.config import Settings
 
     shown = redacted(Settings(**VALID_ENV))
-    assert shown["CURRENCY_CODE"] == "INR" and shown["CURRENCY_MINOR_UNIT_RATIO"] == 100
+    assert shown["CURRENCY_CODE"] == "USD" and shown["CURRENCY_MINOR_UNIT_RATIO"] == 100
 
 
 # ---- the column census ----------------------------------------------------------------------------------

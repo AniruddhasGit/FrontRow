@@ -72,6 +72,10 @@ is a signal. Ordinary dividers use `--fr-rule-quiet` and look nothing like it.
 
 ### 1.3 Typography: numbers are a separate voice
 
+> **Superseded in part by `FR-ADR-074` (2026-11-06):** the client approved two self-hosted web fonts, Inter Tight
+> (display and body) and JetBrains Mono (every number). `tokens.css` names them first in each stack, with the
+> platform stacks below kept as the fallback. The treatment described here is unchanged.
+
 There are no font files in this system. A font package is a dependency and
 `SRC-002 §13.1` requires the client's permission before one is added, so the stacks
 are the platform's own and the character comes from the treatment:
@@ -327,6 +331,9 @@ finding.
 ---
 
 ## 5. Dependencies
+
+> **Since `FR-ADR-074`:** `@fontsource/inter-tight` and `@fontsource/jetbrains-mono` (fonts, bundled by Vite, no CDN),
+> and `three` with `@react-three/fiber`, `-drei` and `-postprocessing` for the seat page's 3D hall only.
 
 **None added.** Plain CSS custom properties and CSS Modules, both of which ship with
 the fixed stack (`SRC-002 §4.1`, `FR-ADR-044`). No component library, no icon

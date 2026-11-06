@@ -10,6 +10,7 @@ import { formatPaise } from "../admin/money";
 import { forgetBooking } from "../booking/checkout";
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
+import { Hall3D } from "../hall3d/Hall3D";
 import { HoldCountdown } from "./Countdown";
 import { GIVE_UP, adding, closedBanner, failureOf, markTaken, primaryLabel, send, withoutLabels, type Hold } from "./hold";
 import {
@@ -19,7 +20,7 @@ import {
 import { createPoller } from "./poller";
 import "./seatmap.css";
 
-type Header = { id: number; movie: { title: string }; screen: { name: string }; starts_at: string };
+type Header = { id: number; movie: { id: number; title: string }; screen: { name: string }; starts_at: string };
 type LoadError = { message: string; requestId: string | null };
 
 function readJson<T>(key: string): T | null {
@@ -282,6 +283,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
         ) : null}
         <div aria-live="polite">{banner ? <div className="fr-banner"><p>{banner}</p></div> : null}</div>
       </div>
+      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
       <div className="fr-seatmap-body">
         <div className="fr-field">
           <p className="fr-poll-strip" aria-live="polite">{pollStrip ?? ""}</p>
@@ -342,7 +344,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   );
 }
 
-function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
+export function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
   if (r.status === 404) return { message: "That showtime could not be found.", requestId: null };
   if (r.status === 503 && r.message) return { message: r.message, requestId: null };
   // Every other 4xx and 5xx, 429 included: the first-load error. The request id is shown on 5xx only (FR-ADR-052).

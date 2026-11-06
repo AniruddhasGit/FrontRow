@@ -87,10 +87,10 @@ test("the total sums integers only: 2 Premium then 3 Recliner render the five pu
   const seats = new Map([1, 2].map((id) => [id, prem(id)]).concat([3, 4, 5].map((id) => [id, recl(id)])));
   const renders = [];
   for (let n = 1; n <= 5; n++) renders.push(formatPaise(total([1, 2, 3, 4, 5].slice(0, n), seats)));
-  assert.deepEqual(renders, ["₹281.25", "₹562.50", "₹895.83", "₹1,229.16", "₹1,562.49"]);
+  assert.deepEqual(renders, ["$281.25", "$562.50", "$895.83", "$1,229.16", "$1,562.49"]);
   assert.equal(total([1, 2, 3, 4, 5], seats), 156249);
   assert.notEqual(total([1, 2, 3, 4, 5], seats), 156248);
-  assert.equal(formatPaise(total([], seats)), "₹0.00");
+  assert.equal(formatPaise(total([], seats)), "$0.00");
   assert.equal(total([1, 999], seats), null); // a seat with no known price: no total at all
   const three = new Map([7, 8, 9].map((id) => [id, seat({ id, price_paise: 33331 })]));
   assert.equal(total([7, 8, 9], three), 99993);

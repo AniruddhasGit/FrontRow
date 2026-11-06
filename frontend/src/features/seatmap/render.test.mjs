@@ -13,7 +13,7 @@ import { MAX_SEATS_PER_BOOKING, capNote, parseSeatMap, selectable, visualOf } fr
 const CLOSED = ["Sales for this showtime", "have closed."].join(" ");
 
 atUrl("/showtimes/77");
-const { SeatMapScreen } = await load("/src/features/seatmap/SeatMapScreen.tsx");
+const { SeatMapScreen, firstLoadError } = await load("/src/features/seatmap/SeatMapScreen.tsx");
 const { HoldCountdown } = await load("/src/features/seatmap/Countdown.tsx");
 
 // S-BRW-11's hall: 12 grid rows x 22 grid columns, columns 4 and 5 an aisle, grid row 6 a cross-aisle: 220 seats.
@@ -45,7 +45,9 @@ function seatmap(seats, categories, rows, cols, closed = false) {
   return m;
 }
 const at = (map, row, num) => map.seats.find((s) => s.row === row && s.num === num);
-const screen = (seed) => render(SeatMapScreen, { showtimeId: "77", seed });
+// Every render gets an injected `now` (before holdOf's default expiry), so no countdown markup reads the wall clock.
+const NOW = Date.parse("2026-08-14T14:01:00.000Z");
+const screen = (seed) => render(SeatMapScreen, { showtimeId: "77", seed: { now: NOW, ...seed } });
 const cells = (doc) => all(doc, (e) => role(e) === "gridcell");
 const cellOf = (doc, seat) => cells(doc).find((c) => c.attrs["data-seat-id"] === String(seat.id));
 const ends = (doc, ending) => cells(doc).filter((c) => name(c, doc).endsWith(ending));
@@ -72,13 +74,16 @@ test("S-BRW-11: every seat retired renders 220 cells, all 'out of service', none
 });
 
 test("S-BRW-11, S-SEA-01, S-SEA-21: a failed first load renders its sentence and 'Try again'; 5xx adds the request id", () => {
-  for (const [loadError, lines] of [
-    [{ message: "The seat map could not be loaded.", requestId: "a1b2c3d4" }, ["The seat map could not be loaded.", "If you need help, quote a1b2c3d4."]],
-    [{ message: "That showtime could not be found.", requestId: null }, ["That showtime could not be found."]],
-    [{ message: "The seat map is unavailable right now. You can still browse showtimes. Try again in a few minutes.", requestId: null },
-     ["The seat map is unavailable right now. You can still browse showtimes. Try again in a few minutes."]],
+  // The response -> sentence mapping is the screen's own firstLoadError, fed what the API client hands it; the
+  // rendered lines come from its result, so a change to its copy or its status logic turns this red.
+  const down = "The seat map is unavailable right now. You can still browse showtimes. Try again in a few minutes.";
+  for (const [response, lines] of [
+    [{ status: 500, message: "anything", requestId: "a1b2c3d4" }, ["The seat map could not be loaded.", "If you need help, quote a1b2c3d4."]],
+    [{ status: 404, message: "anything", requestId: "a1b2c3d4" }, ["That showtime could not be found."]],
+    [{ status: 503, message: down, requestId: "a1b2c3d4" }, [down]],
+    [{ status: 429, message: "anything", requestId: "a1b2c3d4" }, ["The seat map could not be loaded."]],
   ]) {
-    const doc = screen({ loadError });
+    const doc = screen({ loadError: firstLoadError(response) });
     const box = all(doc, byClass("fr-map-error"))[0];
     assert.deepEqual(all(box, (e) => e.tag === "p").map(text), lines);
     assert.deepEqual(all(box, (e) => role(e) === "button").map((b) => name(b, doc)), ["Try again"]);
@@ -151,19 +156,19 @@ test("S-BRW-12: every seat sold renders the full grid and its banner, and no 'No
   assert.ok(!text(doc).includes("Nothing"));
 });
 
-test("S-BRW-13: one legend row per category reads 'Premium  ₹281.24'; no tax, fee or discount anywhere", () => {
+test("S-BRW-13: one legend row per category reads 'Premium  $281.24'; no tax, fee or discount anywhere", () => {
   const doc = screen({ map: hall() });
   const rows = all(all(doc, byClass("fr-legend-categories"))[0], (e) => e.tag === "li").map(text);
-  assert.deepEqual(rows, ["Premium  ₹281.24", "Recliner  ₹333.31"]);
+  assert.deepEqual(rows, ["Premium  $281.24", "Recliner  $333.31"]);
   assert.ok(!/Tax|Booking fee|Convenience|Discount/.test(text(doc)));
 });
 
-test("S-BRW-13: before the prices arrive the legend holds an empty block - no ₹, and never ₹0.00", () => {
+test("S-BRW-13: before the prices arrive the legend holds an empty block - no $, and never $0.00", () => {
   const doc = screen({});
   const block = all(doc, byClass("fr-inset-block"));
   assert.equal(block.length, 1);
-  assert.ok(!text(all(doc, byClass("fr-legend-categories"))[0]).includes("₹"));
-  assert.ok(!text(doc).includes("₹0.00"));
+  assert.ok(!text(all(doc, byClass("fr-legend-categories"))[0]).includes("$"));
+  assert.ok(!text(doc).includes("$0.00"));
 });
 
 // S-BRW-14's 6-row hall: gr 1, 2, 4 category 1; gr 3 void; gr 5 both; gr 6 category 2.
@@ -189,6 +194,12 @@ test("S-BRW-14: the mixed grid row between two bands means no band rule; the leg
   // Category 1 in two separate runs (gr 1-2 and gr 6, category 2 between): one legend row each.
   doc = screen({ map: sixRows((gr) => (gr === 4 || gr === 5 ? [2, 2] : [1, 1])) });
   assert.deepEqual(legend(doc), ["Premium", "Recliner"]);
+});
+
+test("S-BRW-14: the positive control - two adjacent bands (a void row between) carry data-band and one rule", () => {
+  const doc = screen({ map: sixRows((gr) => (gr <= 2 ? [1, 1] : [2, 2])) });
+  assert.equal(all(doc, (e) => "data-band-rule" in e.attrs).length, 1);
+  assert.equal(all(doc, (e) => "data-band" in e.attrs).length, 5); // grid rows 1, 2, 4, 5, 6
 });
 
 test("S-BRW-14: every grid row mixed: no band, no rule, the mixed notice exactly once", () => {
@@ -225,24 +236,24 @@ test("S-BRW-07, S-SEA-10: a guest's map has no 'held by you' cell and the action
   assert.equal(text(primary(doc)), "Hold these seats");
 });
 
-test("S-SEA-03: two Premium then three Recliner total ₹1,562.49; one line per seat plus the total; no tax or fee", () => {
+test("S-SEA-03: two Premium then three Recliner total $1,562.49; one line per seat plus the total; no tax or fee", () => {
   const map = hall({ cat: (s) => (s.row === "A" ? 1 : 2) });
   const premium = map.seats.filter((s) => s.cat === 1).slice(0, 2).map((s) => ({ ...s, price_paise: 28125 }));
   const recliner = map.seats.filter((s) => s.cat === 2).slice(0, 3).map((s) => ({ ...s, price_paise: 33333 }));
   const priced = { ...map, seats: map.seats.map((s) => premium.find((p) => p.id === s.id) ?? recliner.find((r) => r.id === s.id) ?? s) };
   const chosen = [...premium, ...recliner].map((s) => s.id);
   const totals = [1, 2, 3, 4, 5].map((n) => text(all(screen({ map: priced, selection: chosen.slice(0, n) }), byClass("fr-total"))[0]));
-  assert.deepEqual(totals, ["₹281.25", "₹562.50", "₹895.83", "₹1,229.16", "₹1,562.49"]);
+  assert.deepEqual(totals, ["$281.25", "$562.50", "$895.83", "$1,229.16", "$1,562.49"]);
   const doc = screen({ map: priced, selection: chosen });
   const summary = all(doc, byClass("fr-summary"))[0];
   assert.equal(all(summary, byClass("fr-summary-line")).length, chosen.length + 1);
   assert.equal((text(summary).match(/tax|fee|discount|convenience|surcharge|gst/gi) ?? []).length, 0);
 });
 
-test("S-SEA-03: nothing chosen reads ₹0.00 and the cap note; a seat with no known price removes the total and disables the action", () => {
+test("S-SEA-03: nothing chosen reads $0.00 and the cap note; a seat with no known price removes the total and disables the action", () => {
   const map = hall();
   let doc = screen({ map });
-  assert.equal(text(all(doc, byClass("fr-total"))[0]), "₹0.00");
+  assert.equal(text(all(doc, byClass("fr-total"))[0]), "$0.00");
   assert.equal(MAX_SEATS_PER_BOOKING, 10);
   assert.equal(text(all(doc, byClass("fr-cap-note"))[0]), capNote(10));
   assert.equal(capNote(10), ["Up to", 10, "seats."].join(" "));

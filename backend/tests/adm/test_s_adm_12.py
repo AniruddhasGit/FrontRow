@@ -1,6 +1,6 @@
 """S-ADM-12 - a base price per showtime in integer paise (P-ADM-10).
 
-NOT covered: the rupee form capture (no frontend test runner exists), MINOR_UNIT_RATIO/CURRENCY_CODE in
+NOT covered: the dollar form capture (no frontend test runner exists), MINOR_UNIT_RATIO/CURRENCY_CODE in
 backend/app/core/money.py (the foundation put the ratio in configuration as CURRENCY_MINOR_UNIT_RATIO),
 and the seat-map GET (Phase 3) - the 2812500 figure is proved through the one pricing function instead.
 """
@@ -27,9 +27,9 @@ def test_the_price_must_be_a_whole_positive_number_of_paise(client):
     hall, movie = make_screen(client.db), make_movie(client.db)
     make_seats(client.db, hall, 1)
     before = count(client.db, "showtime")
-    for price, message in ((25000.5, "Enter the base price in whole paise. A price cannot have a fraction of a paisa."),
-                           (0, "The base price must be at least 1 paisa."), (-1, "The base price must be at least 1 paisa."),
-                           ("25000", "Enter the base price in whole paise. A price cannot have a fraction of a paisa.")):
+    for price, message in ((25000.5, "Enter the base price in whole cents. A price cannot have a fraction of a cent."),
+                           (0, "The base price must be at least 1 cent."), (-1, "The base price must be at least 1 cent."),
+                           ("25000", "Enter the base price in whole cents. A price cannot have a fraction of a cent.")):
         r = _post(client, hall, movie, 1, base_price_paise=price)
         assert (r.status_code, r.json()["error"]["code"], r.json()["error"]["message"]) == (422, "VALIDATION_FAILED", message)
     r = _post(client, hall, movie, 1)

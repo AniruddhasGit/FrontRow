@@ -19,7 +19,8 @@ TEST-FIRST: failing test from the AC, watch it fail, minimal code. Never skip/xf
 Full-suite baseline: 17 red (see input file). Do not add reds; fix the ones in your territory. Before reporting, run the FULL suite once in your project and list every red with whose it is.
 SHARED FILE RULE: backend/app/core/config.py and backend/app/main.py are owned by lane p7-ops, but other lanes MAY add their own settings / router includes in one clearly separated block - re-read the file immediately before every edit and change only your block.
 NEVER: git commit/push; edit the ledger Status/StatusNote columns (report statuses - the orchestrator flips them); AWS calls or Zone C artefacts (specs in docs/30 Deployment are fine); migrations on boot; a manager endpoint that writes; host ports 5432/55432/55433/56379; other projects' containers. A new migration must be the next revision number after the latest in backend/migrations/versions; coordinate by taking the number your lane is given.
-Every row you claim Done must cite the exact passing test(s) and their output.`
+Every row you claim Done must cite the exact passing test(s) and their output.
+RESUMING: a previous attempt of EVERY lane ran ~3 hours and then died in a terminal crash before reporting. The working tree already holds its uncommitted edits (git status / git diff in your OWNED paths; untracked new files too; a snapshot is on branch wip/round4-snapshot). Read them first, keep what is right, fix what is wrong, finish the rest - do not start over and do not revert other lanes' edits. Work in shorter steps: run targeted tests, and the full suite only once at the end.`
 const R = { type:'object', properties:{
   rows: { type:'array', items:{ type:'object', properties:{ id:{type:'string'}, status:{type:'string',enum:['Done','Blocked','Backlog']}, evidence:{type:'string'}, note:{type:'string'} }, required:['id','status','evidence','note'] } },
   files:{type:'array',items:{type:'string'}}, deps_added:{type:'array',items:{type:'string'}}, test_output:{type:'string'},
@@ -51,6 +52,7 @@ Fix the round-3 verifier defects and close the cheaply closable Blocked rows (al
 OWNED: backend/app/workers/**, backend/app/api/receipts.py, backend/app/api/bookings.py, backend/app/api/me.py, backend/app/api/holds.py, backend/app/domain/{holds,booking,mail}/**, frontend/src/features/{seatmap,browse,ticket}/**, frontend/src/test/**, backend/tests/** for those areas (NOT tests of p6/p7/p8 territory). config.py only through the shared-file rule.`
 
 phase('Build')
-return await pipeline([{k:'p6-admin',t:A},{k:'p7-ops',t:B},{k:'p8-reports',t:C},{k:'blocked-fix',t:D}],
+const LANES = [{k:'p6-admin',t:A},{k:'p7-ops',t:B},{k:'p8-reports',t:C},{k:'blocked-fix',t:D}].filter(x => !args?.only || args.only.includes(x.k))
+return await pipeline(LANES,
   x => agent(x.t, { label:`build:${x.k}`, phase:'Build', schema:R }),
   (rep, x) => verify(x.k, x.t, rep))

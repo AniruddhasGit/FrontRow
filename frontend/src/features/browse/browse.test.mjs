@@ -48,7 +48,7 @@ test("times read in the instant's own offset, in the customer's form", () => {
 
 test("a showtime's accessible name: open with its price, closed ending 'sales closed'", () => {
   const st = { starts_at: "2026-08-14T19:30:00+05:30", screen: { name: "Hall 4" }, base_price_paise: 24999, sales_closed: false };
-  assert.equal(showtimeName(st, formatPaise), "7:30 pm, Hall 4, from ₹249.99");
+  assert.equal(showtimeName(st, formatPaise), "7:30 pm, Hall 4, from $249.99");
   assert.equal(showtimeName({ ...st, sales_closed: true }, formatPaise), "7:30 pm, Hall 4, sales closed");
 });
 

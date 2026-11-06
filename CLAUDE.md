@@ -144,8 +144,8 @@ need it at all? → already in this repo? → stdlib → platform/DB feature →
   winners, restore it, verify the restore. A gate nobody has watched fail is decoration.
 - **If Redis is down, return an error.** Never fall back to the database for locks (`§7.9`). A silent
   fallback turns a visible outage into an invisible correctness risk.
-- **Integer paise. Never a float.** Currency is **INR**, minor unit ratio **100**, timezone
-  **Asia/Kolkata** (`SRC-003 OPEN-LOCALE-01`). Decimal at the boundary, int in persistence, formatted
+- **Integer minor units (named `*_paise`). Never a float.** Currency is **USD** (cents) since `SRC-006 CUR-1`,
+  minor unit ratio **100**, timezone **Asia/Kolkata** (`SRC-003 OPEN-LOCALE-01`). Decimal at the boundary, int in persistence, formatted
   string at render time only. **The ratio is a one-way door** — bookings are permanent, so
   reinterpreting the unit later rewrites what every past customer paid. It stays a named
   configuration value, never a literal scattered through the code.

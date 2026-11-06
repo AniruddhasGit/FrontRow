@@ -59,6 +59,8 @@ def bind_request_id(request_id: str) -> Iterator[None]:
 # Matched case-insensitively against extra-field names. Never logged at any level (PRD S7.8).
 # R-3 (SRC-004): the password-reset token rides in a queue payload from Phase 5, so `token`,
 # `reset_token` and `payload` are on the list from the first line.
+# No card names: no card field exists anywhere (SRC-003 OPEN-PAY-01, S-PAY-10, S-SCP-12), so an entry for one would be
+# the only card-shaped name in the application.
 DENYLIST = frozenset(
     {
         "password",
@@ -77,10 +79,6 @@ DENYLIST = frozenset(
         "database_url",
         "redis_url",
         "payload",
-        "card",
-        "card_number",
-        "pan",
-        "cvv",
     }
 )
 REDACTED = "[REDACTED]"

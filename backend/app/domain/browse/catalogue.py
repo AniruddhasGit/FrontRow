@@ -26,6 +26,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, exists, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+# THE visibility predicate (P-BRW-01, P-ADM-05) lives in one module; every movie-addressed query here applies it.
+from app.domain.visibility import visible
 from app.models import certification, cinema, format, genre, language, movie, movie_genre, screen, showtime
 
 
@@ -47,11 +49,6 @@ class ListingFilters:
 class ShowtimeFilters:
     cinema_id: int | None = None
     format_id: int | None = None
-
-
-def visible(t: datetime):
-    """THE visibility predicate (P-BRW-01). Called by every movie-addressed query and by nothing else."""
-    return and_(movie.c.published_at.is_not(None), movie.c.display_from <= t, movie.c.display_until > t)
 
 
 async def load_zones(conn: AsyncConnection) -> dict[int, str]:

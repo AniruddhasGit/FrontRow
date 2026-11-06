@@ -45,7 +45,7 @@ SEATMAP_DOWN = "The seat map is unavailable right now. You can still browse show
 
 # EP-BRW-06's limit (FR-ADR-058): per IP, RATE_LIMIT_SEATMAP_IP_PER_MIN per 60 s. No per-user bucket - the route
 # is public and there is no user to key one on. It runs BEFORE the cache and fails closed (P-BRW-12, X-7).
-SEATMAP_IP = Bucket("seatmap-ip", "RATE_LIMIT_SEATMAP_IP_PER_MIN", 60, "Too many requests. Try again in {span}.")
+SEATMAP_IP = Bucket("seatmap:ip", "RATE_LIMIT_SEATMAP_IP_PER_MIN", 60, "Too many requests. Try again in {span}.")
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _POSITIVE = re.compile(r"^[1-9]\d{0,18}$")

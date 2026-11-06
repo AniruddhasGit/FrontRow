@@ -1,5 +1,5 @@
 // S-BRW-01..10, S-BRW-16, S-SCP-10: the browse screens' RENDERED markup (frontend/src/test/render.mjs).
-// Run: node --test frontend/src/features/browse/
+// Run: node --test "frontend/src/features/browse/*.test.mjs"  (the bare directory form fails on Node 24)
 // Not asserted here (needs a real browser): computed styles (-webkit-line-clamp, fills), the img onError swap,
 // focus movement by Tab, and anything an effect does after the first render (requests, polling).
 import assert from "node:assert/strict";
@@ -80,6 +80,10 @@ test("S-BRW-06: 'Any date' plus 7 days, 14 to 20 August; a filter that keeps onl
 
   doc = listing({ filters: { ...NO_FILTERS, language_id: "2" }, movies: [BOTH[0]] });
   assert.deepEqual(dayButtons(doc).map((b) => name(b, doc)), ["Fri 14 Aug", "Sat 15 Aug", "Sun 16 Aug", "Mon 17 Aug", "Tue 18 Aug"]);
+
+  // Clearing the filters: the request goes out with no filter and both films come back - the 7 buttons return.
+  doc = listing({ filters: NO_FILTERS, movies: BOTH });
+  assert.equal(dayButtons(doc).length, 7);
 });
 
 test("S-BRW-06: the selected 20th outside the new strip returns to Any date, announced politely, no date sent next", () => {

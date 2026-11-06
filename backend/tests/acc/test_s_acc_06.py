@@ -121,8 +121,17 @@ async def test_users_email_is_never_in_an_update(migrated_db, clock):
             manager_id = app_sql(migrated_db, "SELECT id FROM users WHERE email = 'manager-06@example.com'")[0][0]
             put = await c.put(f"/api/admin/managers/{manager_id}/screens", json={"screen_ids": [screen]})
             assert put.status_code == 200, put.text
-            # Phase 5 adds password-reset request and confirm here (EP-ACC-05/06, SRC-004 JC-R6-02). Until
-            # they exist nothing writes password_hash or password_version and this assertion stays RED.
+            # Password-reset request and confirm (EP-ACC-05/06): the token rides in the queue message, recorded here.
+            sent: list[dict] = []
+
+            async def record_send(body: dict) -> None:
+                sent.append(body)
+
+            c.application.state.reset_queue = record_send
+            assert (await c.post("/api/auth/password-reset/request", json={"email": "mapper@example.com"})).status_code == 202
+            confirmed = await c.post("/api/auth/password-reset/confirm",
+                                     json={"token": sent[0]["reset_token"], "password": "a brand new password"})
+            assert confirmed.status_code == 200, confirmed.text
         finally:
             event.remove(engine, "before_execute", record)
     assert "email" not in changed

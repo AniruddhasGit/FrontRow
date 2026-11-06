@@ -1,6 +1,6 @@
 // SCR-ADM-03 - one hall's day, and the form that creates or edits a showtime (P-ADM-07 to P-ADM-10).
 // Times are naive local in the venue's zone, both ways; nothing here converts a time (E6 S4).
-// The base price is typed in rupees and sent as integer paise (money.ts).
+// The base price is typed in dollars and sent as integer cents (money.ts).
 // The film is chosen by id until the admin film list exists (EP-ADM-01, Phase 6).
 import { useEffect, useState, type FormEvent } from "react";
 import { api, errorText } from "./api";
