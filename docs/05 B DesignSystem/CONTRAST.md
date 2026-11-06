@@ -17,10 +17,10 @@
 | | |
 |---|---|
 | Source of record | `tokens.css` |
-| `tokens.css` SHA-256 | `984b977f84aa2d08a98156e62bd55167004ecd533a58193be8d83df54bf3b16d` |
-| Colour tokens | 32 |
-| Foreground/background pairs checked | **70** (35 light, 35 dark) |
-| Lowest ratio measured | **3.68:1** |
+| `tokens.css` SHA-256 | `4b1507c8a2a103dc3aaabc223d2010398c71afcfc7831a85f8408c7ce2455f0f` |
+| Colour tokens | 36 |
+| Foreground/background pairs checked | **76** (38 light, 38 dark) |
+| Lowest ratio measured | **3.39:1** |
 | Greyscale steps checked | 6 |
 | Smallest lightness step measured | **14.1 L\*** (floor 12.0) |
 | Checks | 13 pass, 0 fail, 0 skip, of 13 |
@@ -50,18 +50,18 @@ the exit code at 1 exactly as a FAIL does.
 
 | Check | What it proves | Subjects | Result |
 |---|---|---|---|
-| `PARSE` | tokens.css parses and every block marker is present | 153 declarations | PASS |
-| `ONE-PER-LINE` | every custom property is declared on its own line | 149 lines | PASS |
-| `ANNOTATED` | every colour-valued token carries a role annotation | 32 colour tokens | PASS |
+| `PARSE` | tokens.css parses and every block marker is present | 165 declarations | PASS |
+| `ONE-PER-LINE` | every custom property is declared on its own line | 161 lines | PASS |
+| `ANNOTATED` | every colour-valued token carries a role annotation | 36 colour tokens | PASS |
 | `DECOR-WHY` | every @decor token states why it is exempt | 3 exemptions | PASS |
-| `ON-RESOLVES` | every on: target names a real @ground token | 19 foreground tokens | PASS |
-| `THEME-PARITY` | light and dark define exactly the same palette tokens | 35 palette tokens | PASS |
-| `DARK-IDENTICAL` | the two dark blocks are value-for-value identical | 35 tokens | PASS |
-| `CONTRAST` | every derived pair meets its WCAG floor in both themes | 70 pairs | PASS |
+| `ON-RESOLVES` | every on: target names a real @ground token | 22 foreground tokens | PASS |
+| `THEME-PARITY` | light and dark define exactly the same palette tokens | 39 palette tokens | PASS |
+| `DARK-IDENTICAL` | the two dark blocks are value-for-value identical | 39 tokens | PASS |
+| `CONTRAST` | every derived pair meets its WCAG floor in both themes | 76 pairs | PASS |
 | `GREYSCALE` | seat states separate by >=12 L* with no colour | 6 steps | PASS |
 | `GLYPH` | every seat state carries a distinct non-colour mark | 4 states | PASS |
 | `SEAT-FIELD` | every seat fill separates from the seat-map field | 8 fill x themes | PASS |
-| `TOKEN-COVERAGE` | tokens.css and COMPONENTS.md name the same token set | 79 tokens | PASS |
+| `TOKEN-COVERAGE` | tokens.css and COMPONENTS.md name the same token set | 83 tokens | PASS |
 | `GENERATED` | CONTRAST.md on disk is exactly what tokens.css produces | 1 file | PASS |
 
 ## Token coverage
@@ -72,8 +72,8 @@ failure waiting for the first person who tries it.
 
 | Direction | Count |
 |---|---|
-| Tokens declared in `tokens.css` | 79 |
-| Distinct tokens named in `COMPONENTS.md` | 79 |
+| Tokens declared in `tokens.css` | 83 |
+| Distinct tokens named in `COMPONENTS.md` | 83 |
 | Declared but used by no component spec | **0** |
 | Named by a component spec but not declared | **0** |
 
@@ -139,10 +139,11 @@ closer than 8 L\* to the field must carry an edge token that clears 3.0:1.
 
 ## Every pair, both themes
 
-### Light theme - 35 pairs, worst first
+### Light theme - 38 pairs, worst first
 
 | Foreground | Background | Role | Ratio | Floor | |
 |---|---|---|---|---|---|
+| `--fr-rule-ticket` <br>`#8A8070` | `--fr-surface-ticket` <br>`#F4EFE6` | `@ui` | **3.39:1** | 3.0:1 | PASS |
 | `--fr-rule` <br>`#807463` | `--fr-surface-inset` <br>`#EDE6DA` | `@ui` | **3.68:1** | 3.0:1 | PASS |
 | `--fr-seat-edge-available` <br>`#7E7465` | `--fr-surface-inset` <br>`#EDE6DA` | `@ui` | **3.70:1** | 3.0:1 | PASS |
 | `--fr-control-edge` <br>`#7B7264` | `--fr-surface-inset` <br>`#EDE6DA` | `@ui` | **3.82:1** | 3.0:1 | PASS |
@@ -157,6 +158,7 @@ closer than 8 L\* to the field must carry an edge token that clears 3.0:1.
 | `--fr-ink-muted` <br>`#5A5348` | `--fr-surface-inset` <br>`#EDE6DA` | `@text` | **6.12:1** | 4.5:1 | PASS |
 | `--fr-focus-ring` <br>`#0A6A82` | `--fr-surface-raised` <br>`#FFFFFF` | `@ui` | **6.18:1** | 3.0:1 | PASS |
 | `--fr-countdown-fill` <br>`#0F6A80` | `--fr-surface-raised` <br>`#FFFFFF` | `@ui` | **6.19:1** | 3.0:1 | PASS |
+| `--fr-ink-on-ticket-muted` <br>`#5E574C` | `--fr-surface-ticket` <br>`#F4EFE6` | `@text` | **6.23:1** | 4.5:1 | PASS |
 | `--fr-seat-edge-mine` <br>`#12586B` | `--fr-surface-inset` <br>`#EDE6DA` | `@ui` | **6.43:1** | 3.0:1 | PASS |
 | `--fr-accent-ink` <br>`#7E4C0D` | `--fr-surface-base` <br>`#FAF6EF` | `@text` | **6.66:1** | 4.5:1 | PASS |
 | `--fr-countdown-urgent` <br>`#A82E0E` | `--fr-surface-raised` <br>`#FFFFFF` | `@ui` | **6.86:1** | 3.0:1 | PASS |
@@ -176,13 +178,15 @@ closer than 8 L\* to the field must carry an edge token that clears 3.0:1.
 | `--fr-ink` <br>`#2B2620` | `--fr-surface-base` <br>`#FAF6EF` | `@text` | **13.92:1** | 4.5:1 | PASS |
 | `--fr-ink-on-notice` <br>`#E9F2F7` | `--fr-surface-notice` <br>`#16212B` | `@text` | **14.39:1** | 4.5:1 | PASS |
 | `--fr-ink` <br>`#2B2620` | `--fr-surface-raised` <br>`#FFFFFF` | `@text` | **14.99:1** | 4.5:1 | PASS |
+| `--fr-ink-on-ticket` <br>`#1A1712` | `--fr-surface-ticket` <br>`#F4EFE6` | `@text` | **15.60:1** | 4.5:1 | PASS |
 | `--fr-ink-strong` <br>`#14110C` | `--fr-surface-base` <br>`#FAF6EF` | `@text` | **17.48:1** | 4.5:1 | PASS |
 | `--fr-ink-strong` <br>`#14110C` | `--fr-surface-raised` <br>`#FFFFFF` | `@text` | **18.83:1** | 4.5:1 | PASS |
 
-### Dark theme - 35 pairs, worst first
+### Dark theme - 38 pairs, worst first
 
 | Foreground | Background | Role | Ratio | Floor | |
 |---|---|---|---|---|---|
+| `--fr-rule-ticket` <br>`#8A8070` | `--fr-surface-ticket` <br>`#F4EFE6` | `@ui` | **3.39:1** | 3.0:1 | PASS |
 | `--fr-seat-edge-available` <br>`#626E7D` | `--fr-surface-inset` <br>`#080B10` | `@ui` | **3.80:1** | 3.0:1 | PASS |
 | `--fr-rule` <br>`#707D89` | `--fr-surface-raised` <br>`#151C25` | `@ui` | **4.07:1** | 3.0:1 | PASS |
 | `--fr-control-edge` <br>`#78848F` | `--fr-surface-raised` <br>`#151C25` | `@ui` | **4.49:1** | 3.0:1 | PASS |
@@ -191,6 +195,7 @@ closer than 8 L\* to the field must carry an edge token that clears 3.0:1.
 | `--fr-seat-ink` <br>`#F2F5F8` | `--fr-seat-held-other` <br>`#88673D` | `@text` | **4.73:1** | 4.5:1 | PASS |
 | `--fr-control-edge` <br>`#78848F` | `--fr-surface-base` <br>`#0D1117` | `@ui` | **4.95:1** | 3.0:1 | PASS |
 | `--fr-control-edge` <br>`#78848F` | `--fr-surface-inset` <br>`#080B10` | `@ui` | **5.16:1** | 3.0:1 | PASS |
+| `--fr-ink-on-ticket-muted` <br>`#5E574C` | `--fr-surface-ticket` <br>`#F4EFE6` | `@text` | **6.23:1** | 4.5:1 | PASS |
 | `--fr-seat-ink-mine` <br>`#04222B` | `--fr-seat-mine` <br>`#32B5CA` | `@text` | **6.78:1** | 4.5:1 | PASS |
 | `--fr-countdown-urgent` <br>`#FF8A63` | `--fr-surface-raised` <br>`#151C25` | `@ui` | **7.40:1** | 3.0:1 | PASS |
 | `--fr-ink-muted` <br>`#A2ADBA` | `--fr-surface-raised` <br>`#151C25` | `@text` | **7.53:1** | 4.5:1 | PASS |
@@ -215,6 +220,7 @@ closer than 8 L\* to the field must carry an edge token that clears 3.0:1.
 | `--fr-ink-on-notice` <br>`#E9F2F7` | `--fr-surface-notice` <br>`#16212B` | `@text` | **14.39:1** | 4.5:1 | PASS |
 | `--fr-ink` <br>`#DDE4EC` | `--fr-surface-base` <br>`#0D1117` | `@text` | **14.76:1** | 4.5:1 | PASS |
 | `--fr-ink` <br>`#DDE4EC` | `--fr-surface-inset` <br>`#080B10` | `@text` | **15.37:1** | 4.5:1 | PASS |
+| `--fr-ink-on-ticket` <br>`#1A1712` | `--fr-surface-ticket` <br>`#F4EFE6` | `@text` | **15.60:1** | 4.5:1 | PASS |
 | `--fr-ink-strong` <br>`#F4F7FA` | `--fr-surface-raised` <br>`#151C25` | `@text` | **15.95:1** | 4.5:1 | PASS |
 | `--fr-screen-bar` <br>`#D2ECF4` | `--fr-surface-inset` <br>`#080B10` | `@ui` | **15.99:1** | 3.0:1 | PASS |
 | `--fr-ink-strong` <br>`#F4F7FA` | `--fr-surface-base` <br>`#0D1117` | `@text` | **17.60:1** | 4.5:1 | PASS |

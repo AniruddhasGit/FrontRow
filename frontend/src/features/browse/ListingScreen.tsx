@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { navigate } from "../../router";
 import { get, query, type Film } from "./api";
 import { ChoiceGroup, DayStrip } from "./DayStrip";
+import { Hero } from "./Hero";
 import { controlsFor, countLine, listingStrip, runtimeName, settleListing, type Reference } from "./logic";
 import { Poster } from "./Poster";
 import "./browse.css";
@@ -74,7 +75,8 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
 
   return (
     <section className="fr-listing">
-      <h1>Now showing</h1>
+      <Hero film={films?.[0] ?? null} />
+      <h1 id="now-showing">Now showing</h1>
       <div role="group" aria-label="Filter what is showing" className="fr-filters">
         {days.length > 0 ? <DayStrip label="Date" days={days} selected={filters.date} anyDate onSelect={(d) => set("date", d)} /> : null}
         {controls.language && reference ? (

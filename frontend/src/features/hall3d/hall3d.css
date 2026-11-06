@@ -1,0 +1,58 @@
+/* The 3D hall on the seat page (FR-ADR-074). Every value is a design token; no hex code. */
+.fr-hall3d {
+  display: grid;
+  gap: var(--fr-space-3);
+  margin-bottom: var(--fr-space-5);
+}
+.fr-hall3d-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+.fr-hall3d-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2);
+}
+.fr-hall3d-modes .fr-choice[aria-pressed="true"] {
+  /* The camera is YOUR view: screen-light, not the room's brass. */
+  background: var(--fr-surface-notice);
+  color: var(--fr-screen-ink);
+  border-color: var(--fr-seat-edge-mine);
+}
+.fr-hall3d-stage {
+  position: relative;
+  height: clamp(22rem, 62vh, 40rem);
+  border-radius: var(--fr-radius-lg);
+  overflow: hidden;
+  background: var(--fr-surface-inset);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+.fr-hall3d-name,
+.fr-hall3d-caption {
+  position: absolute;
+  margin: 0;
+  padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+  background: color-mix(in srgb, var(--fr-surface-base) 88%, transparent);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+  pointer-events: none;
+}
+.fr-hall3d-name {
+  top: var(--fr-space-4);
+  right: var(--fr-space-4);
+  color: var(--fr-ink-strong);
+  font-weight: var(--fr-weight-bold);
+}
+.fr-hall3d-caption {
+  left: var(--fr-space-4);
+  bottom: var(--fr-space-4);
+  max-width: 70%;
+}
+.fr-hall3d-off {
+  margin-bottom: var(--fr-space-4);
+}
