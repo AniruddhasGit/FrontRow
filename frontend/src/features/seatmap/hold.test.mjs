@@ -57,7 +57,7 @@ test("a closed map tells a customer who is holding seats that they can still pay
 
 const seat = (id, num, state = "available") => ({ id, row: "C", num, gr: 3, gc: num, cat: 2, price_paise: 28125, state, is_active: true });
 const map = { showtime: { id: 77, starts_at: "", sales_close_at: "", sales_closed: false }, screen: { id: 3, name: "Hall 3", rows: 3, cols: 20 },
-              categories: [], seats: [seat(411, 11), seat(412, 12), seat(413, 13), seat(414, 14)], generated_at: "", poll_interval_seconds: 3 };
+              categories: [], seats: [seat(411, 11), seat(412, 12), seat(413, 13), seat(414, 14)], generated_at: "", poll_interval_seconds: 3, max_seats_per_booking: 10 };
 
 test("seats lost to another customer repaint held_by_other at once, and every other choice stays chosen", () => {
   const failure = failureOf("SEAT_UNAVAILABLE", { unavailable_seats: ["C12", "C13"] });
@@ -71,7 +71,7 @@ test("seats lost to another customer repaint held_by_other at once, and every ot
     assert.equal(visual, "held_by_other");
     assert.equal(TREATMENT[visual].fill, "--fr-seat-held-other");
     assert.equal(TREATMENT[visual].glyph, "bar");
-    assert.ok(TREATMENT[visual].ending.endsWith("held by another customer"));
+    assert.ok(TREATMENT[visual].ending.endsWith("held by someone else"));
     assert.notEqual(TREATMENT[visual].glyph, "hatch");
   }
 });

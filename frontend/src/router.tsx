@@ -71,11 +71,12 @@ export function match(pattern: string, pathname: string): RouteParams | null {
   return params;
 }
 
-export function Link({ to, children, className }: { to: string; children: ReactNode; className?: string }) {
+export function Link({ to, children, className, before }: { to: string; children: ReactNode; className?: string; before?: () => void }) {
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
     // A modified click (new tab, new window) keeps the browser's own behaviour.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
+    before?.(); // runs before the next screen opens (the header's Sign in writes fr.pending_selection here)
     navigate(to);
   };
   return (

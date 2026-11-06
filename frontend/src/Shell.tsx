@@ -3,6 +3,7 @@
 // a failed check renders as guest and never blocks the page.
 import { useEffect, useState, type ReactNode } from "react";
 import { signOut } from "./features/account/MyBookingsScreen";
+import { leaveForSignIn, signInHref } from "./features/auth/session";
 import { Layout } from "./layout";
 import { currentTo, navFor, shortEmail } from "./nav";
 import { Link, usePathname } from "./router";
@@ -28,7 +29,15 @@ export function Shell({ children }: { children: ReactNode }) {
     return <Layout nav={<span className="fr-shell-wait" aria-hidden="true" />} account={<span className="fr-shell-wait" aria-hidden="true" />}>{children}</Layout>;
   }
   if (who === null) {
-    return <Layout account={<Link to="/sign-in" className="fr-signin">Sign in</Link>}>{children}</Layout>;
+    // From a seat map this link is the second route out, and writes the same fr.pending_selection (P-ACC-13).
+    const leave = () => {
+      try {
+        leaveForSignIn(window.location.pathname, window.sessionStorage, Date.now());
+      } catch {
+        // no storage: nothing is stored
+      }
+    };
+    return <Layout account={<Link to={signInHref(pathname)} className="fr-signin" before={leave}>Sign in</Link>}>{children}</Layout>;
   }
   const links = navFor(who.role);
   const here = currentTo(links, pathname);

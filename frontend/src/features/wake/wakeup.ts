@@ -38,7 +38,7 @@ export function bakedSeatMap(meta: BakedMeta): SeatMap {
       id: i + 1, row: s.row, num: s.num, gr: rows.indexOf(s.row), gc: s.num, cat: codes.indexOf(s.cat) + 1,
       price_paise: 0, state: "available", is_active: true,
     })),
-    generated_at: "", poll_interval_seconds: 60,
+    generated_at: "", poll_interval_seconds: 60, max_seats_per_booking: 10,
   };
 }
 

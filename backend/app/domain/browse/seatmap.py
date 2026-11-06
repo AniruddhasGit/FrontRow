@@ -70,6 +70,7 @@ class SeatMap(_Strict):
     seats: list[Seat]
     generated_at: str
     poll_interval_seconds: int
+    max_seats_per_booking: int  # MAX_SEATS_PER_BOOKING, so the cap note ships no literal (CR-002 C-1)
 
 
 class SeatMapFault(Exception):
@@ -105,7 +106,8 @@ def seat_state(booked: bool, held: bool) -> str:
     return "sold" if booked else "held" if held else "available"
 
 
-def assemble(head: dict, seats: list, held: set[int], now: datetime, cutoff: timedelta, poll_interval_seconds: int) -> SeatMap:
+def assemble(head: dict, seats: list, held: set[int], now: datetime, cutoff: timedelta, poll_interval_seconds: int,
+             max_seats_per_booking: int) -> SeatMap:
     if not seats:
         raise SeatMapFault(f"showtime {head['id']} has an empty seat set")
     label: dict[int, str] = {}
@@ -136,4 +138,5 @@ def assemble(head: dict, seats: list, held: set[int], now: datetime, cutoff: tim
                     is_active=s.is_active) for s in seats],
         generated_at=local_iso(now, zone),
         poll_interval_seconds=poll_interval_seconds,
+        max_seats_per_booking=max_seats_per_booking,
     )

@@ -210,7 +210,8 @@ async def get_seatmap(request: Request, showtime_id: Id) -> Response:
             values = await state.redis.mget([cache.seat_lock_key(showtime_id, s.id) for s in seats])
             held = {s.id for s, v in zip(seats, values) if v is not None}
         try:
-            built = seatmap.assemble(head, seats, held, now, _cutoff(request), state.settings.SEATMAP_POLL_INTERVAL_SECONDS)
+            built = seatmap.assemble(head, seats, held, now, _cutoff(request), state.settings.SEATMAP_POLL_INTERVAL_SECONDS,
+                                     state.settings.MAX_SEATS_PER_BOOKING)
         except seatmap.SeatMapFault:
             log.error("seat map fault", exc_info=True, extra={"showtime_id": showtime_id})
             raise ApiError(500, "INTERNAL_ERROR") from None

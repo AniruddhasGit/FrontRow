@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { all, atUrl, byClass, load, markup, name, render, role, tabbable, text } from "../../test/render.mjs";
 import { ENDED_LINE, ENDED_PAYING_LINE, WARNING_LINE, markTaken } from "./hold.ts";
-import { MAX_SEATS_PER_BOOKING, capNote, parseSeatMap, selectable, visualOf } from "./model.ts";
+import { capNote, parseSeatMap, selectable, visualOf } from "./model.ts";
 
 // Published sentences other source sweeps count (S-BRW-10: once in frontend/src; S-SEA-09: no literal cap), so
 // this file assembles them instead of repeating them.
@@ -40,6 +40,7 @@ function seatmap(seats, categories, rows, cols, closed = false) {
   const m = parseSeatMap({
     showtime: { id: 77, starts_at: "2026-08-14T19:30:00+05:30", sales_close_at: "2026-08-14T19:45:00+05:30", sales_closed: closed },
     screen: { id: 4, name: "Hall 4", rows, cols }, categories, seats, generated_at: "2026-08-14T12:00:00+05:30", poll_interval_seconds: 3,
+    max_seats_per_booking: 10,
   });
   assert.ok(m, "the fixture passes the client's own validation");
   return m;
@@ -110,7 +111,7 @@ test("S-BRW-12, S-SEA-01, S-XCT-38: the four states are four marks and four name
   const pick = (n) => cellOf(doc, at(four, "C", n));
   assert.deepEqual([14, 12, 15, 13].map((n) => name(pick(n), doc)), [
     "Row C seat 14, Premium, available", "Row C seat 12, Premium, sold",
-    "Row C seat 15, Premium, held by another customer", "Row C seat 13, Premium, held by you",
+    "Row C seat 15, Premium, held by someone else", "Row C seat 13, Premium, held by you",
   ]);
   const glyphs = [14, 12, 15, 13].map((n) => pick(n).attrs["data-glyph"]);
   assert.deepEqual(glyphs, ["outline", "hatch", "bar", "check"]);
@@ -236,6 +237,17 @@ test("S-BRW-07, S-SEA-10: a guest's map has no 'held by you' cell and the action
   assert.equal(text(primary(doc)), "Hold these seats");
 });
 
+test("S-ACC-14: after the restore, a now-sold C12 and a now-held C13 carry their published names and are not chosen", () => {
+  const map = hall({ state: (s) => (s.row === "C" && s.num === 12 ? "sold" : s.row === "C" && s.num === 13 ? "held" : "available") });
+  const gone = "C12 and C13 were taken while you were signing in. Your other seats are still selected.";
+  const doc = screen({ map, selection: [at(map, "C", 14).id], signedIn: true, gone });
+  assert.equal(name(cellOf(doc, at(map, "C", 12)), doc), "Row C seat 12, Premium, sold");
+  assert.equal(name(cellOf(doc, at(map, "C", 13)), doc), "Row C seat 13, Premium, held by someone else");
+  assert.equal(name(cellOf(doc, at(map, "C", 14)), doc), "Row C seat 14, Premium, held by you");
+  assert.deepEqual(banners(doc).map((b) => text(all(b, (e) => e.tag === "p")[0])), [gone]);
+  assert.equal(text(primary(doc)), "Hold these seats");
+});
+
 test("S-SEA-03: two Premium then three Recliner total $1,562.49; one line per seat plus the total; no tax or fee", () => {
   const map = hall({ cat: (s) => (s.row === "A" ? 1 : 2) });
   const premium = map.seats.filter((s) => s.cat === 1).slice(0, 2).map((s) => ({ ...s, price_paise: 28125 }));
@@ -254,8 +266,11 @@ test("S-SEA-03: nothing chosen reads $0.00 and the cap note; a seat with no know
   const map = hall();
   let doc = screen({ map });
   assert.equal(text(all(doc, byClass("fr-total"))[0]), "$0.00");
-  assert.equal(MAX_SEATS_PER_BOOKING, 10);
   assert.equal(text(all(doc, byClass("fr-cap-note"))[0]), capNote(10));
+  // S-SEA-09 / CR-002 C-1: the note renders the figure the seat map carries, so the server's 6 reads 6.
+  doc = screen({ map: { ...map, max_seats_per_booking: 6 } });
+  assert.equal(text(all(doc, byClass("fr-cap-note"))[0]), "Up to 6 seats.");
+  doc = screen({ map });
   assert.equal(capNote(10), ["Up to", 10, "seats."].join(" "));
   for (const signedIn of [false, true]) {
     doc = screen({ map, selection: [at(map, "A", 1).id, 999999], signedIn });
@@ -301,7 +316,7 @@ test("S-SEA-12: seats lost to another customer repaint held_by_other (bar), neve
   for (const n of [12, 13]) {
     const c = cellOf(doc, at(map, "C", n));
     assert.equal(c.attrs["data-glyph"], "bar");
-    assert.match(name(c, doc), /held by another customer$/);
+    assert.match(name(c, doc), /held by someone else$/);
     assert.doesNotMatch(name(c, doc), /sold$/);
   }
 });
