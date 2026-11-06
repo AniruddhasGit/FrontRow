@@ -83,16 +83,16 @@
   --fr-stroke-hair: 1px;
   --fr-stroke-bold: 2px;
 
-  /* Type. System stacks only: a font file is a dependency and SRC-002 §13.1
-     requires the client's permission before one is added. The character comes
-     from the treatment, not from a licence — see DESIGN-SYSTEM.md.
+  /* Type. Inter Tight and JetBrains Mono, self-hosted from npm font packages
+     (FR-ADR-074 4: approved 2026-11-06; no runtime call to a font CDN), each
+     falling back to the platform stack it replaced.
      mono is load-bearing, not decorative: FR-ADR-048 requires the booking
      reference in a monospaced face, and every other number in this product
      (times, rows, seat labels, money, the countdown) belongs to the same
      voice. */
-  --fr-font-display: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --fr-font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --fr-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --fr-font-display: "Inter Tight", ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-body: "Inter Tight", ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fr-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, Consolas, monospace;
 
   /* Type scale. Six steps, and the jump from xl to 2xl is deliberate: 2xl is
      reserved for two things only — the display headline and the booking
@@ -128,7 +128,7 @@
   --fr-seat-gutter: 28px;
   --fr-tap-min: 44px;
 
-  --fr-page-max: 44rem;
+  --fr-page-max: 90rem; /* the wide canvas of the CR-001 wireframes; reading text stays capped at --fr-measure */
   --fr-measure: 34rem;
 
   /* A movie poster is 2:3. Every poster slot reserves that box before the

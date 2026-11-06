@@ -32,3 +32,6 @@ dist/
 .DS_Store
 Thumbs.db
 frontend/tsconfig.tsbuildinfo
+
+# Local screenshots of the premium layer (large; regenerate, do not commit)
+frontend/screenshots-premium/

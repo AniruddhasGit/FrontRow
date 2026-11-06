@@ -17,7 +17,7 @@
 | | |
 |---|---|
 | Source of record | `tokens.css` |
-| `tokens.css` SHA-256 | `984b977f84aa2d08a98156e62bd55167004ecd533a58193be8d83df54bf3b16d` |
+| `tokens.css` SHA-256 | `456cf8be61bf64b648d9a7bb24d6e979f7d83402a6b1c059d48e15e529c1c37f` |
 | Colour tokens | 32 |
 | Foreground/background pairs checked | **70** (35 light, 35 dark) |
 | Lowest ratio measured | **3.68:1** |

@@ -35,6 +35,13 @@ JS_ALLOWLIST = {
     "@vitejs/plugin-react": "SRC-002 §4 Vite's React plugin",
     "typescript": "SRC-002 §4 TypeScript",
     "vite": "SRC-002 §4 Vite",
+    "three": "FR-ADR-074 4: the 3D hall on the seat page (client ruling 2026-11-06, CR-001 Part B)",
+    "@types/three": "TypeScript types for three (FR-ADR-074 4)",
+    "@react-three/fiber": "FR-ADR-074 4: React renderer for three",
+    "@react-three/drei": "FR-ADR-074 4: three helpers (the orbit camera)",
+    "@react-three/postprocessing": "FR-ADR-074 4: the screen's bloom",
+    "@fontsource/inter-tight": "FR-ADR-074 4: the Inter Tight web font, self-hosted",
+    "@fontsource/jetbrains-mono": "FR-ADR-074 4: the JetBrains Mono web font, self-hosted",
 }
 FORBIDDEN_JS = ("@mui", "@chakra-ui", "antd", "bootstrap", "react-bootstrap", "tailwindcss", "styled-components", "@emotion")
 

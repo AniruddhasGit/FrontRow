@@ -10,6 +10,7 @@ import { formatPaise } from "../admin/money";
 import { forgetBooking } from "../booking/checkout";
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
+import { Hall3D } from "../hall3d/Hall3D";
 import { HoldCountdown } from "./Countdown";
 import { GIVE_UP, adding, closedBanner, failureOf, markTaken, primaryLabel, send, withoutLabels, type Hold } from "./hold";
 import {
@@ -282,6 +283,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
         ) : null}
         <div aria-live="polite">{banner ? <div className="fr-banner"><p>{banner}</p></div> : null}</div>
       </div>
+      <Hall3D map={map} mine={mine} onTap={tap} />
       <div className="fr-seatmap-body">
         <div className="fr-field">
           <p className="fr-poll-strip" aria-live="polite">{pollStrip ?? ""}</p>
