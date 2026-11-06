@@ -2,9 +2,10 @@
 // procedural stand-in drawn here, so a missing or broken file never blanks the hall.
 // Every geometry is normalised the same way: one grid column wide, standing on y = 0, centred on x and z, facing -z
 // (the screen). glTF faces +z, so the model is turned round.
-// ponytail: a .glb's own materials and textures are dropped - every seat shares one material so the instance colour
-// can carry its state. Upgrade path: keep the model's material and tint it through instanceColor.
-import { BufferGeometry, Mesh } from "three";
+// A .glb's meshes are split by material name: "fr_upholstery*" becomes the body, which carries the seat-state colour
+// through instanceColor; everything else (fr_frame, fr_trim) becomes the frame, drawn with its own baked vertex colour
+// (satin black, brass) and never tinted. Textures are dropped.
+import { BufferGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMaterial } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -42,30 +43,50 @@ function placeholder(kind: ModelKind): BufferGeometry {
   return merged;
 }
 
-function normalise(g: BufferGeometry): BufferGeometry {
-  g.rotateY(Math.PI);
-  g.computeBoundingBox();
-  const box = g.boundingBox!;
+/** body takes the seat-state colour; frame (may be null) keeps its baked vertex colours. */
+export interface SeatGeo { body: BufferGeometry; frame: BufferGeometry | null }
+
+/** Turn round, stand on y = 0, centre and scale body and frame by ONE transform so they stay registered. */
+function normalise(geo: SeatGeo): SeatGeo {
+  const all = [geo.body, geo.frame].filter((g): g is BufferGeometry => !!g);
+  all.forEach((g) => g.rotateY(Math.PI));
+  all.forEach((g) => g.computeBoundingBox());
+  const box = all[0].boundingBox!.clone();
+  all.slice(1).forEach((g) => box.union(g.boundingBox!));
   const scale = (PITCH_X * 0.92) / Math.max(1e-6, box.max.x - box.min.x);
-  g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2).scale(scale, scale, scale);
-  g.computeBoundingSphere();
-  return g;
+  for (const g of all) {
+    g.translate(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2).scale(scale, scale, scale);
+    g.computeBoundingSphere();
+  }
+  return geo;
 }
 
-async function fromFile(kind: ModelKind): Promise<BufferGeometry> {
+async function fromFile(kind: ModelKind): Promise<SeatGeo> {
   const gltf = await new GLTFLoader().loadAsync(MODEL_URL[kind]);
   gltf.scene.updateMatrixWorld(true);
-  const parts: BufferGeometry[] = [];
+  const body: BufferGeometry[] = [];
+  const frame: BufferGeometry[] = [];
   gltf.scene.traverse((o) => {
-    if (!(o as Mesh).isMesh) return;
-    const src = (o as Mesh).geometry;
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    const mat = [m.material].flat()[0] as MeshStandardMaterial | undefined;
+    const src = m.geometry;
     const g = new BufferGeometry();
     g.setAttribute("position", src.getAttribute("position"));
     if (src.getAttribute("normal")) g.setAttribute("normal", src.getAttribute("normal"));
     if (src.index) g.setIndex(src.index);
     const flat = (g.index ? g.toNonIndexed() : g).applyMatrix4(o.matrixWorld);
     if (!flat.getAttribute("normal")) flat.computeVertexNormals();
-    parts.push(flat);
+    if ((mat?.name ?? "").startsWith("fr_upholstery")) {
+      body.push(flat);
+    } else {
+      const c = mat?.color ?? new Color(0x101012);
+      const n = flat.getAttribute("position").count;
+      const rgb = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) rgb.set([c.r, c.g, c.b], i * 3);
+      flat.setAttribute("color", new Float32BufferAttribute(rgb, 3));
+      frame.push(flat);
+    }
   });
   gltf.scene.traverse((o) => {
     const m = o as Mesh;
@@ -73,23 +94,27 @@ async function fromFile(kind: ModelKind): Promise<BufferGeometry> {
     m.geometry.dispose();
     for (const mat of [m.material].flat()) mat.dispose();
   });
-  const merged = parts.length ? mergeGeometries(parts) : null;
-  parts.forEach((g) => g.dispose());
-  if (!merged) throw new Error(`${MODEL_URL[kind]} holds no mesh`);
-  return merged;
+  const merge = (parts: BufferGeometry[]) => {
+    const merged = parts.length ? mergeGeometries(parts) : null;
+    parts.forEach((g) => g.dispose());
+    return merged;
+  };
+  const b = merge(body);
+  if (!b) throw new Error(`${MODEL_URL[kind]} holds no fr_upholstery mesh`);
+  return { body: b, frame: merge(frame) };
 }
 
 /** The geometry for one model: the file's, else the stand-in. Never rejects. */
-export async function seatGeometry(kind: ModelKind): Promise<BufferGeometry> {
+export async function seatGeometry(kind: ModelKind): Promise<SeatGeo> {
   try {
     return normalise(await fromFile(kind));
   } catch {
     // No file (a 404, or the SPA fallback's index.html), or a file three cannot read: draw the stand-in.
-    return normalise(placeholder(kind));
+    return normalise({ body: placeholder(kind), frame: null });
   }
 }
 
 /** Synchronous stand-in, so the hall draws at once while the files load. */
-export function placeholderGeometry(kind: ModelKind): BufferGeometry {
-  return normalise(placeholder(kind));
+export function placeholderGeometry(kind: ModelKind): SeatGeo {
+  return normalise({ body: placeholder(kind), frame: null });
 }

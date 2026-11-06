@@ -7,12 +7,12 @@ import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Color, InstancedMesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, RingGeometry, Vector3, type BufferGeometry,
+  Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, Vector3, type BufferGeometry,
   type PerspectiveCamera,
 } from "three";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, computeHall, modelKind, views, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
-import { placeholderGeometry, seatGeometry } from "./seatModels";
+import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
 
 const GLIDE_MS = 900; // --fr-motion-change (CR-001 B.5)
 const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
@@ -26,7 +26,8 @@ function tones() {
   };
   return {
     field: t("--fr-surface-inset"), wall: t("--fr-surface-base"), floor: t("--fr-surface-raised"),
-    free: t("--fr-seat-edge-available").lerp(t("--fr-seat-available"), 0.45), other: t("--fr-seat-held-other"), sold: t("--fr-seat-sold").multiplyScalar(0.4),
+    // The velvet itself, not a UI state token: deep ink-blue (DESIGN-SYSTEM "half-light"; CR-001 B). Free seats only.
+    free: new Color("#14214a"), other: t("--fr-seat-held-other"), sold: t("--fr-seat-sold").multiplyScalar(0.4),
     mine: t("--fr-seat-mine"), screen: t("--fr-screen-bar"), house: t("--fr-surface-accent"), glow: t("--fr-countdown-fill"),
   };
 }
@@ -75,43 +76,51 @@ function SeatKind({ kind, items, colourOf, onPick, onHover }: {
   kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
 }) {
   const ref = useRef<InstancedMesh>(null);
+  const frameRef = useRef<InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
-  const [geometry, setGeometry] = useState<BufferGeometry>(() => placeholderGeometry(kind));
-  const material = useMemo(() => new MeshStandardMaterial({ roughness: 0.6, metalness: 0.06 }), []);
+  const [geo, setGeo] = useState<SeatGeo>(() => placeholderGeometry(kind));
+  const geometry: BufferGeometry = geo.body;
+  // Upholstery reads as velvet: matte with a soft sheen. The frame keeps its baked colour (satin black, brass).
+  const material = useMemo(() => new MeshPhysicalMaterial({ roughness: 0.85, metalness: 0, sheen: 0.4, sheenRoughness: 0.4, sheenColor: new Color("#3a5596") }), []);
+  const frameMaterial = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.45 }), []);
   useEffect(() => {
     let live = true;
-    void seatGeometry(kind).then((g) => (live ? setGeometry(g) : g.dispose()));
+    void seatGeometry(kind).then((g) => {
+      if (live) setGeo(g);
+      else { g.body.dispose(); g.frame?.dispose(); }
+    });
     return () => {
       live = false;
     };
   }, [kind]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => { geo.body.dispose(); geo.frame?.dispose(); }, [geo]);
+  useEffect(() => () => { material.dispose(); frameMaterial.dispose(); }, [material, frameMaterial]);
 
   useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
+    const meshes = [ref.current, frameRef.current].filter((m): m is InstancedMesh => !!m);
+    if (!meshes.length) return;
     const o = new Object3D();
     items.forEach((p, i) => {
       o.position.set(p.x, p.y, p.z);
       o.scale.set(p.span, 1, 1);
       o.updateMatrix();
-      mesh.setMatrixAt(i, o.matrix);
+      meshes.forEach((m) => m.setMatrixAt(i, o.matrix));
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
+    meshes.forEach((m) => { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); });
     invalidate();
-  }, [items, geometry, invalidate]);
+  }, [items, geo, invalidate]);
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
     items.forEach((p, i) => mesh.setColorAt(i, colourOf(p.seat)));
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     invalidate();
-  }, [items, colourOf, geometry, invalidate]);
+  }, [items, colourOf, geo, invalidate]);
 
   const seatAt = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId === undefined ? null : items[e.instanceId]?.seat ?? null);
   return (
+    <>
+    {geo.frame && <instancedMesh key={"f" + items.length} ref={frameRef} args={[geo.frame, frameMaterial, items.length]} raycast={() => null} />}
     <instancedMesh key={items.length} ref={ref} args={[geometry, material, items.length]}
       onClick={(e) => {
         e.stopPropagation();
@@ -123,6 +132,7 @@ function SeatKind({ kind, items, colourOf, onPick, onHover }: {
         onHover(seatAt(e));
       }}
       onPointerOut={() => onHover(null)} />
+    </>
   );
 }
 
