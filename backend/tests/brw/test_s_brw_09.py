@@ -1,8 +1,8 @@
 """S-BRW-09 (P-BRW-06): next_date_with_showtimes - strictly after, inside the window, still open, matching the
 filters - all four met by ONE showtime.
 
-Not here (browser harness): the rendered 'Next: Sun 16 Aug' button and 'No showtimes for this movie.'. The
-label form itself is unit-tested in frontend/src/features/browse.
+The rendered side - 'Next: Sun 16 Aug' on the 15th, no 'Next: ' button on the 17th and on the 18th, 'No showtimes for
+this movie.' on the 18th - is asserted in frontend/src/features/browse/render.test.mjs (S-BRW-09).
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ def world(migrated_db):
     film = make_movie(db, display_until="2026-08-21T00:00:00+05:30")
     first = make_showtime(db, film, hall, "2026-08-15T19:30:00+05:30", format_id=f2d)
     make_showtime(db, film, hall, "2026-08-16T11:00:00+05:30", format_id=f3d)
-    make_showtime(db, film, hall, "2026-08-17T09:00:00+05:30", format_id=f2d)
-    return {"db": db, "film": film, "first": first, "2d": f2d}
+    last = make_showtime(db, film, hall, "2026-08-17T09:00:00+05:30", format_id=f2d)
+    return {"db": db, "film": film, "first": first, "last": last, "2d": f2d}
 
 
 async def _get(world, clock_at: str, **params):
@@ -53,9 +53,15 @@ async def test_the_filters_are_part_of_the_test(world):
     assert body["next_date_with_showtimes"] == "2026-08-17"
 
 
-async def test_nothing_further_is_null(world):
+async def test_the_last_day_lists_its_showtime_and_names_no_next_date(world):
     body = await _get(world, "2026-08-15T21:00:00+05:30", date="2026-08-17")
+    assert [s["id"] for s in body["showtimes"]] == [world["last"]]
     assert body["next_date_with_showtimes"] is None
+
+
+async def test_a_day_with_nothing_on_or_after_it_is_empty_with_no_next_date(world):
+    body = await _get(world, "2026-08-15T21:00:00+05:30", date="2026-08-18")
+    assert body["showtimes"] == [] and body["next_date_with_showtimes"] is None
 
 
 async def test_the_requested_date_is_excluded_even_while_it_is_open(world):

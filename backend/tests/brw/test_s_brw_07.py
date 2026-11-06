@@ -1,8 +1,9 @@
 """S-BRW-07 (P-BRW-05): the whole read path is public, identical for every caller, and reads no token.
 
-Not here: GET /api/movies/{id}/poster (S-BRW-18, Blocked on the S3 SDK) and the guest's rendered seat map
-(zero 'held by you' cells, no 2px border, the 'Sign in to hold these seats' action) - a browser harness. The
-held-by-me computation the guest render rests on is unit-tested in frontend/src/features/seatmap.
+The poster route (EP-BRW-03, built) is one of the seven: a guest gets its 302. Not here: the guest's rendered seat map
+- zero 'held by you' cells and the 'Sign in to hold these seats' action are asserted in
+frontend/src/features/seatmap/render.test.mjs; no cell with a computed border-width of 2px needs a real browser
+(getComputedStyle), which no harness here supplies, so the row stays Blocked on it.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from tests.dbkit import FAKE_HASH
 
 pytestmark = pytest.mark.anyio
 
-READ_PATHS = {"/api/movies", "/api/movies/{movie_id}", "/api/showtimes", "/api/showtimes/{showtime_id}",
+READ_PATHS = {"/api/movies", "/api/movies/{movie_id}", "/api/movies/{movie_id}/poster", "/api/showtimes", "/api/showtimes/{showtime_id}",
               "/api/showtimes/{showtime_id}/seatmap", "/api/reference"}
 
 
@@ -33,21 +34,21 @@ def world(migrated_db):
     db = migrated_db
     hall = make_screen(db, make_cinema(db))
     make_seat(db, hall, "A", 1, 1, 1, make_category(db))
-    film = make_movie(db)
+    film = make_movie(db, poster_key="posters/1/" + "c" * 32)
     st = make_showtime(db, film, hall, "2026-08-16T19:30:00+05:30")
     return {"db": db, "film": film, "st": st}
 
 
 def _urls(world) -> list[str]:
     f, s = world["film"], world["st"]
-    return ["/api/movies", f"/api/movies/{f}", f"/api/showtimes?movie_id={f}", f"/api/showtimes/{s}",
+    return ["/api/movies", f"/api/movies/{f}", f"/api/movies/{f}/poster", f"/api/showtimes?movie_id={f}", f"/api/showtimes/{s}",
             f"/api/showtimes/{s}/seatmap", "/api/reference"]
 
 
 def test_every_read_route_carries_no_dependency():
     app = create_app(Settings(**VALID_ENV))
     found = {r.path: r for r in routes(app) if r.path in READ_PATHS}
-    assert set(found) == READ_PATHS
+    assert set(found) == READ_PATHS and len(READ_PATHS) == 7
     for path, route in found.items():
         assert route.dependant.dependencies == [], path
 
@@ -58,7 +59,7 @@ async def test_with_no_cookie_and_no_header_every_read_succeeds(world):
     async with api(world["db"], clock) as c:
         for url in _urls(world):
             r = await c.get(url)
-            assert r.status_code == 200, (url, r.text)
+            assert r.status_code == (302 if url.endswith("/poster") else 200), (url, r.text)
 
 
 async def test_the_seatmap_is_byte_identical_for_a_guest_and_a_customer_and_an_expired_token_still_reads(world):
@@ -78,4 +79,4 @@ async def test_the_seatmap_is_byte_identical_for_a_guest_and_a_customer_and_an_e
         lapsed = [await c.get(u, cookies={SESSION_COOKIE: expired}) for u in _urls(world)]
     assert guest.status_code == customer.status_code == 200
     assert guest.content == customer.content
-    assert [r.status_code for r in lapsed] == [200] * len(lapsed)
+    assert [r.status_code for r in lapsed] == [302 if u.endswith("/poster") else 200 for u in _urls(world)]

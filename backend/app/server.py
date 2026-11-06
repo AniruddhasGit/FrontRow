@@ -21,6 +21,7 @@ entrypoint, run by hand as a one-off task before the service is updated.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import signal
 import sys
@@ -29,7 +30,7 @@ from types import FrameType
 import uvicorn
 
 from app.core.clock import SystemClock
-from app.core.config import ConfigError, Settings, load_settings, redacted
+from app.core.config import ConfigError, Settings, load_settings, redacted, venue_zone_check
 from app.core.logging import configure_logging, emit_fatal, new_request_id
 
 log = logging.getLogger("app.lifecycle")
@@ -157,6 +158,8 @@ def main(service: str = "api") -> int:
         return run_worker(settings, clock)
     from app.main import create_app  # after logging, so import-time log lines are JSON too
 
+    # One read of the cinema rows, so a zone mismatch or an unseeded venue is said once at boot (S-ADM-04).
+    asyncio.run(venue_zone_check(settings))
     app = create_app(settings, clock=clock)
     # The receipt fast path (P-TKT-04 step 3). Installed HERE, on the real process only, not in create_app: a test
     # app built by create_app has no queue unless the test installs one, so no test sends to a real queue by accident.

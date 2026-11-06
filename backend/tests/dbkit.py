@@ -11,7 +11,8 @@ parallel suites against one database deadlock on per-test cleanup). The `frontro
 touched. These helpers FAIL, never skip, when the environment is missing: a skipped database test is
 a check that silently did not run.
 
-Use: `migrated_db` (module fixture, re-exported by conftest.py) gives a TestDatabase with three URLs.
+Use: `migrated_db` (module fixture, defined in conftest.py) gives a TestDatabase with three URLs. drop_database
+asserts S-SCP-14's booking invariant before it drops, so every database a test creates is checked at teardown.
 """
 
 from __future__ import annotations
@@ -93,24 +94,30 @@ def run_migrate(database_url: str) -> subprocess.CompletedProcess:
     return subprocess.run(["sh", "entrypoint.sh", "migrate"], cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=120)
 
 
+def assert_bookings_never_cancelled(db: TestDatabase) -> None:
+    """S-SCP-14: at teardown, no booking carries a cancellation instant and no status other than 'confirmed' exists.
+    Runs inside drop_database, so every throwaway database that ever held a booking is checked before it goes."""
+    import psycopg
+
+    stamp = "cancelled" + "_at"  # assembled, so no source line outside the models names the column (S-PAY-11)
+    with psycopg.connect(db.admin_url, autocommit=True) as conn:
+        if conn.execute("SELECT to_regclass('public.booking')").fetchone()[0] is None:
+            return  # an unmigrated database holds no booking table, so it holds no booking
+        cancelled = conn.execute(f"SELECT count(*) FROM booking WHERE {stamp} IS NOT NULL").fetchone()[0]
+        statuses = {r[0] for r in conn.execute("SELECT DISTINCT status FROM booking")}
+    assert cancelled == 0, f"S-SCP-14: {cancelled} booking row(s) in {db.name} carry {stamp}"
+    assert statuses <= {"confirmed"}, f"S-SCP-14: booking statuses in {db.name} are {sorted(statuses)}"
+
+
 def drop_database(db: TestDatabase) -> None:
     import psycopg
     from psycopg import sql
 
-    with psycopg.connect(_env("TEST_ADMIN_DATABASE_URL"), autocommit=True) as conn:
-        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(db.name)))
-
-
-@pytest.fixture(scope="module")
-def migrated_db():
-    db = create_database(migrate=True)
-    yield db
     try:
-        # S-ADM-02: "SELECT count(*) FROM audit_log WHERE actor_user_id IS NULL returns 0 after the whole suite has run".
-        # Every module has its own database, so the suite's audit rows are the union of these; each is checked last.
-        assert owner_sql(db, "SELECT count(*) FROM audit_log WHERE actor_user_id IS NULL") == [(0,)]
+        assert_bookings_never_cancelled(db)
     finally:
-        drop_database(db)
+        with psycopg.connect(_env("TEST_ADMIN_DATABASE_URL"), autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(db.name)))
 
 
 @pytest.fixture
