@@ -47,8 +47,9 @@ def run_real_process(requests: list[tuple[str, str, dict]]) -> tuple[str, str, l
     )
     responses = []
     try:
-        end = time.monotonic() + 20  # a startup deadline only
-        while _refused(port) and time.monotonic() < end and proc.poll() is None:
+        for _ in range(200):  # a startup bound by count (200 x 0.1 s), never by a clock reading (S-SEA-08)
+            if not _refused(port) or proc.poll() is not None:
+                break
             time.sleep(0.1)
         for method, path, headers in requests:
             responses.append(httpx.request(method, f"http://127.0.0.1:{port}{path}", headers=headers, timeout=10))

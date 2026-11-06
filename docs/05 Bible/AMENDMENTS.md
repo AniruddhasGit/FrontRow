@@ -59,7 +59,7 @@ CR-002 line names the item whose wording it applies (`docs/15 ChangeRequest/CR-0
 - S-ADM-12 (a): the money constants are `CURRENCY_MINOR_UNIT_RATIO` and `CURRENCY_CODE` in `backend/app/core/config.py`. The `[*/]\s*100\b` sweep excludes config.py and domain/money.py. Source: CR-002 A-12. The code value is USD (see below).
 - S-XCT-20 (a): the Redis-timeout rg scans `backend/app` and expects one construction site. The no-fallback rg scans `domain/holds/` and adds `with_for_update`. Source: CR-002 A-13.
 - S-XCT-20 (b): POST /api/bookings now answers with the P-HLD-14 CONFIRM_REDIS_DOWN sentence, and the payment count stays unchanged. Source: CR-002 B-3.
-- S-ACC-07: the reset link is `/account/reset/confirm#token=`. The screen reads it from `location.hash` and removes it after reading, asserted on the rendered email. The last sentence now begins "The rest of what the worker puts in the email". Source: CR-002 B-1. **PRD P-ACC-07 still says `?token=`; this batch does not edit it.**
+- S-ACC-07: the reset link is `/account/reset/confirm#token=`. The screen reads it from `location.hash` and removes it after reading, asserted on the rendered email. The last sentence now begins "The rest of what the worker puts in the email". Source: CR-002 B-1. **PRD P-ACC-07 still says `?token=`; this batch does not edit it.** *Later on 2026-11-07: the PRD now says `#token=` at all four places in FrontRow_PRD.md and the four in sections/E5_account.md, citing CR-002 B-1.*
 - S-ADM-20: the cancelled_at sweep names "the module under backend/app/models/ that declares the booking table". The refund copy list adds SCR-ADM-02's film withdraw confirmation. Source: CR-002 B-2.
 - S-XCT-19: the release step is the compare-and-delete EVAL, never a bare DEL of a `lock:` key, and SET NX < COMMIT is asserted. Source: CR-002 B-4.
 - S-ADM-04: with CINEMA_TIMEZONE unset the process boots with Asia/Kolkata. A value that does not resolve still exits, naming the variable. Source: CR-002 B-5.
@@ -87,7 +87,7 @@ The integers, the ratio of 100 and Asia/Kolkata are unchanged. The `*_paise` nam
 - S-RPT-20: the takings accessible name ends "dollars and thirty-one cents".
 - S-RPT-21: `$250.00` and `$300.00` appear nowhere.
 - S-SEA-03: every running total uses `$`, with en-US grouping and the `$` symbol.
-- S-TKT-09: the plain-text line is `Paid      $843.72`, and both parts carry `$843.72`. The `Rs` form existed only because ₹ is not ASCII. **The cell compares against the PRD's E4 Copy block byte for byte, and that block still says `Rs 843.72`; this batch does not edit it.**
+- S-TKT-09: the plain-text line is `Paid      $843.72`, and both parts carry `$843.72`. The `Rs` form existed only because ₹ is not ASCII. **The cell compares against the PRD's E4 Copy block byte for byte, and that block still says `Rs 843.72`; this batch does not edit it.** *Later on 2026-11-07: the E4 Copy block and its prose now say `$843.72` (SRC-006 CUR-1), and tests/tkt/test_s_tkt_09.py compares its literal to that block.*
 - S-XCT-05 (b): CURRENCY_CODE=USD, and the ratio must be 100 while the code is USD.
 - S-XCT-08: `for $281.24`.
 - S-XCT-29: CURRENCY_CODE = USD.

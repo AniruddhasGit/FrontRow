@@ -135,7 +135,7 @@ def mutex_key(user_id: int, showtime_id: int) -> str:
 # The cap is read-check-write across several commands, so two simultaneous requests from one customer would each
 # see the other's hold missing and each take 10 seats. One short lock per customer and showtime serialises them.
 # ponytail: a waiter polls every 20 ms; a blocking primitive is only worth it if one customer sends many at once.
-MUTEX_TTL_MS = 5000  # five seconds. A mutex TTL, not a pricing constant: S-PAY-02's '5000' sweep over-reaches here
+MUTEX_TTL_MS = 5000  # five seconds. A mutex TTL, not a pricing constant: S-PAY-02 excuses a whole-line *_MS constant (CR-002 A-1)
 MUTEX_POLL_S = 0.02
 
 

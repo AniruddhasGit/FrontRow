@@ -28,6 +28,15 @@ PLAIN = (
 )
 
 
+def test_the_literal_above_is_the_block_published_under_copy_in_e4():
+    """The cell compares against the E4 Copy block byte for byte; PLAIN must be that block, not a private copy."""
+    from tests.xct._support import REPO
+
+    e4 = (REPO / "docs/03 PRD/sections/E4_receipt_entry.md").read_text(encoding="utf-8")
+    after = e4.split("Plain-text body, verbatim, with the bracketed values substituted:\n\n```\n", 1)[1]
+    assert after.split("```\n", 1)[0] == PLAIN
+
+
 @pytest.fixture
 def db(migrated_db):
     truncate(migrated_db)

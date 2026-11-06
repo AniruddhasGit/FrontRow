@@ -75,14 +75,65 @@ def test_nothing_outside_the_models_writes_status_or_names_the_timestamp():
 def test_refund_is_named_once_in_the_receipt_template_and_once_on_the_booking_page():
     backend = _lines(APP, "refund")
     assert len(backend) == 1 and "This booking is final. There is no cancellation and no refund." in backend[0], backend
+    # The amended cell: frontend/src hits only on lines carrying the SCR-TKT-01 sentence, or a published E6 admin
+    # withdrawal confirmation containing "nothing is refunded" (SCR-ADM-05, and SCR-ADM-02's film withdraw), the
+    # SCR-TKT-01 sentence among them. "Published" is checked: the quoted sentence is in the E6 section verbatim.
+    e6 = (Path("/docs/03 PRD/sections/E6_admin.md")).read_text(encoding="utf-8")
     front = _lines(FRONTEND, "refund", (".ts", ".tsx"))
-    assert len(front) == 1 and LINE in front[0], front
+    quoted = [re.search(r'"([^"]*refund[^"]*)"', h, re.IGNORECASE) for h in front]
+    assert all(quoted), front
+    sentences = [m[1] for m in quoted]
+    assert LINE in sentences, front
+    assert all(s == LINE or ("nothing is refunded" in s and s in e6) for s in sentences), front
+
+
+def _walk_names(schema, out: list[str], spec: dict, seen=None) -> list[str]:
+    """Every property name reachable from a schema, following $ref into components."""
+    seen = set() if seen is None else seen
+    if isinstance(schema, dict):
+        ref = schema.get("$ref")
+        if ref and ref not in seen:
+            seen.add(ref)
+            _walk_names(spec["components"]["schemas"][ref.rsplit("/", 1)[1]], out, spec, seen)
+        out += list(schema.get("properties", {}))
+        for v in schema.values():
+            _walk_names(v, out, spec, seen)
+    elif isinstance(schema, list):
+        for v in schema:
+            _walk_names(v, out, spec, seen)
+    return out
 
 
 def test_no_route_can_withdraw_a_showtime():
+    # Every route path, function name and request-schema field containing withdraw concerns a film or a lookup entry.
+    app = create_app(Settings(**VALID_ENV))
+    film_or_lookup = re.compile(r"movie|film|lookup|language|certification|genre|format", re.I)
+
+    def leaves(routes):  # FastAPI 0.143 nests each included router's routes (see tests/xct/_support.mounted_routes)
+        for r in routes:
+            nested = []
+            for attr in ("effective_candidates", "effective_low_priority_routes"):
+                found = getattr(r, attr, ())
+                nested.extend(found() if callable(found) else found)
+            yield from leaves(nested) if nested else (r,)
+
+    routes = [r for r in leaves(app.routes) if hasattr(r, "path")]  # an included router with no routes has none
+    assert any(r.path.startswith("/api/admin/movies") for r in routes)  # not vacuous
+    for r in routes:
+        name = getattr(getattr(r, "endpoint", None), "__name__", "")
+        for label in (r.path, name):
+            assert "withdraw" not in label.lower() or film_or_lookup.search(f"{r.path} {name}"), (r.path, name)
+    spec = app.openapi()
+    for path, ops in spec["paths"].items():
+        for op in ops.values():
+            fields = [p["name"] for p in op.get("parameters", [])] + _walk_names(op.get("requestBody", {}), [], spec)
+            assert not [f for f in fields if "withdraw" in f.lower() and not film_or_lookup.search(f"{path} {f}")], path
+    # No DELETE, and no withdraw or cancel operation, on any path beginning /api/admin/showtimes.
+    shows = {p: ops for p, ops in spec["paths"].items() if p.startswith("/api/admin/showtimes")}
+    assert shows and not [p for p, ops in shows.items() if "delete" in ops or re.search("withdraw|cancel", p, re.I)]
+    # rg -in 'withdraw' backend/app: no hit on a line that also matches showtime. Judged on the line's own text, not
+    # its file path (a hit in api/admin/showtimes.py is not a line naming showtime). Checked last, so the route and
+    # schema clauses above are proved even while this one is red on an honest docstring (see the ledger note).
     hits = _lines(APP, "withdraw")
-    allowed = {"language.withdrawn", "certification.withdrawn", "genre.withdrawn", "format.withdrawn"}
-    assert hits and all(any(a in h for a in allowed) for h in hits), hits
-    assert not [h for h in hits if re.search("showtime", h, re.IGNORECASE)]
-    deletes = [p for p, ops in _openapi()["paths"].items() if p.startswith("/api/admin/showtimes") and "delete" in ops]
-    assert deletes == []
+    on_showtime = [h for h in hits if re.search("showtime", h.split(":", 2)[2], re.IGNORECASE)]
+    assert hits and not on_showtime, on_showtime

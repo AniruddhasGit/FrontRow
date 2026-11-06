@@ -66,11 +66,11 @@ def test_every_price_amount_total_column_is_bigint_and_named_paise(migrated_db):
         migrated_db,
         r"""SELECT table_name, column_name, data_type FROM information_schema.columns
              WHERE table_schema = 'public' AND column_name ~ '(price|amount|total)'
-               AND (data_type <> 'bigint' OR column_name NOT LIKE '%\_paise')""",
+               AND (data_type <> 'bigint' OR column_name !~ '_paise(_applied)?$')""",
     )
     assert rows == []
     # Not vacuous: the money columns are there and visible to this query.
-    assert len(owner_sql(migrated_db, "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name LIKE '%\\_paise'")) >= 5
+    assert len(owner_sql(migrated_db, "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name ~ '_paise(_applied)?$'")) >= 5
 
 
 # ---- the one function -----------------------------------------------------------------------------------
@@ -121,17 +121,32 @@ def test_negative_inputs_are_refused(base, uplift):
 
 
 def test_the_formula_is_written_once_uplift_appears_nowhere_else_in_app():
-    """rg -n 'uplift_basis_points' backend/app --glob '!**/domain/pricing.py' --glob '!**/models/**'
-    --glob '!**/migrations/**' returns 0 hits. (scripts/ does not exist yet.)"""
-    hits = [
-        f"{p.relative_to(BACKEND_DIR)}:{i}"
-        for p in APP.rglob("*.py")
-        if p.name != "pricing.py" or p.parent.name != "domain"
-        if "models" not in p.relative_to(APP).parts and "migrations" not in p.parts
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if "uplift_basis_points" in line
-    ]
-    assert hits == []
+    r"""CR-002 A-10 (2): rg -nP 'uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points' backend/app scripts
+    --glob '!**/domain/pricing.py' returns 0 hits. Reading, storing and validating the column stays allowed."""
+    from tests.xct._support import rg
+
+    hits = rg(r"uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points", "backend/app", "scripts")
+    assert [f"{h[0]}:{h[1]}" for h in hits if h[0] != "backend/app/domain/pricing.py"] == []
+    rx = re.compile(r"uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points")
+    assert rx.search("base * uplift_basis_points") and rx.search("uplift_basis_points_applied % 7")
+    assert not rx.search('row["uplift_basis_points"]') and not rx.search("uplift_basis_points=Column(BigInteger)")
+
+
+def test_only_the_five_real_importers_use_pricing_and_the_receipt_and_reports_do_not():
+    """CR-002 A-10 (3): the seat-map read, the hold snapshot, the booking total, the admin base-price bound and
+    scripts/seed.py import app.domain.pricing; the receipt render and the reporting domain import nothing from it."""
+    from tests.xct._support import rg
+
+    files = {h[0] for h in rg(r"from app\.domain\.pricing import", "backend/app", "scripts")}
+    assert files <= {"backend/app/domain/browse/seatmap.py", "backend/app/domain/holds/__init__.py",
+                     "backend/app/domain/booking/__init__.py", "backend/app/domain/admin/common.py", "scripts/seed.py"}, files
+    assert rg(r"app\.domain\.pricing|app\.domain import pricing", "backend/app/workers/render.py", "backend/app/domain/reports") == []
+    # They read stored paise, never a recomputed price: the reports sum booking_seat.price_paise, and the receipt's
+    # one read (RECEIPT_FACTS) takes booking.total_paise, the confirm-time sum of booking_seat.price_paise (S-PAY-07).
+    from app.workers import RECEIPT_FACTS
+
+    assert "b.total_paise" in str(RECEIPT_FACTS) and "seat_price_paise" not in (APP / "workers" / "render.py").read_text()
+    assert rg(r"SUM\(bs\.price_paise\)", "backend/app/domain/reports")
 
 
 # ---- the request boundary: integer paise, or 422 ---------------------------------------------------------

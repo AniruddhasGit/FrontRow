@@ -54,9 +54,8 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_listening(port: int, deadline_s: float = 15.0) -> None:
-    end = time.monotonic() + deadline_s
-    while time.monotonic() < end:
+def _wait_listening(port: int, attempts: int = 150) -> None:
+    for _ in range(attempts):  # bounded by count (150 x 0.1 s), never by a clock reading (S-SEA-08)
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.2):
                 return

@@ -61,6 +61,34 @@ def _respond(status: int, code: str, details: dict[str, Any] | None = None, mess
 _HTTP_CODES = {401: "AUTH_REQUIRED", 403: "FORBIDDEN", 404: "NOT_FOUND"}
 
 
+def _a_template_really_matches(request: Request) -> bool:
+    """True when some route matches the path for another method AND every path parameter parses as its type."""
+    from fastapi.routing import APIRoute
+    from starlette.routing import Match
+
+    def leaves(routes):
+        # FastAPI 0.143 wraps each included router in an _IncludedRouter; its routes are its effective candidates.
+        for r in routes:
+            nested = []
+            for attr in ("effective_candidates", "effective_low_priority_routes"):
+                found = getattr(r, attr, ())
+                nested.extend(found() if callable(found) else found)
+            yield from leaves(nested) if nested else (r,)
+
+    for route in leaves(request.app.routes):
+        match, child = route.matches(request.scope)
+        if match is Match.NONE:
+            continue
+        api_route = getattr(route, "original_route", route)  # an included router's entry wraps the APIRoute
+        if not isinstance(api_route, APIRoute):
+            return True  # a plain route (e.g. /metrics) declares no parameter types to check
+        values = child.get("path_params", {})
+        if all(not field.validate(values.get(field.alias), {}, loc=("path", field.alias))[1]
+               for field in api_route.dependant.path_params):
+            return True
+    return False
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Mounted on the APPLICATION, never on a router (P-XCT-11 3a): routing has already failed when
     404 and 405 are raised, so a router-level handler would never see them."""
@@ -73,6 +101,10 @@ def install_error_handlers(app: FastAPI) -> None:
     async def method_not_allowed(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         # The path exists for another method. Generic and entity-blind by necessity: the path is only a
         # string here. Keeps the framework's Allow header, which names the methods that do exist.
+        # Unless no matched template's path parameter parses as its declared type (POST /api/admin/movies/import
+        # against /movies/{movie_id: int}): then no such address exists, so 404 (S-SCP-01, CR-002 B-7).
+        if not _a_template_really_matches(request):
+            return _respond(404, "NOT_FOUND")
         return _respond(405, "METHOD_NOT_ALLOWED", headers=getattr(exc, "headers", None))
 
     @app.exception_handler(StarletteHTTPException)

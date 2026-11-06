@@ -111,3 +111,64 @@ def zone_c(*paths: str) -> list[str]:
     """Trees the CLIENT writes (Zone C, e.g. .github/workflows) that a criterion sweeps and that may not exist yet.
     Only these may be absent; every other path given to rg() must exist."""
     return [p for p in paths if (REPO / p).exists()]
+
+
+# ---- S-XCT-03 (CR-002 A-2): the row-lock allow-list, which S-PAY-07 also requires to hold ---------------------
+
+LOCK_ALLOW_LIST = {
+    "api/bookings.py": {"showtime"},  # the confirm
+    "domain/admin/": {"screen", "seat", "showtime", "movie", "cinema", "users", "seat_category",
+                      "language", "certification", "genre", "format"},  # version-checked admin edits (P-ADM-13)
+    "workers/__init__.py": {"outbox_message"},  # with SKIP LOCKED (S-TKT-06)
+    "api/receipts.py": {"receipt_dispatch"},  # P-TKT-05
+}
+SEAT_OCCUPANCY = {"booking_seat", "showtime_seat"}
+LOCK = re.compile(r"FOR UPDATE|with_for_update\(")
+
+
+def _not_code_lines(source: str) -> set[int]:
+    """Comment lines and docstring lines: they take no lock, so the allow-list does not count them."""
+    import ast
+
+    lines = {n for n, ln in enumerate(source.splitlines(), 1) if ln.lstrip().startswith("#")}
+    for node in ast.walk(ast.parse(source)):
+        body = getattr(node, "body", None)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and body \
+                and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+                and isinstance(body[0].value.value, str):
+            lines |= set(range(body[0].lineno, body[0].end_lineno + 1))
+    return lines
+
+
+def locked_table(rel: str, lines: list[str], n: int) -> set[str]:
+    """The table(s) the lock on line n takes, read from the statement ending on that line (at most 4 lines up)."""
+    window = " ".join(lines[max(0, n - 4):n])
+    if "with_for_update(" in lines[n - 1]:
+        name = re.findall(r"select\((\w+)", window)[-1]
+        if rel == "domain/admin/lookups.py" and re.search(rf"^\s*{name} = table\(kind\)$", "\n".join(lines), re.M):
+            from app.domain.admin.lookups import KINDS  # `t = table(kind)`: one of the four lookup tables
+            return {t.name for t in KINDS.values()}
+        return {name}
+    alias = re.search(r"FOR UPDATE OF (\w+)", lines[n - 1])
+    if alias:
+        return {re.search(rf"(?:FROM|JOIN)\s+(\w+)\s+(?:AS\s+)?{alias[1]}\b", window, re.I)[1]}
+    return {re.findall(r"FROM\s+(\w+)", window, re.I)[-1]}
+
+
+def row_locks() -> list[tuple[str, int, set[str]]]:
+    """Every code hit of rg -n 'FOR UPDATE|with_for_update\\(' backend/app, with the table(s) it locks."""
+    app = REPO / "backend" / "app"
+    out = []
+    for f in sorted(app.rglob("*.py")):
+        source = f.read_text(encoding="utf-8")
+        skip, lines, rel = _not_code_lines(source), source.splitlines(), f.relative_to(app).as_posix()
+        out += [(rel, n, locked_table(rel, lines, n)) for n, ln in enumerate(lines, 1) if n not in skip and LOCK.search(ln)]
+    return out
+
+
+def lock_violations(locks=None) -> list[tuple[str, int, set[str]]]:
+    """Hits off the allow-list, and any lock of a seat-occupancy table. Empty when the allow-list holds."""
+    def allowed(rel: str) -> set[str]:
+        return next((v for k, v in LOCK_ALLOW_LIST.items() if rel == k or (k.endswith("/") and rel.startswith(k))), set())
+    return [(rel, n, t) for rel, n, t in (row_locks() if locks is None else locks)
+            if t & SEAT_OCCUPANCY or not t <= allowed(rel)]
