@@ -68,7 +68,7 @@ def test_a_failing_audit_insert_rolls_the_hall_back_and_answers_500_quoting_the_
 
 def test_the_vocabulary_is_a_closed_enum_equal_to_p_adm_19():
     assert {a.value for a in AuditAction} == _p_adm_19_actions()
-    assert len(AuditAction) == 39
+    assert len(AuditAction) == 41  # 39 + admin_grant.created/deleted (SRC-008 ROLE-1, S-ADM-30)
     with pytest.raises(ValueError):
         AuditAction("screen.exploded")
 

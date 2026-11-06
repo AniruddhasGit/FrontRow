@@ -410,7 +410,7 @@ def r_reserved_not_decided(model):
 # orphaned actions against a perfectly correct model.
 ACTION_PREFIXES = set("""
 manager user seat_category certification language genre format movie_genre
-manager_screen_assignment
+manager_screen_assignment admin_grant
 """.split())
 
 DOTTED = re.compile(
@@ -813,7 +813,7 @@ def selftest():
           "reserved-not-decided")
     probe("harden a hall grid width into a seat CHECK",
           lambda m: first_table(m, "seat")["checks"].append(
-              {"name": "ck_seat__grid_col_max", "expression": "grid_col <= 20", "cite": "x"}),
+              {"name": "ck_seat__grid_col_max", "expression": "grid_col <= 13", "cite": "x"}),  # 13: a CR-003 row count
           "seed-expectations")
     probe("cite an ADR the ledger marks NOT_INCLUDED",
           lambda m: first_table(m, "booking")["columns"][0].__setitem__(

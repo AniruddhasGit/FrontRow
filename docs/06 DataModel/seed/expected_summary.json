@@ -21,6 +21,11 @@
     ]
   },
   "tables": {
+    "admin_grant": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "S-ADM-30 ('after a fresh seed the list holds 0 rows') · SRC-008 ROLE-1 ADDENDUM (the seeded admin is not on the list)"
+    },
     "audit_log": {
       "rows": 0,
       "basis": "stated by the document cited",

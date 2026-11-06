@@ -179,7 +179,7 @@ exclusion in `S2.4` or an `OPEN` row, and neither may be quietly filled in.
 disagree** — a check added after this table silently went stale at 53 while claiming it could
 not.*
 
-**58 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
+**61 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
 once, under the **narrowest** router that admits it.
 
 **Public — no session required** — 12
@@ -222,10 +222,13 @@ once, under the **narrowest** router that admits it.
 | `EP-RPT-03` | `GET` | `/api/reports/scope` | manager / admin |
 | `EP-RPT-02` | `GET` | `/api/reports/showtimes` | manager / admin |
 
-**Admin only — every privileged write, plus the change log** — 30
+**Admin only — every privileged write, plus the change log** — 33
 
 | Id | Method | Path | Who |
 |---|---|---|---|
+| `EP-ADM-30` | `GET` | `/api/admin/admin-grants` | admin |
+| `EP-ADM-31` | `POST` | `/api/admin/admin-grants` | admin |
+| `EP-ADM-32` | `DELETE` | `/api/admin/admin-grants/{grant_id}` | admin |
 | `EP-ADM-28` | `GET` | `/api/admin/cinemas` | admin |
 | `EP-ADM-29` | `PATCH` | `/api/admin/cinemas/{cinema_id}` | admin |
 | `EP-ADM-25` | `GET` | `/api/admin/lookups/{kind}` | admin |

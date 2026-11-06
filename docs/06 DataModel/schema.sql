@@ -151,6 +151,20 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uq_users__email_ci ON users ((lower(email)));
 
 -- --------------------------------------------------------------------------
+-- admin_grant - One row per email address an existing admin has granted admin access to. A sign-up or sign-in with that address (trimmed, case-insensitive) makes the account admin; deleting the row makes an admin account with that address a customer again.
+-- SRC-008 ROLE-1 and its ADDENDUM · S-ADM-30 · P-ADM-18 · P-ADM-19
+CREATE TABLE admin_grant (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) · S-ADM-30 (removing one deletes that grant row) - The audit row of a removal records the id the deleted row held, as manager.screen_unassigned does.
+    email                      text NOT NULL,  -- SRC-008 ROLE-1 ('typing their email into a section in setting') · S-ADM-30 (stored and compared trimmed and case-insensitively) - Stored trimmed and lower-cased by the application, so the unique index on lower(email) and the comparison with users.email agree.
+    granted_by                 bigint NOT NULL,  -- SRC-008 ROLE-1 ('only an existing admin can make someone an admin') · S-ADM-02 (who made the change) - The admin who typed the address. The audit row carries the same id as actor_user_id.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 · no table in `public` other than `alembic_version` may lack a `created_at` · FR-ADR-018 - Row metadata; the list orders by email, not by this.
+    PRIMARY KEY (id),
+    CONSTRAINT fk_admin_grant__granted_by FOREIGN KEY (granted_by) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- One grant per address, case-insensitively. The guard, not the read before it: a simultaneous twin add is a unique violation translated to 422.
+CREATE UNIQUE INDEX uq_admin_grant__email_ci ON admin_grant ((lower(email)));
+
+-- --------------------------------------------------------------------------
 -- audit_log - One append-only row per privileged write, inserted in the same database transaction as the change itself, recording who, when, which action, which row, and the changed fields before and after.
 -- P-XCT-03 · E8 S7.3 · P-ADM-19 · FR-ADR-019
 CREATE TABLE audit_log (
@@ -417,6 +431,7 @@ CREATE TABLE receipt_dispatch (
 -- frontrow_app: the application role. Not a superuser and not the owner. The two-role split is FORCED, not stylistic: S-XCT-07 asserts that table_privileges for audit_log and current_user returns EXACTLY two rows. Observed on PostgreSQL 16.14 - a table's OWNER sees seven (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE), so a single-role design cannot satisfy that criterion at all. With a separate owner the same query returns exactly INSERT and SELECT.
 -- S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11 · least-privilege matrix: checks/roles_local.sql section 3 (each table's privileges cited there; verify_invariants.sql A4 fails on any excess) · CREATED BY THE OPERATOR, NOT BY schema.sql: checks/roles_local.sql locally, the client on RDS (AWS_PREP_QUEUE row 20); schema.sql only GRANTs and fails loudly if the role is absent.
 GRANT USAGE ON SCHEMA public TO frontrow_app;
+GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app;
 GRANT SELECT, INSERT ON audit_log TO frontrow_app;
 GRANT SELECT, INSERT ON booking TO frontrow_app;
 GRANT SELECT, INSERT ON booking_seat TO frontrow_app;

@@ -34,9 +34,10 @@ def _mounted(app) -> set[tuple[str, str]]:
     return mounted_routes(app)
 
 
-def test_the_contract_lists_58_endpoints():
-    assert CONTRACT["endpoint_count"] == 58
-    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 58
+def test_the_contract_lists_61_endpoints():
+    # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30), the count generate_api.py emits.
+    assert CONTRACT["endpoint_count"] == 61
+    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 61
 
 
 def test_mounted_minus_contract_is_empty(app):

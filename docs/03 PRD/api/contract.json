@@ -190,7 +190,7 @@
       "source": "FR-ADR-052 (extension) · FR-ADR-060 · FR-ADR-067 · raised by E4 in the iteration-6 fix pass"
     }
   ],
-  "endpoint_count": 58,
+  "endpoint_count": 61,
   "endpoints": [
     {
       "id": "EP-ACC-01",
@@ -2401,6 +2401,145 @@
         "R-ADM-05",
         "R-ADM-06",
         "R-PRC-01"
+      ]
+    },
+    {
+      "id": "EP-ADM-30",
+      "method": "GET",
+      "path": "/api/admin/admin-grants",
+      "summary": "List the email addresses granted admin access",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "description": "Every grant, ORDER BY email ASC, id ASC",
+          "body": {
+            "items": "array of {id, email, granted_by, created_at}"
+          }
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "safe method - no state change",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code.",
+      "satisfies": [
+        "P-ADM-18"
+      ],
+      "brd": [
+        "R-ADM-05"
+      ]
+    },
+    {
+      "id": "EP-ADM-31",
+      "method": "POST",
+      "path": "/api/admin/admin-grants",
+      "summary": "Grant admin access to an email address",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {
+        "body": {
+          "email": "string, 3..254 after trimming, a valid address (P-ACC-01's rules), stored lower-case, unique case-insensitively, required"
+        }
+      },
+      "responses": {
+        "400": {
+          "description": "The body does not parse, or it carries a property this endpoint does not define"
+        },
+        "201": {
+          "description": "The new grant; one admin_grant.created audit row in the same transaction",
+          "body": {
+            "id": "integer",
+            "email": "string",
+            "granted_by": "integer",
+            "created_at": "string"
+          }
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        },
+        "422": {
+          "description": "The email is not a valid address, already has admin access, or belongs to an account that is already an admin (the seeded admin)"
+        }
+      },
+      "errors": [
+        "REQUEST_INVALID",
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "A repeat is refused with 422 and writes nothing: the unique index on lower(email) is the guard.",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An existing account is not changed here; it becomes admin at its next sign-in.",
+      "satisfies": [
+        "P-ADM-18",
+        "P-ADM-19"
+      ],
+      "brd": [
+        "R-ADM-05",
+        "R-ADM-06"
+      ]
+    },
+    {
+      "id": "EP-ADM-32",
+      "method": "DELETE",
+      "path": "/api/admin/admin-grants/{grant_id}",
+      "summary": "Remove an email's admin access, making its admin account a customer",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "grant_id": "integer, positive"
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "The grant row is deleted, an admin account with that email is set to customer, and one admin_grant.deleted audit row is written, all in one transaction"
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        },
+        "404": {
+          "description": "No grant with that id"
+        },
+        "422": {
+          "description": "The grant is the caller's own email"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "A repeat answers 404 and writes nothing.",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. The role is read from the user row on every request, so the demoted account's next admin request is 403.",
+      "satisfies": [
+        "P-ADM-18",
+        "P-ADM-19"
+      ],
+      "brd": [
+        "R-ADM-05",
+        "R-ADM-06"
       ]
     },
     {

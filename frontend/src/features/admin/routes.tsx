@@ -4,6 +4,7 @@
 import type { AppRoute } from "../../router";
 import { Link } from "../../router";
 import "./admin.css";
+import { AccessScreen } from "./AccessScreen";
 import { CategoriesScreen } from "./CategoriesScreen";
 import { FilmEditor } from "./FilmEditor";
 import { FilmsScreen } from "./FilmsScreen";
@@ -25,6 +26,7 @@ function AdminHome() {
         <li><Link to="/admin/seat-categories">Seat categories and pricing</Link></li>
         <li><Link to="/admin/showtimes">Showtimes</Link></li>
         <li><Link to="/admin/managers">Manager accounts</Link></li>
+        <li><Link to="/admin/access">Admin access</Link></li>
       </ul>
     </section>
   );
@@ -42,4 +44,5 @@ export const adminRoutes: AppRoute[] = [
   { path: "/admin/seat-categories", render: () => <CategoriesScreen /> },
   { path: "/admin/showtimes", render: () => <ShowtimesScreen /> },
   { path: "/admin/managers", render: () => <ManagersScreen /> },
+  { path: "/admin/access", render: () => <AccessScreen /> },
 ];
