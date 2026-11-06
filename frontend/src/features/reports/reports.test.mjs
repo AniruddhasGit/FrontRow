@@ -32,10 +32,10 @@ const BARE_UTC = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/;
 const textNodes = (n) => (n.text !== undefined ? [n.text] : (n.children ?? []).flatMap(textNodes));
 
 // ---- S-RPT-06 / S-RPT-19: figures formatted at the edge ----------------------------------------------------------
-test("S-RPT-06/19: takings render ₹27,833.31 with Indian grouping; the four figures render together", () => {
+test("S-RPT-06/19: takings render $27,833.31 with US grouping; the four figures render together", () => {
   const doc = dash({});
-  assert.deepEqual(figures(doc), ["₹27,833.31", "29.5 %", "109", "2"]);
-  assert.equal(F.formatPaise(1234567890), "₹1,23,45,678.90");
+  assert.deepEqual(figures(doc), ["$27,833.31", "29.5 %", "109", "2"]);
+  assert.equal(F.formatPaise(1234567890), "$12,345,678.90");
 });
 
 test("S-RPT-19: loading - all four figures show the loading block and none a value; a period change clears them", () => {
@@ -44,7 +44,7 @@ test("S-RPT-19: loading - all four figures show the loading block and none a val
   assert.deepEqual(figures(pending), ["", "", "", ""]);
   assert.equal(byClass(pending, "rpt-loading").length, 4);
   const week = dash({ dash: null, query: { ...Q, period: "week" } });
-  assert.ok(!text(week).includes("₹27,833.31"));
+  assert.ok(!text(week).includes("$27,833.31"));
 });
 
 test("S-RPT-19: the period line, from the local anchor by calendar arithmetic", () => {
@@ -69,12 +69,12 @@ test("S-RPT-19: the three zero states render three different ways", () => {
   assert.equal(line[0].attrs.role, undefined);
 
   const unscheduled = dash({ dash: { ...DASH, takings_paise: 0, seats_sold: 0, capacity: 0, occupancy_pct: null, shows: 0, films: [] } });
-  assert.deepEqual(figures(unscheduled).slice(0, 2), ["₹0.00", "—"]);
+  assert.deepEqual(figures(unscheduled).slice(0, 2), ["$0.00", "—"]);
   assert.equal(byClass(unscheduled, "rpt-bar").length, 0);
   assert.ok(text(unscheduled).includes("No shows were scheduled in this period."));
 
   const unsold = dash({ dash: { ...DASH, takings_paise: 0, seats_sold: 0, occupancy_pct: 0, films: [] } });
-  assert.deepEqual(figures(unsold).slice(0, 2), ["₹0.00", "0.0 %"]);
+  assert.deepEqual(figures(unsold).slice(0, 2), ["$0.00", "0.0 %"]);
   assert.equal(byClass(unsold, "rpt-bar-fill")[0].attrs.style, "width:0%");
   assert.ok(text(unsold).includes("No seats were sold in this period."));
 });
@@ -174,7 +174,7 @@ test("S-RPT-20: stepper names follow the period type; figures carry spoken names
   }
   const doc = dash({});
   const named = byClass(doc, "rpt-figure").map((f) => name(f, doc));
-  assert.equal(named[0], "Takings, twenty-seven thousand eight hundred and thirty-three rupees and thirty-one paise");
+  assert.equal(named[0], "Takings, twenty-seven thousand eight hundred and thirty-three dollars and thirty-one cents");
   assert.equal(named[1], "Occupancy, twenty-nine point five per cent");
   const bar = byClass(doc, "rpt-bar")[0];
   assert.equal(bar.attrs["aria-hidden"], "true");
@@ -218,7 +218,7 @@ test("S-RPT-20: pager - Later only at the start, position line forms, the only s
   assert.equal(L.positionLine({ ...big, offset: 50 }), "Shows 51 to 100 of 214");
   assert.equal(L.positionLine({ total: 1, limit: 50, offset: 0, rows: [ROW(1, "2026-08-14T19:30:00+05:30")] }), "Showing the only show in this period");
   const live = all(dash({ live: `Day, ${L.periodLine("2026-08-14", "day")}. ${L.figuresSentence(DASH)}` }), (e) => e.attrs["aria-live"] === "polite");
-  assert.equal(text(live[0]), "Day, Friday 14 August 2026. Takings twenty-seven thousand eight hundred and thirty-three rupees and thirty-one paise. Occupancy twenty-nine point five per cent.");
+  assert.equal(text(live[0]), "Day, Friday 14 August 2026. Takings twenty-seven thousand eight hundred and thirty-three dollars and thirty-one cents. Occupancy twenty-nine point five per cent.");
 });
 
 // ---- S-RPT-17: the 429 wait is computed from Retry-After ----------------------------------------------------------
@@ -256,7 +256,7 @@ test("S-RPT-21: both selects come from the response, any-options first, six colu
   assert.deepEqual(all(doc, (e) => e.tag === "th").map(text), ["When", "Who", "Action", "Record", "Before", "After"]);
   const t = text(doc);
   assert.ok(t.includes("base_price_paise") && t.includes("25000") && t.includes("30000"));
-  assert.ok(!t.includes("₹250.00") && !t.includes("₹300.00"));
+  assert.ok(!t.includes("$250.00") && !t.includes("$300.00"));
   const rowText = text(all(doc, (e) => e.tag === "tbody")[0]);
   assert.ok(rowText.includes("12 Aug 2026, 3:40 pm") && !rowText.includes("15:40") && !rowText.includes("+05:30"));
   assert.equal(textNodes(doc).filter((n) => n === "All dates and times are Asia/Kolkata.").length, 1);

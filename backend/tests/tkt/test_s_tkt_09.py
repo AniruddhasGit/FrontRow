@@ -18,7 +18,7 @@ PLAIN = (
     "Hall      Hall 3\n"
     "Showtime  21 Aug 2026, 7:15 pm (Asia/Kolkata)\n"
     "Seats     F7, F8, F9\n"
-    "Paid      Rs 843.72\n"
+    "Paid      $843.72\n"
     "\n"
     "Show this reference at the entrance. A person will check it.\n"
     "\n"
@@ -52,7 +52,7 @@ async def test_the_receipt_is_the_published_copy_byte_for_byte(db):
     assert plain == PLAIN and len(plain.splitlines()) == 15 and "₹" not in plain
     assert msg["Subject"] == "Your FrontRow booking FR-ACDE-FHJD"
     html = msg.get_body(("html",)).get_content()
-    assert "₹843.72" in html and "See this booking again" in html
+    assert "$843.72" in html and "See this booking again" in html
     assert html.count("href=") == 1 and 'href="https://example.invalid/bookings/FR-ACDE-FHJD"' in html
     for banned in ("<img", "<table", "<td"):
         assert banned not in html

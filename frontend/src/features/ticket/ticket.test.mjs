@@ -35,8 +35,8 @@ test("the fact list is exactly FILM, HALL, SHOWTIME, SEATS, PAID, and PAID is th
   const html = render(null);
   assert.deepEqual([...html.matchAll(/<dt>(.*?)<\/dt>/g)].map((m) => m[1]), [...FACT_LABELS]);
   assert.deepEqual(FACT_LABELS, ["FILM", "HALL", "SHOWTIME", "SEATS", "PAID"]);
-  assert.equal((html.match(/₹/g) ?? []).length, 1);
-  assert.ok(html.includes("₹618.76") && html.includes("F7, F8"));
+  assert.equal((html.match(/\$/g) ?? []).length, 1);
+  assert.ok(html.includes("$618.76") && html.includes("F7, F8"));
   assert.equal(spoken("FR-ACDE-FHJ2"), "F R, A C D E, F H J 2");
 });
 

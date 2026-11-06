@@ -156,19 +156,19 @@ test("S-BRW-12: every seat sold renders the full grid and its banner, and no 'No
   assert.ok(!text(doc).includes("Nothing"));
 });
 
-test("S-BRW-13: one legend row per category reads 'Premium  ₹281.24'; no tax, fee or discount anywhere", () => {
+test("S-BRW-13: one legend row per category reads 'Premium  $281.24'; no tax, fee or discount anywhere", () => {
   const doc = screen({ map: hall() });
   const rows = all(all(doc, byClass("fr-legend-categories"))[0], (e) => e.tag === "li").map(text);
-  assert.deepEqual(rows, ["Premium  ₹281.24", "Recliner  ₹333.31"]);
+  assert.deepEqual(rows, ["Premium  $281.24", "Recliner  $333.31"]);
   assert.ok(!/Tax|Booking fee|Convenience|Discount/.test(text(doc)));
 });
 
-test("S-BRW-13: before the prices arrive the legend holds an empty block - no ₹, and never ₹0.00", () => {
+test("S-BRW-13: before the prices arrive the legend holds an empty block - no $, and never $0.00", () => {
   const doc = screen({});
   const block = all(doc, byClass("fr-inset-block"));
   assert.equal(block.length, 1);
-  assert.ok(!text(all(doc, byClass("fr-legend-categories"))[0]).includes("₹"));
-  assert.ok(!text(doc).includes("₹0.00"));
+  assert.ok(!text(all(doc, byClass("fr-legend-categories"))[0]).includes("$"));
+  assert.ok(!text(doc).includes("$0.00"));
 });
 
 // S-BRW-14's 6-row hall: gr 1, 2, 4 category 1; gr 3 void; gr 5 both; gr 6 category 2.
@@ -236,24 +236,24 @@ test("S-BRW-07, S-SEA-10: a guest's map has no 'held by you' cell and the action
   assert.equal(text(primary(doc)), "Hold these seats");
 });
 
-test("S-SEA-03: two Premium then three Recliner total ₹1,562.49; one line per seat plus the total; no tax or fee", () => {
+test("S-SEA-03: two Premium then three Recliner total $1,562.49; one line per seat plus the total; no tax or fee", () => {
   const map = hall({ cat: (s) => (s.row === "A" ? 1 : 2) });
   const premium = map.seats.filter((s) => s.cat === 1).slice(0, 2).map((s) => ({ ...s, price_paise: 28125 }));
   const recliner = map.seats.filter((s) => s.cat === 2).slice(0, 3).map((s) => ({ ...s, price_paise: 33333 }));
   const priced = { ...map, seats: map.seats.map((s) => premium.find((p) => p.id === s.id) ?? recliner.find((r) => r.id === s.id) ?? s) };
   const chosen = [...premium, ...recliner].map((s) => s.id);
   const totals = [1, 2, 3, 4, 5].map((n) => text(all(screen({ map: priced, selection: chosen.slice(0, n) }), byClass("fr-total"))[0]));
-  assert.deepEqual(totals, ["₹281.25", "₹562.50", "₹895.83", "₹1,229.16", "₹1,562.49"]);
+  assert.deepEqual(totals, ["$281.25", "$562.50", "$895.83", "$1,229.16", "$1,562.49"]);
   const doc = screen({ map: priced, selection: chosen });
   const summary = all(doc, byClass("fr-summary"))[0];
   assert.equal(all(summary, byClass("fr-summary-line")).length, chosen.length + 1);
   assert.equal((text(summary).match(/tax|fee|discount|convenience|surcharge|gst/gi) ?? []).length, 0);
 });
 
-test("S-SEA-03: nothing chosen reads ₹0.00 and the cap note; a seat with no known price removes the total and disables the action", () => {
+test("S-SEA-03: nothing chosen reads $0.00 and the cap note; a seat with no known price removes the total and disables the action", () => {
   const map = hall();
   let doc = screen({ map });
-  assert.equal(text(all(doc, byClass("fr-total"))[0]), "₹0.00");
+  assert.equal(text(all(doc, byClass("fr-total"))[0]), "$0.00");
   assert.equal(MAX_SEATS_PER_BOOKING, 10);
   assert.equal(text(all(doc, byClass("fr-cap-note"))[0]), capNote(10));
   assert.equal(capNote(10), ["Up to", 10, "seats."].join(" "));

@@ -137,20 +137,22 @@ test("the panel's direct children are the thirteen published elements, in order,
 
 test("the lines render the snapshot figures and the client recomputes nothing", () => {
   const lines = kids(panel()).slice(3, 8).map(text);
-  assert.deepEqual(lines.map((l) => l.replace(/^.*₹/, "")), ["309.38", "309.38", "309.38", "366.66", "366.66"]);
+  assert.deepEqual(lines.map((l) => l.replace(/^.*\$/, "")), ["309.38", "309.38", "309.38", "366.66", "366.66"]);
   assert.ok(lines[0].includes("Premium") && lines[3].includes("Recliner"));
   const odd = kids(panel({ seats: [{ seat_id: 1, label: "A1", category: "Standard", price_paise: 99999 }] }));
-  assert.ok(text(odd[3]).endsWith("₹999.99"));
+  assert.ok(text(odd[3]).endsWith("$999.99"));
 });
 
-test("the total is ₹1,661.46 under TOTAL and the pay action says so, with its accessible name", () => {
+test("the total is $1,661.46 under TOTAL and the pay action says so, with its accessible name", () => {
   const children = kids(panel());
-  assert.equal(text(children[9]), "TOTAL₹1,661.46");
+  assert.equal(text(children[9]), "TOTAL$1,661.46");
   assert.equal(checkoutTotal(HOLD.seats), 166146);
   const pay = children[11];
-  assert.equal(text(pay), "Pay ₹1,661.46");
-  assert.equal(pay.props["aria-label"], "Pay 1,661 rupees 46 paise");
-  assert.equal(payName(166146, MINOR_UNIT_RATIO), "Pay 1,661 rupees 46 paise");
+  assert.equal(text(pay), "Pay $1,661.46");
+  assert.equal(pay.props["aria-label"], "Pay 1,661 dollars 46 cents");
+  assert.equal(payName(166146, MINOR_UNIT_RATIO), "Pay 1,661 dollars 46 cents");
+  assert.equal(payName(1299, MINOR_UNIT_RATIO), "Pay 12 dollars 99 cents");
+  assert.equal(payName(101, MINOR_UNIT_RATIO), "Pay 1 dollar 1 cent");
   assert.equal(pay.props.disabled, false);
 });
 

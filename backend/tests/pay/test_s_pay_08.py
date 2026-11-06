@@ -111,7 +111,7 @@ async def test_the_201_body_has_exactly_the_published_keys_and_the_cinemas_offse
         assert set(body) == {"booking_id", "booking_reference", "showtime_id", "movie_title", "screen_name", "starts_at", "seats",
                              "total_paise", "currency_code", "payment_status", "created_at"}
         assert re.match(REF, body["booking_reference"])
-        assert (body["currency_code"], body["payment_status"], body["showtime_id"]) == ("INR", "captured", 7)
+        assert (body["currency_code"], body["payment_status"], body["showtime_id"]) == ("USD", "captured", 7)
         assert (body["movie_title"], body["screen_name"]) == ("The Long Night", "Hall 2")
         for field in ("starts_at", "created_at"):
             assert body[field].endswith("+05:30") and not body[field].endswith("Z"), body[field]

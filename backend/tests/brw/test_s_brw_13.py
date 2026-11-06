@@ -1,6 +1,6 @@
 """S-BRW-13 (P-BRW-10): every category and every seat carries its already-rounded integer price.
 
-Not here (browser harness): the rendered legend row 'Premium  ₹281.24', the inset block for a price not yet
+Not here (browser harness): the rendered legend row 'Premium  $281.24', the inset block for a price not yet
 arrived, the page text sweeps. The client's integer sum (3 x 33331 = 99993) and the formatter are unit-tested in
 frontend/src/features/seatmap.
 """
@@ -40,7 +40,7 @@ async def test_the_three_worked_prices_and_every_seat_carries_its_categorys(worl
         assert type(seat["price_paise"]) is int
         assert seat["price_paise"] == world["cats"][seat["cat"]]
     assert all(type(cat["price_paise"]) is int for cat in body["categories"])
-    assert "₹" not in r.text
+    assert "$" not in r.text and "₹" not in r.text
     assert re.search(r"[0-9]+\.[0-9]", r.text) is None
 
 

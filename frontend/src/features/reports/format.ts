@@ -59,11 +59,11 @@ export function words(n: number): string {
   return parts.join(" ");
 }
 
-/** 2783331 -> "twenty-seven thousand eight hundred and thirty-three rupees and thirty-one paise". */
+/** 2783331 -> "twenty-seven thousand eight hundred and thirty-three dollars and thirty-one cents" (SRC-006). */
 export function paiseWords(paise: number): string {
-  const rupees = Math.floor(paise / 100);
+  const dollars = Math.floor(paise / 100);
   const minor = paise % 100;
-  return `${words(rupees)} ${rupees === 1 ? "rupee" : "rupees"} and ${words(minor)} ${minor === 1 ? "paisa" : "paise"}`;
+  return `${words(dollars)} ${dollars === 1 ? "dollar" : "dollars"} and ${words(minor)} ${minor === 1 ? "cent" : "cents"}`;
 }
 
 /** 29.5 -> "twenty-nine point five per cent". */

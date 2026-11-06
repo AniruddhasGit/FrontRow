@@ -2,7 +2,7 @@
 
 Covered: boot with the ratio unset / 0 / non-integer (exits non-zero before binding, names the
 variable), the four money columns on booking / booking_seat / payment, no float or Decimal in the
-pricing module, no rupee sign in the API and domain layers, one assignment of the ratio name, no
+pricing module, no currency sign in the API and domain layers, one assignment of the ratio name, no
 literal-100 arithmetic in pricing. NOT covered: POST /api/bookings (EP-PAY-01, Phase 4) and its 201
 body, and the two files that do not exist yet (api/bookings.py, domain/payment/).
 """
@@ -24,10 +24,10 @@ from tests.dbkit import BACKEND_DIR, app_sql
 APP = BACKEND_DIR / "app"
 
 
-def test_inr_with_ratio_100_boots(valid_env):
+def test_usd_with_ratio_100_boots(valid_env):
     valid_env.setenv("CURRENCY_MINOR_UNIT_RATIO", "100")
     s = load_settings()
-    assert (s.CURRENCY_CODE, s.CURRENCY_MINOR_UNIT_RATIO) == ("INR", 100)
+    assert (s.CURRENCY_CODE, s.CURRENCY_MINOR_UNIT_RATIO) == ("USD", 100)
 
 
 @pytest.mark.parametrize("ratio", ["0", "1.5", "abc"])
@@ -75,7 +75,7 @@ def test_pricing_holds_no_float_or_decimal():
 
 
 def test_the_api_and_domain_layers_format_no_money():
-    hits = [str(p) for d in ("api", "domain") for p in (APP / d).rglob("*.py") if "₹" in p.read_text(encoding="utf-8")]
+    hits = [str(p) for d in ("api", "domain") for p in (APP / d).rglob("*.py") if re.search(r"₹|\$\{|\$\d", p.read_text(encoding="utf-8"))]
     assert hits == []
 
 
@@ -98,8 +98,8 @@ def test_pricing_never_multiplies_or_divides_by_a_literal_100():
 
 @pytest.mark.anyio
 async def test_the_201_body_carries_integer_paise_and_no_formatted_money(migrated_db):
-    """The five-seat fixture of S-PAY-02 (base 275.00 rupees = 27500 paise; 1,661.46 rupees = 166146 paise): every
-    money value in the 201 is a JSON integer, no formatted or ambiguous money key exists, and no rupee sign is sent."""
+    """The five-seat fixture of S-PAY-02 (base $275.00 = 27500 cents; $1,661.46 = 166146 cents): every
+    money value in the 201 is a JSON integer, no formatted or ambiguous money key exists, and no currency sign is sent."""
     from tests.pay.kit import FIVE, api, clock_at, confirm, hold, owner_sql, user, world7
 
     db = world7(migrated_db)["db"]
@@ -113,5 +113,5 @@ async def test_the_201_body_carries_integer_paise_and_no_formatted_money(migrate
         assert type(seat["price_paise"]) is int and type(seat["base_price_paise_applied"]) is int
         assert seat["base_price_paise_applied"] == 27500
     assert not {"total", "amount", "price", "total_formatted", "currency_display"} & set(body)
-    assert "₹" not in r.text and "\\u20b9" not in r.text
+    assert "$" not in r.text and "₹" not in r.text and "\\u20b9" not in r.text
     assert owner_sql(db, "SELECT total_paise FROM booking") == [(166146,)]

@@ -163,9 +163,12 @@ class Settings(BaseSettings):
     MAX_SEATS_PER_BOOKING: int = 10
     # Signed minutes from the advertised start when sales close. PROVISIONAL: +15 is "after".
     SALES_CUTOFF_MINUTES: int = 15
-    # The ruled currency (SRC-003 OPEN-LOCALE-01).
-    CURRENCY_CODE: str = "INR"
-    # Paise per rupee. A ONE-WAY DOOR: changing it rewrites what every past customer paid (check 2).
+    # The ruled currency: US dollars (SRC-006 CUR-1, superseding the currency half of SRC-003 OPEN-LOCALE-01).
+    CURRENCY_CODE: str = "USD"
+    # Minor units per major unit (cents per dollar). A ONE-WAY DOOR: changing it rewrites what every past customer
+    # paid (check 2).
+    # ponytail: every `*_paise` name (columns, fields, helpers) means "one-hundredth minor unit": cents under
+    # SRC-006. Renaming them is a migration, deliberately not done (SRC-006 CUR-1); rename in one migration if needed.
     CURRENCY_MINOR_UNIT_RATIO: int = 100
     # The zone every human-read time is rendered in (check 3).
     CINEMA_TIMEZONE: str = "Asia/Kolkata"
@@ -322,10 +325,10 @@ CROSS_FIELD_CHECKS: tuple[CrossFieldCheck, ...] = (
     ),
     # 2. A one-way door walked through by a typo.
     CrossFieldCheck(
-        "inr_minor_unit_ratio",
+        "minor_unit_ratio",
         ("CURRENCY_MINOR_UNIT_RATIO", "CURRENCY_CODE"),
-        lambda s: not (s.CURRENCY_CODE == "INR" and s.CURRENCY_MINOR_UNIT_RATIO != 100),
-        "CURRENCY_MINOR_UNIT_RATIO must be 100 while CURRENCY_CODE is INR",
+        lambda s: not (s.CURRENCY_CODE in ("INR", "USD") and s.CURRENCY_MINOR_UNIT_RATIO != 100),
+        "CURRENCY_MINOR_UNIT_RATIO must be 100 while CURRENCY_CODE is INR or USD",
     ),
     # 3. An invalid zone fails at the first date comparison instead of at boot.
     CrossFieldCheck(

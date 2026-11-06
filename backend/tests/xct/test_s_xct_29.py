@@ -137,8 +137,9 @@ def test_check1_payment_delay_against_the_hold(valid_env):
     assert "PAYMENT_SIMULATED_DELAY_MS" in str(err)
 
 
-def test_check2_minor_unit_ratio_other_than_100_with_inr(valid_env):
-    err = _refused_by_checks(valid_env, CURRENCY_CODE="INR", CURRENCY_MINOR_UNIT_RATIO="1000")
+@pytest.mark.parametrize("code", ["INR", "USD"])  # USD: SRC-006 CUR-1
+def test_check2_minor_unit_ratio_other_than_100_with_inr_or_usd(valid_env, code):
+    err = _refused_by_checks(valid_env, CURRENCY_CODE=code, CURRENCY_MINOR_UNIT_RATIO="1000")
     assert "CURRENCY_MINOR_UNIT_RATIO" in str(err)
 
 

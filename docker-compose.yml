@@ -120,7 +120,7 @@ services:
       # false: there is no TLS locally (OPEN-TLS-01). true here would make every sign-in silently fail.
       COOKIE_SECURE: "false"
       PUBLIC_BASE_URL: http://localhost:8080
-      CURRENCY_CODE: INR
+      CURRENCY_CODE: USD
       CURRENCY_MINOR_UNIT_RATIO: "100"
       # The rest of PRD S7.9's no-default list: without any one of them the api exits 78 at boot.
       # The elasticmq service above. In AWS: the SQS queue URL (row 9 of the prep queue).

@@ -1,5 +1,5 @@
 """S-RPT-06 - takings are the sum of snapshotted per-seat prices, integer paise, confirmed + captured only (P-RPT-03).
-The rendered form (the takings figure on /dashboard reading ₹27,833.31) is asserted in
+The rendered form (the takings figure on /dashboard reading $27,833.31) is asserted in
 frontend/src/features/reports/reports.test.mjs."""
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def test_the_worked_example(client, world):
     admin = get(client, world["admin"], DAY).json()
     assert admin["takings_paise"] > body["takings_paise"]  # ST-103 (screen 1) is out of M's scope, not out of the data
     for s in _strings(body):
-        assert "₹" not in s and not re.search(r"\d+\.\d{2}", s), s
+        assert "$" not in s and "₹" not in s and not re.search(r"\d+\.\d{2}", s), s
 
 
 def test_a_period_with_no_sales_is_zero_not_null(client, world):

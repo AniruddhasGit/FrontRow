@@ -16,7 +16,6 @@ from app.domain.booking import presentation
 SENDER_NAME = "FrontRow"  # SCR-TKT-02 / the reset email: the display name both messages send under
 # The ruled position, written once and rendered into both parts (SRC-003 OPEN-CANCEL-01/02).
 FINAL = "This booking is final. There is no cancellation and no refund."
-RUPEE = "₹"  # the HTML part's symbol; the plain-text part says "Rs " (SCR-TKT-02)
 
 
 @dataclass(frozen=True)
@@ -40,18 +39,12 @@ def _when(instant: datetime, zone: str) -> str:
     return f"{local.day} {local:%b %Y}, {hour}:{local:%M} {'am' if local.hour < 12 else 'pm'} ({zone})"
 
 
-def _amount(paise: int, ratio: int, symbol: str) -> str:
-    """Integer paise to text at the last moment (FR-ADR-036), Indian grouping: 1,23,456.78. Never a float."""
+def _amount(paise: int, ratio: int) -> str:
+    """Integer minor units to text at the last moment (FR-ADR-036), US dollars, US grouping: $123,456.78
+    (SRC-006 CUR-1), in both receipt parts. Never a float."""
     whole, minor = divmod(paise, ratio)
-    digits = str(whole)
-    head, tail = digits[:-3], digits[-3:]
-    groups = []
-    while len(head) > 2:
-        groups.insert(0, head[-2:])
-        head = head[:-2]
-    grouped = ",".join(([head] if head else []) + groups + [tail])
     # The minor part carries as many digits as the ratio has zeros (2 at 100): the ratio is configuration, not 100.
-    return f"{symbol}{grouped}.{minor:0{len(str(ratio)) - 1}d}"
+    return f"${whole:,}.{minor:0{len(str(ratio)) - 1}d}"
 
 
 def _message(sender: str, to: str, subject: str, text: str, html: str) -> EmailMessage:
@@ -73,7 +66,7 @@ def receipt(facts: ReceiptFacts, to: str, settings: Settings) -> EmailMessage:
     seats = ", ".join(facts.seats)
     ratio = settings.CURRENCY_MINOR_UNIT_RATIO
     # Labels padded so every value starts at column 11: `Film` + 6 spaces, `Showtime` + 2, `Seats` + 5 (S-TKT-09).
-    rows = [("Film", facts.film), ("Hall", facts.hall), ("Showtime", when), ("Seats", seats), ("Paid", _amount(facts.total_paise, ratio, "Rs "))]
+    rows = [("Film", facts.film), ("Hall", facts.hall), ("Showtime", when), ("Seats", seats), ("Paid", _amount(facts.total_paise, ratio))]
     text = "\n".join([
         "Your booking is confirmed.", "",
         f"Booking reference: {ref}", "",
@@ -82,13 +75,11 @@ def receipt(facts: ReceiptFacts, to: str, settings: Settings) -> EmailMessage:
         f"You can see this booking again at {url}", "",
         FINAL,
     ]) + "\n"
-    facts_html = [("Film", facts.film), ("Hall", facts.hall), ("Showtime", when), ("Seats", seats),
-                  ("Paid", _amount(facts.total_paise, ratio, RUPEE))]
     html = "\n".join([
         "<!doctype html>", '<html><body>',
         "<h1>Your booking is confirmed.</h1>",
         f'<p>Booking reference: <span style="font-family:monospace">{escape(ref)}</span></p>',
-        "<ul>", *[f"<li>{label}: {escape(value)}</li>" for label, value in facts_html], "</ul>",
+        "<ul>", *[f"<li>{label}: {escape(value)}</li>" for label, value in rows], "</ul>",
         "<p>Show this reference at the entrance. A person will check it.</p>",
         f'<p><a href="{escape(url)}">See this booking again</a></p>',
         f"<p>{FINAL}</p>",

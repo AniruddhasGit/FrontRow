@@ -130,10 +130,12 @@ export function checkoutTotal(seats: HeldSeat[]): number | null {
   return seats.length > 0 ? sum : null;
 }
 
-/** "Pay 1,661 rupees 46 paise" - the pay action's accessible name (SCR-PAY-01). `ratio` is paise per rupee. */
+/** "Pay 12 dollars 99 cents", "Pay 1 dollar 1 cent" - the pay action's accessible name (SCR-PAY-01, SRC-006).
+ *  `ratio` is cents per dollar. */
 export function payName(totalPaise: number, ratio: number): string {
-  const rupees = Math.floor(totalPaise / ratio).toLocaleString("en-IN");
-  return `Pay ${rupees} rupees ${totalPaise % ratio} paise`;
+  const whole = Math.floor(totalPaise / ratio);
+  const cents = totalPaise % ratio;
+  return `Pay ${whole.toLocaleString("en-US")} ${whole === 1 ? "dollar" : "dollars"} ${cents} ${cents === 1 ? "cent" : "cents"}`;
 }
 
 export const BUSY = "Confirming…";

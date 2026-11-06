@@ -37,8 +37,8 @@ NO_MOVE = "A showtime cannot be moved to a different hall. Create the showtime o
 STALE = ("This showtime was changed by someone else while you were editing. Reload to see the current details, "
          "then make your change again. Nothing you typed has been saved.")
 PRICE_MISSING = "Enter a base price for this showtime."
-PRICE_WHOLE = "Enter the base price in whole paise. A price cannot have a fraction of a paisa."
-PRICE_LOW = "The base price must be at least 1 paisa."
+PRICE_WHOLE = "Enter the base price in whole cents. A price cannot have a fraction of a cent."
+PRICE_LOW = "The base price must be at least 1 cent."
 PRICE_CEILING = "That base price is too large for this system to hold. Enter a smaller amount."
 BAD_DATE = "That date is not valid."
 BAD_FILTER = "That filter value is not valid."
