@@ -40,13 +40,19 @@ test("the fact list is exactly FILM, HALL, SHOWTIME, SEATS, PAID, and PAID is th
   assert.equal(spoken("FR-ACDE-FHJ2"), "F R, A C D E, F H J 2");
 });
 
-test("the word is named exactly once in frontend/src: the policy line", () => {
+// S-PAY-11 as amended (CR-002 A-11 / B-2): the policy line once, and otherwise only the PRD's published admin withdrawal
+// confirmations ("...nothing is refunded."), each found word for word in the PRD's E6 section.
+test("the word appears only as the policy line and the published withdrawal confirmations", () => {
   const word = new RegExp("re" + "fund", "i");
   const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
   const lines = walk(SRC).filter((f) => /\.(ts|tsx)$/.test(f))
     .flatMap((f) => readFileSync(f, "utf8").split("\n").filter((l) => word.test(l)).map((l) => l.trim()));
-  assert.equal(lines.length, 1);
-  assert.ok(lines[0].includes(POLICY));
+  assert.equal(lines.filter((l) => l.includes(POLICY)).length, 1);
+  const e6 = readFileSync(join(SRC, "..", "..", "docs", "03 PRD", "sections", "E6_admin.md"), "utf8");
+  for (const l of lines.filter((x) => !x.includes(POLICY))) {
+    const sentence = /"([^"]*nothing is refunded\.?)/.exec(l)?.[1];
+    assert.ok(sentence && e6.includes(sentence.slice(-60)), `not a published confirmation: ${l}`);
+  }
 });
 
 test("CR-001 B.2: the hall still is chosen from the hall's number, and none without one", async () => {
