@@ -1,9 +1,9 @@
-# CR-002 — Acceptance-criteria defect fixes (PROPOSED, for the client to approve)
+# CR-002 — Acceptance-criteria defect fixes (APPROVED)
 
 | | |
 |---|---|
 | **Raised** | 2026-11-06, by the build session (Round 4, Track D), from the ledger, `AMENDMENTS.md`, `round4_input.md` and the Round 4 batch 1 lane reports |
-| **Status** | **PROPOSED.** Nothing in this file has been applied. The Bible, the ledger, the SIT file and every test are unchanged. |
+| **Status** | **APPROVED by the client 2026-11-07** (`SRC-008 NIGHT-1`: *"Approve CR-002"*). Applied to `FrontRow_Bible.csv` the same day, one line per cell under `docs/05 Bible/AMENDMENTS.md` "2026-11-07, client approvals (SRC-008 NIGHT-1)"; the ledger and the SIT files were regenerated. Items with no Bible edit (B-13, C-1, Groups D and E) and the PRD edit B-1 asks for are listed there as not applied. Was `PROPOSED` (2026-11-06); the per-item `Status: PROPOSED` lines below are the proposal as written. |
 | **Who decides** | The client (`CONSTITUTION.md` Art II.1: an `AcceptanceCriteria` cell is overruled only by a higher source or a client ruling). Amending what "done" means is a reserved matter (`CLAUDE.md`, *Reserved*), so the build session drafts and does not decide. |
 | **How it lands** | One approved item becomes one line under a new dated heading in `docs/05 Bible/AMENDMENTS.md`, the cell is edited in `FrontRow_Bible.csv`, and `generate_ledger.py` / `build_sit.py` regenerate the derived files, as in round 3. |
 
@@ -467,4 +467,4 @@ The recommended answers below are **recommendations only**. They are not rulings
 | C, fields not carried | C-1, C-2 | C-1 (EP-BRW-06 field); C-2 only if the client prefers adding the fields | C-1 (the seat map returns the cap) |
 | D, Zone C | 5 rows | none | none: they wait for AWS |
 
-Every item is **PROPOSED**. Nothing has been applied, committed or pushed.
+Every item was **PROPOSED** on 2026-11-06 and is **APPROVED** as of 2026-11-07 (`SRC-008 NIGHT-1`). The Bible cells were amended on 2026-11-07 (`AMENDMENTS.md`).

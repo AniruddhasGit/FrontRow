@@ -1,14 +1,13 @@
 // The 3D hall on the seat page (FR-ADR-074, CR-001 Part B): a presentation layer over the 2D map, which stays
 // complete beneath it. This file is small and loads with the seat page; three.js and the scene load only when
 // this mounts, through the lazy import below.
-// Shown only when it can work: WebGL present, a screen at least 48rem wide. Otherwise, or when the scene fails to
+// Shown only when it can work: WebGL present (phones included, CR-003). Otherwise, or when the scene fails to
 // load or throws, this renders nothing and the 2D map alone carries the page - nothing is lost. It renders nothing on
 // the first render too (the decision is an effect), so the server-side render harness sees the 2D page unchanged.
-// ponytail: the width is checked once on mount; resizing below it later keeps the scene. Upgrade: a matchMedia listener.
 import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { formatPaise } from "../admin/money";
 import { seatLabel, selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
-import { seatTip, stateWord, type Mode } from "./hall";
+import { screenNumber, seatTip, stateWord, type BakedMeta, type Mode } from "./hall";
 import type { Film } from "./HallScene";
 import "./hall3d.css";
 
@@ -17,7 +16,6 @@ const HallScene = lazy(() => import("./HallScene"));
 const MODES: [Mode, string][] = [["all", "All seats"], ["seat", "From my seat"]];
 
 function canDraw(): boolean {
-  if (!window.matchMedia("(min-width: 48rem)").matches) return false;
   try {
     const canvas = document.createElement("canvas");
     const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
@@ -52,12 +50,25 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   const [hover, setHover] = useState<Seat | null>(null);
   const [moving, setMoving] = useState(false);
   const tip = useRef<HTMLDivElement>(null);
+  // CR-003: a hall with a baked room ships /halls/hallN.json (+ .glb and an entrance clip). Undefined = still asking,
+  // null = none (the procedural hall). The scene waits for the answer so it mounts once, in the right mode.
+  const hallNo = map ? screenNumber(map.screen.name) : null;
+  const [meta, setMeta] = useState<BakedMeta | null | undefined>(undefined);
+  const [intro, setIntro] = useState(true);
   useEffect(() => setAble(canDraw()), []);
+  useEffect(() => {
+    if (!hallNo) return setMeta(null);
+    let live = true;
+    fetch(`/halls/hall${hallNo}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((m) => live && setMeta(m));
+    return () => {
+      live = false;
+    };
+  }, [hallNo]);
   const onMoving = useCallback((m: boolean) => {
     setMoving(m);
     if (m) setHover(null); // the seat under the pointer is about to change
   }, []);
-  if (!able || !map) return null;
+  if (!able || !map || meta === undefined) return null;
 
   if (!on) {
     return (
@@ -71,7 +82,7 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   const at = map.seats.find((s) => s.id === seatId);
   const caption = mode === "seat"
     ? (at ? `The view from row ${at.row}, seat ${at.num}.` : "Choose a seat to see the screen from it.")
-    : "Click a seat to choose it and see the screen from it. The map below stays in step.";
+    : `${matchMedia("(hover: none)").matches ? "Tap" : "Click"} a seat to choose it and see the screen from it. The map below stays in step.`;
   const show = (m: Mode) => {
     setMode(m);
     setPicked(null);
@@ -104,14 +115,20 @@ export function Hall3D({ map, film = null, mine, onTap }: {
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
             <HallScene map={map} film={film} mine={mine} mode={mode} seatId={seatId} onTap={onTap} onLook={look}
-                       onHover={setHover} onMoving={onMoving} />
+                       onHover={setHover} onMoving={onMoving} meta={meta} hallNo={hallNo} />
           </Suspense>
         </Guard>
+        {meta && intro && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? (
+          // the walk in: it ends on the exact camera the live scene starts at, then fades off it
+          <video className="fr-hall3d-intro" src={`/halls/hall${hallNo}_intro.mp4`} autoPlay muted playsInline
+                 onEnded={() => setIntro(false)} onError={() => setIntro(false)} />
+        ) : null}
         <div ref={tip} className="fr-hall3d-tip" hidden={!hover || moving}>
           {hover ? seatTip(hover, category.get(hover.cat) ?? "", visualOf(hover, mine), formatPaise(hover.price_paise)) : null}
         </div>
         <p className="fr-hall3d-name">{map.screen.name} <span className="fr-mono">{map.seats.length}</span> seats</p>
         <p className="fr-hall3d-caption">{caption}</p>
+        {meta && intro ? <button type="button" className="fr-action-secondary fr-hall3d-skip" onClick={() => setIntro(false)}>Skip intro</button> : null}
       </div>
       {mode === "seat" ? (
         <div className="fr-hall3d-bar">

@@ -132,6 +132,42 @@ export function seatTip(seat: Seat, category: string, visual: Visual, price: str
   return `Row ${seat.row} · Seat ${seat.num} · ${category} · ${stateWord(seat, visual) ?? price}`;
 }
 
+/** CR-003: the per-hall file /halls/hallN.json written by the Blender bake (seat positions and cameras in three.js
+ *  metres; the room itself is hallN.glb). Seats face +z (the screen is at z ~ 0, the rows at -z). */
+export interface BakedMeta {
+  hall: number; allseats: { eye: number[]; look: number[] }; screen: { w: number; h: number; zc: number; z: number };
+  seats: { id: string; row: string; num: number; cat: string; level: string; pos: number[]; eye: number[] }[];
+}
+export interface Baked { placed: Placed[]; meta: BakedMeta; views: (seatId: number | null) => Record<Mode, View> }
+
+const v3 = (a: number[]) => [a[0], a[1], a[2]] as [number, number, number];
+
+/** The API's seats on the baked hall's positions, matched by row and number - or null when the two layouts differ in
+ *  any seat (then the procedural hall is drawn: a stale file never misplaces a bookable seat). */
+export function bakedHall(seats: Seat[], meta: BakedMeta): Baked | null {
+  const at = new Map(meta.seats.map((m) => [`${m.row}${m.num}`, m]));
+  if (!seats.length || seats.length !== at.size) return null;
+  const placed: Placed[] = [];
+  for (const seat of seats) {
+    const m = at.get(`${seat.row}${seat.num}`);
+    if (!m) return null;
+    placed.push({ seat, x: m.pos[0], y: m.pos[1], z: m.pos[2], span: 1 });
+  }
+  const eye = new Map(seats.map((s) => [s.id, at.get(`${s.row}${s.num}`)!.eye]));
+  const screen: [number, number, number] = [0, meta.screen.zc - 0.35, meta.screen.z];
+  const all = { at: v3(meta.allseats.eye), look: v3(meta.allseats.look) };
+  return {
+    placed, meta,
+    views: (seatId) => ({ all, seat: { at: v3(eye.get(seatId ?? -1) ?? meta.seats[Math.floor(meta.seats.length / 2)].eye), look: screen } }),
+  };
+}
+
+/** "SCREEN 4" -> 4: which hall's files to ask for. Anything else has no baked hall. */
+export function screenNumber(name: string): number | null {
+  const m = /^screen\s+(\d+)$/i.exec(name.trim());
+  return m ? Number(m[1]) : null;
+}
+
 export type ModelKind = "standard" | "premium" | "recliner";
 export const MODEL_URL: Record<ModelKind, string> = {
   standard: "/models/seat_standard.glb",

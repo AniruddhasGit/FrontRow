@@ -24,6 +24,6 @@ test("the current area is the longest matching link, and none off the nav", () =
 });
 
 test("the address truncates past 24 characters", () => {
-  assert.equal(shortEmail("asha@example.com"), "asha@example.com");
+  assert.equal(shortEmail("asha@example.invalid"), "asha@example.invalid");
   assert.equal(shortEmail("customer-12@demo.frontrow.invalid"), "customer-12@demo.frontr…");
 });

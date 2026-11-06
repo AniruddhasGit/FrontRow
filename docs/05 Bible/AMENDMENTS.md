@@ -36,6 +36,84 @@ are regenerated from the Bible after each batch (`generate_ledger.py`, `build_si
 - S-SCP-02: "exactly three compose services" is now the six that S-XCT-36 names, three of them application processes. Source: SRC-002 §12.2 (the local docker-compose runs Postgres and Redis).
 - S-SEA-01, S-SEA-12, S-SEA-20, S-ACC-14, S-ACC-15, S-XCT-38: the accessible-name ending `held by another customer` is now `held by someone else`. Source: PRD SCR-BRW-03 copy table. E2 P-SEA-01 itself says the seat-map strings "are the same strings SCR-BRW-03 publishes", so E2's `held by another customer` (P-SEA-01 row 2) is a rank-4 restatement (PRD S1.2).
 
+## 2026-11-07, client approvals (SRC-008 NIGHT-1)
+
+The client approved CR-002 ("Approve CR-002") and the move of the ₹ criteria to US dollars ("Amend both to USD").
+`SRC-008 ROLE-1` and its ADDENDUM rule the admin grant. CR-003 (accepted 2026-11-06) supplies the hall rows. Each
+CR-002 line names the item whose wording it applies (`docs/15 ChangeRequest/CR-002_ac-defect-fixes.md`).
+
+### CR-002 (Source: CR-002, approved by SRC-008 NIGHT-1)
+
+- S-PAY-02: the `10000|5000` sweep now excuses a whole-line `*_MS` / `*_SECONDS` duration constant, and nothing else. Source: CR-002 A-1.
+- S-XCT-03: the `FOR UPDATE` sweep is now an allow-list over `FOR UPDATE|with_for_update\(`, with the file and the locked table per row. It has no `domain/admin` exemption and allows no lock on booking_seat or showtime_seat. Source: CR-002 A-2.
+- S-PAY-07: the seat `FOR UPDATE` sweep is replaced by "the S-XCT-03 allow-list holds". The bookings.py one-hit clause stays. Source: CR-002 A-2.
+- S-TKT-06 (a): the scheduler-word sweep scans the shipped trees, not `backend/tests/`, and no test may import a scheduler. Source: CR-002 A-3.
+- S-TKT-06 (b), S-TKT-07: the `now\(\)` sweep is now `rg -niP` with a `(?<![.\w])` lookbehind, plus the three PostgreSQL clock functions it missed. Source: CR-002 A-4.
+- S-SEA-08: the wall-clock sweep drops `time\.sleep\(` and adds `datetime.today`, `date.today` and `time.time_ns`. Every sleep must now sit in a poll loop bounded by a count, checked with `ast`. Source: CR-002 A-5.
+- S-XCT-48: the bcrypt-hash scan covers what `git ls-files` lists (or, with no git, the tree outside `.git/` and `.claude/`), docs included. The self-check over docs/05 Bible/ stays. Source: CR-002 A-6.
+- S-SCP-11: the `\bpos\b` sweep is now the point-of-sale pattern. The mapper listener is replaced by three checks: a census of the two booking_seat writers, a Core `before_cursor_execute` trace of the confirm (`app.domain.`), and the seed's COPY count. Source: CR-002 A-7.
+- S-ADM-09: the showtime-insert census is `(?i)INSERT INTO showtime\b|insert\(showtime\)`, hitting exactly `domain/admin/showtimes.py` and `scripts/seed.py`. Source: CR-002 A-8.
+- S-ADM-23: the movie-insert census is `INSERT INTO movie\b[^_]|insert\(movie\)`, hitting exactly `domain/admin/films.py` and `scripts/seed.py`. ON CONFLICT is barred on the movie table only; join tables are excluded. Source: CR-002 A-9. The client's approval of CR-002 is the one-line ruling A-9 asked for.
+- S-XCT-05 (a): three clauses change. The money-column query accepts only `_paise(_applied)?$`. The `uplift_basis_points` sweep bars arithmetic only. The pricing-import list names the five real importers, and the receipt render and the reports domain import nothing from pricing. Source: CR-002 A-10.
+- S-PAY-11: the `withdraw` allow-list becomes "no hit on a line matching showtime", plus a walk of the routes and schemas, and no withdraw, cancel or DELETE operation under /api/admin/showtimes. Source: CR-002 A-11.
+- S-ADM-12 (a): the money constants are `CURRENCY_MINOR_UNIT_RATIO` and `CURRENCY_CODE` in `backend/app/core/config.py`. The `[*/]\s*100\b` sweep excludes config.py and domain/money.py. Source: CR-002 A-12. The code value is USD (see below).
+- S-XCT-20 (a): the Redis-timeout rg scans `backend/app` and expects one construction site. The no-fallback rg scans `domain/holds/` and adds `with_for_update`. Source: CR-002 A-13.
+- S-XCT-20 (b): POST /api/bookings now answers with the P-HLD-14 CONFIRM_REDIS_DOWN sentence, and the payment count stays unchanged. Source: CR-002 B-3.
+- S-ACC-07: the reset link is `/account/reset/confirm#token=`. The screen reads it from `location.hash` and removes it after reading, asserted on the rendered email. The last sentence now begins "The rest of what the worker puts in the email". Source: CR-002 B-1. **PRD P-ACC-07 still says `?token=`; this batch does not edit it.**
+- S-ADM-20: the cancelled_at sweep names "the module under backend/app/models/ that declares the booking table". The refund copy list adds SCR-ADM-02's film withdraw confirmation. Source: CR-002 B-2.
+- S-XCT-19: the release step is the compare-and-delete EVAL, never a bare DEL of a `lock:` key, and SET NX < COMMIT is asserted. Source: CR-002 B-4.
+- S-ADM-04: with CINEMA_TIMEZONE unset the process boots with Asia/Kolkata. A value that does not resolve still exits, naming the variable. Source: CR-002 B-5.
+- S-BRW-09: date=2026-08-17 returns the 09:00 showtime with next null. The empty-state copy moves to date=2026-08-18. Source: CR-002 B-6.
+- S-SCP-01: POST /api/admin/movies/import returns 404 NOT_FOUND through the 405 handler when the path parameter fails its type, and the movie count is unchanged. Source: CR-002 B-7.
+- S-XCT-10: "four routers" becomes one deps.py dependency per non-public router, with the admin sub-routers inheriting require_admin and a fixed public set. Source: CR-002 B-8.
+- S-ACC-06: the users-mapper listener becomes a Core `before_cursor_execute` listener that records the SET columns of each UPDATE. Source: CR-002 B-9.
+- S-SCP-14: "after the full suite" becomes the teardown of every module that writes a booking, through one shared conftest fixture. Source: CR-002 B-10.
+- S-ADM-22: the audit count filters on `entity_type = 'language'`. Source: CR-002 B-11.
+- S-XCT-25: the request_id lives in `outbox_message.payload`, queried by topic and by the payload's booking_id. Source: CR-002 B-12.
+- S-ADM-28: "poster reference and runtime_minutes" becomes the byte-identical title, plus a statement-listener check that the query has no published_at condition. Source: CR-002 C-2.
+
+### US dollars (Source: SRC-006 CUR-1, amendment approved by SRC-008 NIGHT-1)
+
+The integers, the ratio of 100 and Asia/Kolkata are unchanged. The `*_paise` names stay, because SRC-006 makes a rename a migration.
+
+- S-ACC-11: the string that must never be rendered, `"₹1,530.00"`, is now `"$1,530.00"`.
+- S-ADM-12 (b): the two paise messages are now the cents sentences the code publishes, the interface converts dollars to cents, and CURRENCY_CODE is USD.
+- S-BRW-13: `'Premium  $281.24'` and `'$0.00'`. The pending legend row and the raw JSON must contain no `$`.
+- S-PAY-01: CURRENCY_CODE=USD; 275.00 and 1,661.46 dollars; "no dollar sign". The rg proving the API and domain format no money is now `rg -nP '\$(\{|\d)'` (a `$` before a digit or an interpolation), because a bare `$` would hit the regex end anchors in api/browse.py. **[JUDGMENT CALL] This pattern is the build session's translation of `rg -n '₹'`.**
+- S-PAY-08: currency_code USD.
+- S-PAY-13: `$1,661.46` with en-US grouping, the label `'Pay $1,661.46'`, and the accessible name `'Pay 1,661 dollars 46 cents'`, as checkout.ts renders it.
+- S-RPT-06: `$27,833.31`, and no JSON string value contains `$`.
+- S-RPT-19: `$27,833.31` with en-US grouping, `$0.00` twice, and no JSON string value contains `$`.
+- S-RPT-20: the takings accessible name ends "dollars and thirty-one cents".
+- S-RPT-21: `$250.00` and `$300.00` appear nowhere.
+- S-SEA-03: every running total uses `$`, with en-US grouping and the `$` symbol.
+- S-TKT-09: the plain-text line is `Paid      $843.72`, and both parts carry `$843.72`. The `Rs` form existed only because ₹ is not ASCII. **The cell compares against the PRD's E4 Copy block byte for byte, and that block still says `Rs 843.72`; this batch does not edit it.**
+- S-XCT-05 (b): CURRENCY_CODE=USD, and the ratio must be 100 while the code is USD.
+- S-XCT-08: `for $281.24`.
+- S-XCT-29: CURRENCY_CODE = USD.
+
+### Hall shapes (Source: CR-003)
+
+- S-XCT-44: CR-003's drawn rows replace the old shapes. Out: the 9x10 to 11x20 grids, the rows x columns and three-band self-check, Screen 1's row J, the labels A1/A10/J20, and the `ceil(rows * 0.5)` / `ceil(rows * 0.3)` band rule. In: Screen 1 rows A-H; labels A1, A11 and N19; each row's category as CR-003 draws it; Screen 1 Standard A-D (47), Premium E-G (37), Recliner H (6).
+
+### New story (Source: SRC-008 ROLE-1 and its ADDENDUM)
+
+- S-ADM-30 (new, E-ADM-A, milestone 2): an admin-only Settings section grants and removes admin access by email.
+  - Each add and each removal writes its audit row in the same transaction.
+  - A granted email (trimmed, case-insensitive) becomes admin at register or sign-in.
+  - A role in a request body is ignored.
+  - Removing an email demotes its account to customer at once.
+  - A granted manager becomes admin and keeps its hall assignments.
+  - The seeded admin is not on the list, and an admin cannot remove their own email.
+- S-SCP-06, S-SEA-07: checked, not edited. The 2026-10-18 batch above already brought both into line with SRC-008: a role in the request is ignored and the account is a customer, and an absent SEAT_HOLD_TTL_SECONDS boots with 180.
+
+### Approved, but CR-002 itself applies no cell change
+
+- B-13 / Q-R3-05 (S-SEA-08, a token containing `/`): a code fix, no AC change.
+- C-1 / Q-R3-03 (S-SEA-09, `Up to 6 seats.`): a contract change to EP-BRW-06. The cell stays.
+- Group D (S-SEA-18, S-BRW-18, the last clause of S-XCT-43, T-P1-08, T-P1-09): not defects. They wait for AWS.
+- Group E: stale ledger StatusNotes, not cells. The owning lanes update the notes.
+
 ## Raised, not amended (no higher source decides it, or the fix is product behaviour)
 
 These are open questions for the client or the merge owner. They are written here and not appended to

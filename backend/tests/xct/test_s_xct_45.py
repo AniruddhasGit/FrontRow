@@ -108,7 +108,7 @@ def test_the_inventory_figures(seeded):
     assert round(58800 / 115200 * 100, 2) == float(next(c["derived"] for c in SUMMARY["published_figure_checks"]
                                                        if c["figure"] == "mean_occupancy_percent_2dp"))
     # SRC-006 base 1299 over CR-001's row widths: 45,800 Standard x 1299 + 12,400 Premium x 1461 + 600 Recliner x 1732
-    assert one(db, "SELECT sum(total_paise) FROM booking") == 45800 * 1299 + 12400 * 1461 + 600 * 1732 == 78649800
+    assert one(db, "SELECT sum(total_paise) FROM booking") == 37400 * 1299 + 20120 * 1461 + 1280 * 1732 == 80194880  # CR-003 rows
 
 
 def test_every_table_count_the_oracle_states(seeded):

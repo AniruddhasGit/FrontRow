@@ -5,7 +5,7 @@
   "cite": "P-XCT-30 (E8, 'Ship demonstration content that is obviously demonstration content') · P-XCT-32 · S-XCT-44 · S-XCT-45 · S-ADM-29 · FR-ADR-067 · SRC-003 OPEN-SEED-01",
   "flags": {
     "assumed": [
-      "hall sizes and grids - ASSUMED - hall sizes are OPEN-SCALE-02 'pick random'; the grids are P-XCT-30's derivation of them. Never a constraint.",
+      "hall sizes and grids - ASSUMED - hall shapes are OPEN-SCALE-02 'pick random' and category placement OPEN-SEAT-01 'you pick'; the approved revision 5 plans, CR-003. Never a constraint.",
       "seat categories - ASSUMED under SRC-003 OPEN-SEAT-01 'you pick' - names and uplifts alike. Never a constraint.",
       "base price - ASSUMED - P-XCT-30 seed value. Integer minor unit; the ratio is CURRENCY_MINOR_UNIT_RATIO configuration and is not used here.",
       "lookup vocabulary - ASSUMED - DEMO-prefixed placeholders under OPEN-SEAT-01 'you pick' extended, and OPEN-ATTRIB-01's standing constraint. Never a constraint.",
@@ -155,27 +155,26 @@
     {
       "screen": 1,
       "seats": 90,
-      "rows": 9,
-      "cols": 10,
-      "row_labels": "ABCDEFGHJ",
+      "rows": 8,
+      "row_labels": "ABCDEFGH",
       "bands": [
         {
           "category": "Standard",
-          "rows": 5,
-          "row_labels": "ABCDE",
-          "seats": 50
+          "rows": 4,
+          "row_labels": "ABCD",
+          "seats": 47
         },
         {
           "category": "Premium",
           "rows": 3,
-          "row_labels": "FGH",
-          "seats": 30
+          "row_labels": "EFG",
+          "seats": 37
         },
         {
           "category": "Recliner",
           "rows": 1,
-          "row_labels": "J",
-          "seats": 10
+          "row_labels": "H",
+          "seats": 6
         }
       ],
       "showtimes": 120,
@@ -185,27 +184,26 @@
     {
       "screen": 2,
       "seats": 120,
-      "rows": 10,
-      "cols": 12,
-      "row_labels": "ABCDEFGHJK",
+      "rows": 11,
+      "row_labels": "ABCDEFGHJKL",
       "bands": [
         {
           "category": "Standard",
-          "rows": 5,
-          "row_labels": "ABCDE",
-          "seats": 60
+          "rows": 4,
+          "row_labels": "ABCD",
+          "seats": 42
         },
         {
           "category": "Premium",
-          "rows": 3,
-          "row_labels": "FGH",
-          "seats": 36
+          "rows": 6,
+          "row_labels": "EFGHJK",
+          "seats": 72
         },
         {
           "category": "Recliner",
-          "rows": 2,
-          "row_labels": "JK",
-          "seats": 24
+          "rows": 1,
+          "row_labels": "L",
+          "seats": 6
         }
       ],
       "showtimes": 120,
@@ -216,26 +214,25 @@
       "screen": 3,
       "seats": 150,
       "rows": 10,
-      "cols": 15,
       "row_labels": "ABCDEFGHJK",
       "bands": [
         {
           "category": "Standard",
-          "rows": 5,
-          "row_labels": "ABCDE",
-          "seats": 75
+          "rows": 4,
+          "row_labels": "ABCD",
+          "seats": 62
         },
         {
           "category": "Premium",
-          "rows": 3,
-          "row_labels": "FGH",
-          "seats": 45
+          "rows": 5,
+          "row_labels": "EFGHJ",
+          "seats": 80
         },
         {
           "category": "Recliner",
-          "rows": 2,
-          "row_labels": "JK",
-          "seats": 30
+          "rows": 1,
+          "row_labels": "K",
+          "seats": 8
         }
       ],
       "showtimes": 120,
@@ -245,9 +242,8 @@
     {
       "screen": 4,
       "seats": 180,
-      "rows": 12,
-      "cols": 15,
-      "row_labels": "ABCDEFGHJKLM",
+      "rows": 11,
+      "row_labels": "ABCDEFGHJKL",
       "bands": [
         {
           "category": "Standard",
@@ -259,13 +255,13 @@
           "category": "Premium",
           "rows": 4,
           "row_labels": "GHJK",
-          "seats": 60
+          "seats": 79
         },
         {
           "category": "Recliner",
-          "rows": 2,
-          "row_labels": "LM",
-          "seats": 30
+          "rows": 1,
+          "row_labels": "L",
+          "seats": 11
         }
       ],
       "showtimes": 120,
@@ -275,27 +271,26 @@
     {
       "screen": 5,
       "seats": 200,
-      "rows": 10,
-      "cols": 20,
-      "row_labels": "ABCDEFGHJK",
+      "rows": 13,
+      "row_labels": "ABCDEFGHJKLMN",
       "bands": [
         {
           "category": "Standard",
-          "rows": 5,
-          "row_labels": "ABCDE",
-          "seats": 100
+          "rows": 4,
+          "row_labels": "ABCD",
+          "seats": 56
         },
         {
           "category": "Premium",
-          "rows": 3,
-          "row_labels": "FGH",
-          "seats": 60
+          "rows": 8,
+          "row_labels": "FGHJKLMN",
+          "seats": 133
         },
         {
           "category": "Recliner",
-          "rows": 2,
-          "row_labels": "JK",
-          "seats": 40
+          "rows": 1,
+          "row_labels": "E",
+          "seats": 11
         }
       ],
       "showtimes": 120,
@@ -305,27 +300,26 @@
     {
       "screen": 6,
       "seats": 220,
-      "rows": 11,
-      "cols": 20,
-      "row_labels": "ABCDEFGHJKL",
+      "rows": 13,
+      "row_labels": "ABCDEFGHJKLMN",
       "bands": [
         {
           "category": "Standard",
-          "rows": 6,
-          "row_labels": "ABCDEF",
-          "seats": 120
+          "rows": 5,
+          "row_labels": "ABCDE",
+          "seats": 84
         },
         {
           "category": "Premium",
-          "rows": 4,
-          "row_labels": "GHJK",
-          "seats": 80
+          "rows": 7,
+          "row_labels": "FGHKLMN",
+          "seats": 126
         },
         {
           "category": "Recliner",
           "rows": 1,
-          "row_labels": "L",
-          "seats": 20
+          "row_labels": "J",
+          "seats": 10
         }
       ],
       "showtimes": 120,
@@ -338,26 +332,26 @@
     {
       "name": "Standard",
       "uplift_basis_points": 0,
-      "price_paise": 24999,
-      "seats": 495,
-      "booked_seats": 46400,
-      "takings_paise": 1159953600
+      "price_paise": 1299,
+      "seats": 381,
+      "booked_seats": 37400,
+      "takings_paise": 48582600
     },
     {
       "name": "Premium",
       "uplift_basis_points": 1250,
-      "price_paise": 28124,
-      "seats": 311,
-      "booked_seats": 11800,
-      "takings_paise": 331863200
+      "price_paise": 1461,
+      "seats": 527,
+      "booked_seats": 20120,
+      "takings_paise": 29395320
     },
     {
       "name": "Recliner",
       "uplift_basis_points": 3333,
-      "price_paise": 33331,
-      "seats": 154,
-      "booked_seats": 600,
-      "takings_paise": 19998600
+      "price_paise": 1732,
+      "seats": 52,
+      "booked_seats": 1280,
+      "takings_paise": 2216960
     }
   ],
   "price_rule": "price_paise = (base_price_paise * (10000 + uplift_basis_points) + 5000) // 10000  (FR-ADR-038 · S-RPT-04 (formula verbatim) · S-XCT-44)",
@@ -541,7 +535,7 @@
     "payment_state": "captured",
     "receipt_dispatch_status": "suppressed",
     "receipt_dispatch_attempts": 0,
-    "takings_paise_total": 1511815400,
+    "takings_paise_total": 80194880,
     "takings_note": "DERIVED here and published nowhere: the sum of FR-ADR-038 seat prices over the contiguous front-of-house fill. Unverified against any implementation - none exists. Integer minor unit."
   },
   "published_figure_checks": [
@@ -638,12 +632,12 @@
     {
       "figure": "screen1_bands",
       "published": [
-        5,
+        4,
         3,
         1
       ],
       "derived": [
-        5,
+        4,
         3,
         1
       ],
@@ -652,14 +646,14 @@
     {
       "figure": "price_paise_by_category",
       "published": {
-        "Standard": 24999,
-        "Premium": 28124,
-        "Recliner": 33331
+        "Standard": 1299,
+        "Premium": 1461,
+        "Recliner": 1732
       },
       "derived": {
-        "Standard": 24999,
-        "Premium": 28124,
-        "Recliner": 33331
+        "Standard": 1299,
+        "Premium": 1461,
+        "Recliner": 1732
       },
       "agrees": true
     },

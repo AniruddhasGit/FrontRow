@@ -55,21 +55,38 @@ ZONE = ""
 CINEMA_NAME = "DEMO CINEMA"
 
 
-def _rows(n: int, *blocks: int, width: int = 1) -> list:
-    return [(blocks, width)] * n
-
-
-# (screen number, seats, rows front to back) - ASSUMED, OPEN-SCALE-02 "pick random"; shapes CR-001 A.3. Never a
-# constraint. A row is (seat blocks left to right, grid columns per seat); an aisle is one empty grid column between
-# blocks, and None is an empty grid row (a walkway), which takes no row letter.
+# (screen number, seats, rows front to back) - ASSUMED, OPEN-SCALE-02 / OPEN-SEAT-01 "you pick"; the approved plans,
+# CR-003 (revision 5). Never a constraint. A row is (label, category S/P/R, ((x0, seats), ...) per block left to right),
+# x0 the block's left edge in metres on the plan (0 = the hall's centre line, facing the screen); None is a walkway.
+# Seats are 0.6 m wide, a Recliner 1.2 m; the grid column is the plan x on a 0.6 m grid, so an aisle is ~2 columns.
 LAYOUT = [
-    (1, 90, _rows(9, 10)),                                                     # Studio
-    (2, 120, _rows(10, 6, 6)),                                                 # Centre aisle
-    (3, 150, _rows(10, 4, 7, 4)),                                              # Twin aisle
-    (4, 180, [((n - n // 2, n // 2), 1) for n in (10, 11, 12, 13, 14, 15, 15, 16, 17, 18, 19, 20)]),  # Fan
-    (5, 200, _rows(4, 5, 10, 5) + [None] + _rows(6, 5, 10, 5)),                # Stadium, walkway after D
-    (6, 220, _rows(2, 4, 8, 4) + _rows(8, 4, 14, 4) + _rows(1, 12, width=2)),  # Grand, K = double-width recliners
+    (1, 90, [  # Studio
+        ("A", "S", ((-3.3, 11),)), ("B", "S", ((-3.6, 12),)), ("C", "S", ((-3.6, 12),)), ("D", "S", ((-3.6, 12),)),
+        ("E", "P", ((-3.6, 12),)), ("F", "P", ((-3.6, 12),)), ("G", "P", ((-3.9, 13),)), ("H", "R", ((-3.6, 6),))]),
+    (2, 120, [  # Centre aisle
+        *[(r, "S", ((-3.575, 5), (0.575, 5))) for r in "ABC"], None, ("D", "S", ((-4.175, 6), (0.575, 6))),
+        *[(r, "P", ((-4.175, 6), (0.575, 6))) for r in "EFGHJK"], ("L", "R", ((-4.175, 3), (0.575, 3)))]),
+    (3, 150, [  # Twin aisle
+        ("A", "S", ((-5.35, 3), (-2.4, 8), (3.55, 3))), ("B", "S", ((-5.95, 4), (-2.4, 8), (3.55, 4))), None,
+        *[(r, "S", ((-5.95, 4), (-2.4, 8), (3.55, 4))) for r in "CD"],
+        *[(r, "P", ((-5.95, 4), (-2.4, 8), (3.55, 4))) for r in "EFGHJ"], ("K", "R", ((-5.95, 2), (-2.4, 4), (3.55, 2)))]),
+    (4, 180, [  # Fan
+        ("A", "S", ((-4.75, 1), (-3, 10), (4.15, 1))), *[(r, "S", ((-5.35, 2), (-3, 10), (4.15, 2))) for r in "BC"],
+        *[(r, "S", ((-5.95, 3), (-3, 10), (4.15, 3))) for r in "DE"], ("F", "S", ((-6.55, 4), (-3, 10), (4.15, 4))), None,
+        ("G", "P", ((-6.55, 4), (-3, 10), (4.15, 4))), *[(r, "P", ((-7.15, 5), (-3, 10), (4.15, 5))) for r in "HJ"],
+        ("K", "P", ((-7.15, 5), (-3, 10), (4.15, 6))), ("L", "R", ((-7.75, 3), (-3, 5), (4.15, 3)))]),
+    (5, 200, [  # Stadium
+        *[(r, "S", ((-4.775, 7), (0.575, 7))) for r in "ABCD"], None, ("E", "R", ((-7.75, 3), (-3, 5), (4.15, 3))),
+        *[(r, "P", ((-5.95, 3), (-3, 10), (4.15, 3))) for r in "FGHJKL"],
+        ("M", "P", ((-6.55, 4), (-3, 10), (4.15, 4))), ("N", "P", ((-6.55, 4), (-3, 10), (4.15, 5)))]),
+    (6, 220, [  # Grand: stalls A-J, then the balcony K-N
+        *[(r, "S", ((-5.95, 3), (-3, 10), (4.15, 3))) for r in "ABC"], None,
+        *[(r, "S", ((-6.55, 4), (-3, 10), (4.15, 4))) for r in "DE"],
+        *[(r, "P", ((-6.55, 4), (-3, 10), (4.15, 4))) for r in "FGH"], ("J", "R", ((-6.55, 2), (-3, 5), (4.15, 3))), None,
+        *[(r, "P", ((-6.55, 4), (-3, 10), (4.15, 4))) for r in "KLMN"]]),
 ]
+CAT_NAMES = {"S": "Standard", "P": "Premium", "R": "Recliner"}
+SEAT_M, GRID_M = {"S": 0.6, "P": 0.6, "R": 1.2}, 0.6
 # Row letters skip I (a seed habit only; SRC-004 R-4 permits I in the product).
 ROW_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 # (name, uplift basis points) - ASSUMED, OPEN-SEAT-01 "you pick". The same three numbers as the pricing examples.
@@ -109,29 +126,21 @@ class SeedError(Exception):
     """The seed refuses: printed to stderr, exit 1, nothing written."""
 
 
-def bands(rows: int) -> tuple[int, int, int]:
-    """Standard, Premium, Recliner row counts: ceil(rows*0.5), ceil(rows*0.3), the remainder.
-    Integer arithmetic on purpose: a float product can land a hair above a whole number (3 * 0.1 * 10 is
-    3.0000000000000004) and ceil then adds a row. For these six row counts the float form happens to agree;
-    the integer form does not depend on that luck."""
-    standard = -(-rows * 5 // 10)
-    premium = -(-rows * 3 // 10)
-    return standard, premium, rows - standard - premium
-
-
 def check_layout(layout) -> None:
-    """The layout checked against itself before the first write (P-XCT-30 exception 9)."""
+    """The layout checked against itself before the first write (P-XCT-30 exception 9, CR-003): seat totals, a known
+    category on every row, Standard first and at least one Recliner row, unique row labels skipping I."""
     for number, seats, plan in layout:
         name = f"SCREEN {number}"
-        rows = sum(1 for row in plan if row)
-        counted = sum(sum(row[0]) for row in plan if row)
+        rows = [r for r in plan if r]
+        counted = sum(n for _, _, blocks in rows for _, n in blocks)
         if counted != seats:
             raise SeedError(f"{name}: its rows hold {counted} seats, not {seats}")
-        b = bands(rows)
-        if sum(b) != rows or min(b) < 1:
-            raise SeedError(f"{name}: category bands {b} do not cover {rows} rows with at least one row each")
-        if rows > len(ROW_LETTERS):
-            raise SeedError(f"{name}: {rows} rows is more than there are row letters")
+        cats = [c for _, c, _ in rows]
+        if set(cats) - set(CAT_NAMES) or cats[0] != "S" or "R" not in cats:
+            raise SeedError(f"{name}: rows must be S/P/R, Standard nearest the screen, with a Recliner row")
+        labels = [label for label, _, _ in rows]
+        if len(set(labels)) != len(labels) or "I" in labels or not set(labels) <= set(ROW_LETTERS):
+            raise SeedError(f"{name}: row labels {''.join(labels)} must be unique row letters")
 
 
 class Db:
@@ -218,22 +227,18 @@ def insert_halls(db: Db, cinema_id: int) -> tuple[list[int], dict[str, int]]:
             sid = db.one("INSERT INTO screen (cinema_id, name, is_active, version) VALUES (%s, %s, true, 1) RETURNING id",
                          (cinema_id, name))
         screen_ids.append(sid)
-        standard, premium, _ = bands(sum(1 for row in plan if row))
-        # grid width of a row: its seats, times their width, plus one empty column per aisle
-        span = [sum(blocks) * w + len(blocks) - 1 for blocks, w in filter(None, plan)]
-        seats, r = [], 0
+        left = min(x0 for row in plan if row for x0, _ in row[2])
+        seats = []
         for grid_row, row in enumerate(plan, 1):
             if not row:
-                continue  # the walkway: an empty grid row, no row letter used
-            blocks, w = row
-            cat = "Standard" if r < standard else "Premium" if r < standard + premium else "Recliner"
-            col, n = 1 + (max(span) - span[r]) // 2, 1  # centred on the widest row
-            for block in blocks:
-                for _ in range(block):
-                    seats.append((sid, ROW_LETTERS[r], n, grid_row, col, categories[cat]))
-                    col, n = col + w, n + 1
-                col += 1  # the aisle
-            r += 1
+                continue  # a walkway (or the balcony's front): an empty grid row, no row letter used
+            label, cat, blocks = row
+            n = 1
+            for x0, count in blocks:
+                for i in range(count):
+                    col = 1 + int((x0 + i * SEAT_M[cat] - left) / GRID_M + 0.5 + 1e-6)  # plan x on the 0.6 m grid, half up (round() is half-even; 1e-6 for float noise)
+                    seats.append((sid, label, n, grid_row, col, categories[CAT_NAMES[cat]]))
+                    n += 1
         db.many("INSERT INTO seat (screen_id, row_label, seat_number, grid_row, grid_col, seat_category_id, is_active) "
                 "VALUES (%s, %s, %s, %s, %s, %s, true) ON CONFLICT DO NOTHING", seats)
     return screen_ids, categories

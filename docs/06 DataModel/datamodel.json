@@ -138,67 +138,389 @@
       "cite": "P-XCT-30 happy path step 1 · S-ADM-29 ('^DEMO CINEMA$') · SRC-003 C-2 (one cinema, PROVISIONAL) · SRC-003 OPEN-LOCALE-01 (zone, RULED)"
     },
     "screens": {
-      "status": "ASSUMED - hall sizes are OPEN-SCALE-02 'pick random'; the grids are P-XCT-30's derivation of them. Never a constraint.",
-      "cite": "SRC-003 OPEN-SCALE-02 · SRC-003 OPEN-SCALE-01 (six halls, RULED) · P-XCT-30 'The six hall layouts' · S-XCT-44",
+      "status": "ASSUMED - hall shapes are OPEN-SCALE-02 'pick random' and category placement OPEN-SEAT-01 'you pick'; the approved revision 5 plans, CR-003. Never a constraint.",
+      "cite": "SRC-003 OPEN-SCALE-02 · SRC-003 OPEN-SCALE-01 (six halls, RULED) · P-XCT-30 'The six hall layouts' · S-XCT-44 · CR-003 (revision 5 layouts, 2026-11-06)",
       "name_pattern": "^SCREEN [1-6]$",
       "name_pattern_cite": "S-ADM-29",
       "layouts": [
         {
           "number": 1,
           "seats": 90,
-          "rows": 9,
-          "cols": 10
+          "rows": [
+            [
+              "A",
+              "Standard",
+              11
+            ],
+            [
+              "B",
+              "Standard",
+              12
+            ],
+            [
+              "C",
+              "Standard",
+              12
+            ],
+            [
+              "D",
+              "Standard",
+              12
+            ],
+            [
+              "E",
+              "Premium",
+              12
+            ],
+            [
+              "F",
+              "Premium",
+              12
+            ],
+            [
+              "G",
+              "Premium",
+              13
+            ],
+            [
+              "H",
+              "Recliner",
+              6
+            ]
+          ]
         },
         {
           "number": 2,
           "seats": 120,
-          "rows": 10,
-          "cols": 12
+          "rows": [
+            [
+              "A",
+              "Standard",
+              10
+            ],
+            [
+              "B",
+              "Standard",
+              10
+            ],
+            [
+              "C",
+              "Standard",
+              10
+            ],
+            [
+              "D",
+              "Standard",
+              12
+            ],
+            [
+              "E",
+              "Premium",
+              12
+            ],
+            [
+              "F",
+              "Premium",
+              12
+            ],
+            [
+              "G",
+              "Premium",
+              12
+            ],
+            [
+              "H",
+              "Premium",
+              12
+            ],
+            [
+              "J",
+              "Premium",
+              12
+            ],
+            [
+              "K",
+              "Premium",
+              12
+            ],
+            [
+              "L",
+              "Recliner",
+              6
+            ]
+          ]
         },
         {
           "number": 3,
           "seats": 150,
-          "rows": 10,
-          "cols": 15
+          "rows": [
+            [
+              "A",
+              "Standard",
+              14
+            ],
+            [
+              "B",
+              "Standard",
+              16
+            ],
+            [
+              "C",
+              "Standard",
+              16
+            ],
+            [
+              "D",
+              "Standard",
+              16
+            ],
+            [
+              "E",
+              "Premium",
+              16
+            ],
+            [
+              "F",
+              "Premium",
+              16
+            ],
+            [
+              "G",
+              "Premium",
+              16
+            ],
+            [
+              "H",
+              "Premium",
+              16
+            ],
+            [
+              "J",
+              "Premium",
+              16
+            ],
+            [
+              "K",
+              "Recliner",
+              8
+            ]
+          ]
         },
         {
           "number": 4,
           "seats": 180,
-          "rows": 12,
-          "cols": 15
+          "rows": [
+            [
+              "A",
+              "Standard",
+              12
+            ],
+            [
+              "B",
+              "Standard",
+              14
+            ],
+            [
+              "C",
+              "Standard",
+              14
+            ],
+            [
+              "D",
+              "Standard",
+              16
+            ],
+            [
+              "E",
+              "Standard",
+              16
+            ],
+            [
+              "F",
+              "Standard",
+              18
+            ],
+            [
+              "G",
+              "Premium",
+              18
+            ],
+            [
+              "H",
+              "Premium",
+              20
+            ],
+            [
+              "J",
+              "Premium",
+              20
+            ],
+            [
+              "K",
+              "Premium",
+              21
+            ],
+            [
+              "L",
+              "Recliner",
+              11
+            ]
+          ]
         },
         {
           "number": 5,
           "seats": 200,
-          "rows": 10,
-          "cols": 20
+          "rows": [
+            [
+              "A",
+              "Standard",
+              14
+            ],
+            [
+              "B",
+              "Standard",
+              14
+            ],
+            [
+              "C",
+              "Standard",
+              14
+            ],
+            [
+              "D",
+              "Standard",
+              14
+            ],
+            [
+              "E",
+              "Recliner",
+              11
+            ],
+            [
+              "F",
+              "Premium",
+              16
+            ],
+            [
+              "G",
+              "Premium",
+              16
+            ],
+            [
+              "H",
+              "Premium",
+              16
+            ],
+            [
+              "J",
+              "Premium",
+              16
+            ],
+            [
+              "K",
+              "Premium",
+              16
+            ],
+            [
+              "L",
+              "Premium",
+              16
+            ],
+            [
+              "M",
+              "Premium",
+              18
+            ],
+            [
+              "N",
+              "Premium",
+              19
+            ]
+          ]
         },
         {
           "number": 6,
           "seats": 220,
-          "rows": 11,
-          "cols": 20
+          "rows": [
+            [
+              "A",
+              "Standard",
+              16
+            ],
+            [
+              "B",
+              "Standard",
+              16
+            ],
+            [
+              "C",
+              "Standard",
+              16
+            ],
+            [
+              "D",
+              "Standard",
+              18
+            ],
+            [
+              "E",
+              "Standard",
+              18
+            ],
+            [
+              "F",
+              "Premium",
+              18
+            ],
+            [
+              "G",
+              "Premium",
+              18
+            ],
+            [
+              "H",
+              "Premium",
+              18
+            ],
+            [
+              "J",
+              "Recliner",
+              10
+            ],
+            [
+              "K",
+              "Premium",
+              18
+            ],
+            [
+              "L",
+              "Premium",
+              18
+            ],
+            [
+              "M",
+              "Premium",
+              18
+            ],
+            [
+              "N",
+              "Premium",
+              18
+            ]
+          ]
         }
       ]
     },
     "row_letters": {
-      "letters": "ABCDEFGHJKLM",
+      "letters": "ABCDEFGHJKLMN",
       "status": "[JUDGMENT CALL] of P-XCT-30, seed layout only",
       "cite": "P-XCT-30 'The row letter skips I' · S-XCT-44 · P-XCT-30 exception 8",
       "reserved_rows": "OPEN-SEATALPHA-01 and OPEN-SEATLABEL-01 were reserved and unruled when P-XCT-30 was written; SRC-004 R-4 (received 2026-10-18) now rules them: row_label stored upper(trim(input)), and the letter I PERMITTED - 'the seed's habit of skipping it is demonstration data and binds nothing'. So the I-skip binds what the SEED writes and is NOT a schema rule; the seed's upper-case letters already satisfy the ruled case rule. Whether the schema carries SRC-004's CHECK is the schema lane's, not this block's. Running the seed still freezes all six halls (P-ADM-14, P-XCT-30 exception 11)."
     },
     "bands": {
-      "standard_fraction": [
-        1,
-        2
-      ],
-      "premium_fraction": [
-        3,
-        10
-      ],
-      "rule": "standard_rows = ceil(rows * 0.5); premium_rows = ceil(rows * 0.3); recliner_rows = rows - standard_rows - premium_rows. Standard nearest the screen.",
-      "status": "[JUDGMENT CALL] of P-XCT-30",
-      "cite": "P-XCT-30 'Category bands are computed from the row count, never typed' · S-XCT-44"
+      "rule": "Each row carries its category as drawn in the approved plans (CR-003), replacing P-XCT-30's computed bands. Standard is nearest the screen and every hall has at least one Recliner row (seed check_layout).",
+      "status": "ASSUMED - OPEN-SEAT-01, CR-003 supersedes the [JUDGMENT CALL] ceil bands",
+      "cite": "CR-003 · P-XCT-30 (superseded rule) · S-XCT-44"
     },
     "seat_categories": {
       "status": "ASSUMED under SRC-003 OPEN-SEAT-01 'you pick' - names and uplifts alike. Never a constraint.",
@@ -219,9 +541,9 @@
       ]
     },
     "base_price_paise": {
-      "value": 24999,
+      "value": 1299,
       "status": "ASSUMED - P-XCT-30 seed value. Integer minor unit; the ratio is CURRENCY_MINOR_UNIT_RATIO configuration and is not used here.",
-      "cite": "P-XCT-30 'On the seeded base price of 24999 paise' · S-XCT-44 · E4 P-TKT worked example ('P-XCT-30 seeds a base price of 24999 paise')"
+      "cite": "P-XCT-30 'On the seeded base price of 24999 paise' · S-XCT-44 · E4 P-TKT worked example ('P-XCT-30 seeds a base price of 24999 paise') · SRC-006 CUR-1 ($12.99 = 1299 cents)"
     },
     "price_rule": {
       "rule": "price_paise = (base_price_paise * (10000 + uplift_basis_points) + 5000) // 10000",
@@ -314,7 +636,7 @@
     },
     "published_figures": {
       "$comment": "Figures the PRD and the Bible PUBLISH. generate.py derives each one independently from the rules above and refuses to emit on any disagreement - S1.5 transcribes these into tests, so a wrong published figure is a wrong test.",
-      "cite": "P-XCT-30 · S-XCT-44 · S-XCT-45",
+      "cite": "P-XCT-30 · S-XCT-44 · S-XCT-45 · CR-003 (screen1_bands = Studio rows A-D / E-G / H)",
       "showtimes": 720,
       "showtimes_per_screen": 120,
       "showtimes_per_film": 90,
@@ -331,14 +653,14 @@
       "lookup_rows": 11,
       "accounts": 63,
       "screen1_bands": [
-        5,
+        4,
         3,
         1
       ],
       "price_paise_by_category": {
-        "Standard": 24999,
-        "Premium": 28124,
-        "Recliner": 33331
+        "Standard": 1299,
+        "Premium": 1461,
+        "Recliner": 1732
       },
       "worked_example_k399_screen": 5,
       "worked_example_k399_booked_seats": 80,

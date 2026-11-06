@@ -7,10 +7,10 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "89a849ba103208a57e98112a17ce2a3bd539fae34f0783f7bfbb0a408e7e9c7c",
+    "datamodel.json": "41e73ee78fc1d24ddda632f90d4bf5142e2270a4fb7307847f62ca8319b45fa7",
     "TRACEABILITY.tsv": "78753609ffcd6a93f1637d404380ca00ec8d3c8b97fdfdbfbd2850ea6e205bcf",
     "schema.sql": "5e5494cd9017347e23c023a5dc998394f9e1586954cd5e34057d343846fad4d2",
-    "seed/expected_summary.json": "5c443e2989c59d42dbef9d8af1f901f585a96c65fb0407ec82cbee75f3e2b4d3"
+    "seed/expected_summary.json": "c2914908cc900c65b9153017a016b3b2846da5010736f736375c5f9094e325bd"
   },
   "schema_structure_sha256": "ef621d98da3c8d1a9485533fff77c00b8149f23d115da2e67c8a0a8461e2394c",
   "roles_and_grants": [
