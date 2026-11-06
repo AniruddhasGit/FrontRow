@@ -58,3 +58,10 @@ export function ConfirmationPage(p: {
       ...facts.map(([label, value]) => h("div", { key: label }, h("dt", null, label), h("dd", { className: "fr-mono" }, value)))),
   );
 }
+
+/** CR-001 B.2: the still rendered from the middle of this booking's hall (/art/hall_<n>_view.jpg, n from the hall's
+ *  name, e.g. "SCREEN 6"), or null when the name carries no number. */
+export function hallViewSrc(hallName: string): string | null {
+  const n = /(\d+)/.exec(hallName)?.[1];
+  return n ? `/art/hall_${Number(n)}_view.jpg` : null;
+}

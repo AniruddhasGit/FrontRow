@@ -216,3 +216,8 @@
   font-size: var(--fr-text-xs);
   color: var(--fr-danger-ink);
 }
+
+/* CR-001 B.2: the rendered view from the middle of the booking's hall, under the ticket. */
+.fr-hall-view { margin: var(--fr-space-6) 0 0; }
+.fr-hall-view img { display: block; width: 100%; height: auto; border-radius: var(--fr-radius-lg); border: var(--fr-stroke-hair) solid var(--fr-rule-quiet); }
+.fr-hall-view figcaption { margin-top: var(--fr-space-2); font-size: var(--fr-text-sm); color: var(--fr-ink-muted); }
