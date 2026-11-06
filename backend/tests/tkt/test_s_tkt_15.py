@@ -1,7 +1,8 @@
-"""S-TKT-15 (P-TKT-12): the password-reset email is sent exactly once per request - the worker half.
+"""S-TKT-15 (P-TKT-12): the password-reset email is sent exactly once per request.
 
-The enqueue half (EP-ACC-05 putting the message on the queue at request time, with the token generator stubbed) is the
-account lane's endpoint, which does not exist yet; those clauses are not asserted here."""
+The worker clauses run the real Worker with stubbed queue and mail ports. The enqueue clauses run end to end in
+test_the_stubbed_token_rides_only_in_the_message_and_the_link: EP-ACC-05 with the token generator stubbed to
+TESTTOKENVALUE0001, then the worker on the message the request sent, with stdout captured at DEBUG for both."""
 
 from __future__ import annotations
 
@@ -125,3 +126,49 @@ async def test_the_stub_line_carries_neither_the_token_nor_the_address(db):
     await StubTransport(out).send(to, password_reset(to, "Tok_en-123abc", app_settings(db, PUBLIC_BASE_URL="https://example.invalid")))
     assert "Tok_en-123abc" not in out.getvalue() and "reset.me@example.invalid" not in out.getvalue()
     assert "token=[REDACTED]" in out.getvalue()
+
+
+async def test_the_stubbed_token_rides_only_in_the_message_and_the_link(db, monkeypatch, capsys):
+    import io
+    import logging
+    import uuid
+
+    from app.core.logging import configure_logging
+    from app.domain import accounts
+    from app.workers.queue import Message
+    from tests.acc._support import api, flush_redis, settings_for
+
+    token = "TESTTOKENVALUE0001"
+    monkeypatch.setattr(accounts, "new_reset_token", lambda: token)
+    flush_redis()
+    clock, mail = Clock(), Mail()
+    u = insert_user(db, role="customer", email="reset.e2e@example.invalid")
+    sent: list[dict] = []
+
+    async def record(body: dict) -> None:
+        sent.append(body)
+
+    stream = io.StringIO()
+    configure_logging(level="DEBUG", service="api", instance_id="test0001", now=clock.now, stream=stream)
+    try:
+        async with api(settings_for(db, LOG_LEVEL="DEBUG"), clock) as c:
+            c.application.state.reset_queue = record
+            r = await c.post("/api/auth/password-reset/request", json={"email": "reset.e2e@example.invalid"})
+        assert r.status_code == 202, r.text
+        [body] = sent
+        msg = Message(id=uuid.uuid4().hex, topic="password_reset.send", body=body, receipt_handle=uuid.uuid4().hex)
+        assert await _deliver(db, clock, msg, mail, LOG_LEVEL="DEBUG") is True
+    finally:
+        logging.getLogger().handlers.clear()
+        logging.getLogger().setLevel(logging.WARNING)
+    stdout = stream.getvalue() + capsys.readouterr().out
+    assert "/api/auth/password-reset/request" in stdout  # the capture covered the request
+    assert set(body) == {"message_version", "request_id", "reset_token", "reset_token_id", "user_id"}
+    assert body["reset_token"] == token and body["user_id"] == u
+    [(_, email)] = mail.calls
+    link = [ln for ln in email.get_body(("plain",)).get_content().splitlines() if "token=" in ln]
+    assert link and link[0].endswith("token=TESTTOKENVALUE0001")
+    outbox = " ".join(t for (t,) in owner_sql(db, "SELECT payload::text FROM outbox_message"))
+    tokens = " ".join(t for (t,) in owner_sql(db, "SELECT password_reset_token::text FROM password_reset_token"))
+    assert outbox and tokens
+    assert token not in outbox and token not in tokens and token not in stdout
