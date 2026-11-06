@@ -18,6 +18,7 @@ it comes from `git pull aws main`.
 - API: https://frontrow-api-r2rr.onrender.com (health: `/health/live`)
 - Neon: migrated to 0002 and seeded once (6 halls, 960 seats, 4 films, 720 showtimes, 11,003 demo bookings, USD base 1299).
 - First deploy: both services built and went live on the first try; `/health/ready` reports postgres ok, redis ok.
+- Live concurrency proof (S-XCT-01 Stage A, 2026-11-06 11:28Z, operator claude-render-live, via the web URL): 50 distinct customers, one seat (showtime 421, G4): **winners 1, losers 49** (all SEAT_UNAVAILABLE naming G4), spread 13.5 ms (< 100), winner confirm 201, **booking_seat rows 1**, unique-constraint violations 0, problems none.
 
 ## 1. Run the script
 
