@@ -49,7 +49,7 @@ The hall sizes stay exactly as `SRC-003 OPEN-SCALE-02` records them. **The shape
 | 3 · Twin aisle | 150 | 10 | A wide centre block between two side blocks | 4 \| 7 \| 4 × 10 |
 | 4 · Fan | 180 | 12 | Rows widen towards the back, with a centre aisle | 10, 11, 12, 13, 14, 15, 15, 16, 17, 18, 19, 20 |
 | 5 · Stadium | 200 | 10 | Two blocks with a walkway (cross-aisle) between rows D and E: four flat rows at the front, six raked rows behind | 5 \| 10 \| 5 × 10 |
-| 6 · Grand | 220 | 11 | Short front rows, a wide middle, and a recliner back row | A–B: 4 \| 8 \| 4 · C–J: 4 \| 14 \| 4 · K: 12 recliners |
+| 6 · Grand | 220 | 11 | Short front rows, a wide middle, and a recliner back row | A–B: 4 \| 8 \| 4 · C–K (eight rows, I skipped): 4 \| 14 \| 4 · L: 12 recliners |
 
 The counts are checked: 90, 120, 150, 180, 200 and 220.
 
