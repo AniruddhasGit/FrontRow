@@ -23,11 +23,11 @@ Authority ......... CONSTITUTION.md Art II.1. The Bible never outranks the PRD. 
 
 | | |
 |---|---|
-| Rows | **210** — 10 epics and 200 stories |
+| Rows | **211** — 10 epics and 201 stories (S-ADM-30 added 2026-11-07, `SRC-008 ROLE-1`) |
 | Encoding | UTF-8, no BOM, LF line endings |
 | Quoting | RFC 4180. Fields containing a comma, a quote or a newline are double-quoted; a literal quote is doubled |
 | Cells | **no raw newline inside any cell.** Clauses inside a criterion are separated by `; ` |
-| Story points | 857 |
+| Story points | 862 |
 
 **Regenerate and re-validate** with the merge script recorded in the session scratch; it refuses to
 write on any failure. What it checks is listed under *The checks* below.
@@ -59,7 +59,7 @@ write on any failure. What it checks is listed under *The checks* below.
 | Phase | Delivers | Stories |
 |---|---|---|
 | 1 | skeleton | 19 |
-| 2 | data model and admin CRUD | 51 |
+| 2 | data model and admin CRUD | 52 |
 | 3 | browsing and the seat-map read path | 31 |
 | 4 | seat locking, booking, idempotency, **the concurrency test** | 44 |
 | 5 | SQS worker and the receipt email | 14 |
@@ -95,7 +95,7 @@ A criterion passes or fails, and it names the thing that decides. The bar the la
 `T+181s`", never "wait three minutes" — `CONSTITUTION.md` makes a test that reads the wall clock a
 defect.
 
-**Where a criterion asserts a number, the number is in the cell.** Money is **integer paise**, INR,
+**Where a criterion asserts a number, the number is in the cell.** Money is **integer minor units** (the `*_paise` names), USD cents since `SRC-006 CUR-1`,
 `Asia/Kolkata`.
 
 **A scope guard proves absence.** The `E-SCP` epic asserts that excluded capabilities have no

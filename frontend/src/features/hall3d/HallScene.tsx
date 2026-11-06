@@ -7,17 +7,26 @@ import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  CanvasTexture, Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, SRGBColorSpace,
-  TextureLoader, Vector3, type BufferGeometry, type PerspectiveCamera, type Texture,
+  BufferAttribute, CanvasTexture, Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry,
+  SRGBColorSpace, TextureLoader, Vector3, type BufferGeometry, type Group, type Mesh, type PerspectiveCamera, type Texture,
 } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
-import { PITCH_Z, computeHall, modelKind, views, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
+import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
 
 const GLIDE_MS = 900; // --fr-motion-change (CR-001 B.5)
 const FLY_MS = 1200; // the first look at the hall: from high over the seats down to the screen-side view of them all
 const FLY_FROM = new Vector3(0, 10, 12);
 const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
+// CR-003 baked hall: each normalised seat (seatModels.ts: 0.57 m wide, facing -z) scaled to its baked Blender size
+// (hall1_build.py SEAT_FIT) and turned round to face +z, where the baked screen is.
+const BAKED_SCALE: Record<ModelKind, [number, number, number]> = {
+  standard: [1.045, 1.007, 1.007], premium: [1.041, 1.021, 1.021], recliner: [1.946, 1.677, 1.676],
+};
+// A baked hall's free seats are the tan leather the owner approved in the renders (CR-003), not the velvet.
+const LEATHER = new Color("#b8743a");
+const ROOM_GAIN = 2.2; // the bake is the dim-house render, display-referred; lifted so the room reads on a monitor
 
 // Colours come from the design tokens, read once from the page, so no colour is defined twice (FR-ADR-072).
 function tones() {
@@ -39,10 +48,21 @@ type Tones = ReturnType<typeof tones>;
 const ease = (t: number) => 1 - (1 - t) ** 4; // one ease, close to --fr-ease-out
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Rig({ hall, mode, seatId, onMoving }: { hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void }) {
+type BakedViews = ((seatId: number | null) => Record<Mode, View>) | null;
+function Rig({ hall, mode, seatId, onMoving, bakedViews }: {
+  hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void; bakedViews: BakedViews;
+}) {
   const camera = useThree((s) => s.camera as PerspectiveCamera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const view = useMemo(() => views(hall, seatId, aspect)[mode], [hall, seatId, aspect, mode]);
+  const view = useMemo(() => (bakedViews ? bakedViews(seatId) : views(hall, seatId, aspect))[mode], [hall, seatId, aspect, mode, bakedViews]);
+  useLayoutEffect(() => {
+    if (!bakedViews) return;
+    // the entrance clip's lens (90 deg across at 16:9); a wider stage crops top and bottom, as the video does
+    // portrait (a phone held upright): as wide as a 95 deg tall lens allows; the clip shows whole, letterboxed
+    const deg = (2 * Math.atan(1 / aspect) * 180) / Math.PI;
+    camera.fov = aspect >= 16 / 9 ? deg : aspect >= 1 ? 58.72 : Math.min(95, deg);
+    camera.updateProjectionMatrix();
+  }, [bakedViews, aspect, camera]);
   const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
   const invalidate = useThree((s) => s.invalidate);
   const look = useRef(new Vector3(...view.look));
@@ -57,7 +77,7 @@ function Rig({ hall, mode, seatId, onMoving }: { hall: Hall; mode: Mode; seatId:
     const first = shown.current === null;
     shown.current = view;
     if (first || reducedMotion()) {
-      const fly = first && !reducedMotion(); // under reduced motion the view cuts (CR-001 B.5)
+      const fly = first && !reducedMotion() && !bakedViews; // reduced motion cuts (CR-001 B.5); a baked hall arrives by its clip
       camera.position.set(...view.at);
       if (fly) camera.position.add(FLY_FROM);
       look.current.set(...view.look);
@@ -92,11 +112,12 @@ function Rig({ hall, mode, seatId, onMoving }: { hall: Hall; mode: Mode; seatId:
   });
   // Looking around is the all-seats view's; a seat's view stays put at that seat's eyes.
   return <OrbitControls makeDefault enabled={mode === "all"} enablePan={false} enableDamping={false} maxPolarAngle={Math.PI * 0.49}
-                        minDistance={4} maxDistance={60} onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
+                        enableZoom={!bakedViews} minDistance={bakedViews ? 0 : 4} maxDistance={60} onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
 }
 
-function SeatKind({ kind, items, colourOf, onPick, onHover }: {
+function SeatKind({ kind, items, colourOf, onPick, onHover, baked }: {
   kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  baked: boolean;
 }) {
   const ref = useRef<InstancedMesh>(null);
   const frameRef = useRef<InstancedMesh>(null);
@@ -125,13 +146,15 @@ function SeatKind({ kind, items, colourOf, onPick, onHover }: {
     const o = new Object3D();
     items.forEach((p, i) => {
       o.position.set(p.x, p.y, p.z);
-      o.scale.set(p.span, 1, 1);
+      o.rotation.set(0, baked ? Math.PI : 0, 0);
+      if (baked) o.scale.set(...BAKED_SCALE[kind]);
+      else o.scale.set(p.span, 1, 1);
       o.updateMatrix();
       meshes.forEach((m) => m.setMatrixAt(i, o.matrix));
     });
     meshes.forEach((m) => { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); });
     invalidate();
-  }, [items, geo, invalidate]);
+  }, [items, geo, invalidate, baked, kind]);
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
@@ -160,7 +183,7 @@ function SeatKind({ kind, items, colourOf, onPick, onHover }: {
 }
 
 /** A cyan pool of light under each of your seats - "yours" is screen-light (DESIGN-SYSTEM.md 1). */
-function Halos({ hall, mine, tone }: { hall: Hall; mine: ReadonlySet<number>; tone: Tones }) {
+function Halos({ placed, mine, tone }: { placed: Placed[]; mine: ReadonlySet<number>; tone: Tones }) {
   const ref = useRef<InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
   const geometry = useMemo(() => new RingGeometry(0.22, 0.42, 32).rotateX(-Math.PI / 2), []);
@@ -171,7 +194,7 @@ function Halos({ hall, mine, tone }: { hall: Hall; mine: ReadonlySet<number>; to
     if (!mesh) return;
     const o = new Object3D();
     let n = 0;
-    for (const p of hall.placed) {
+    for (const p of placed) {
       if (!mine.has(p.seat.id) || p.seat.state === "sold") continue;
       o.position.set(p.x, p.y + 0.03, p.z + 0.05);
       o.scale.set(p.span, 1, 1);
@@ -181,8 +204,8 @@ function Halos({ hall, mine, tone }: { hall: Hall; mine: ReadonlySet<number>; to
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     invalidate();
-  }, [hall, mine, invalidate]);
-  return <instancedMesh ref={ref} args={[geometry, material, Math.max(1, hall.placed.length)]} raycast={() => null} />;
+  }, [placed, mine, invalidate]);
+  return <instancedMesh ref={ref} args={[geometry, material, Math.max(1, placed.length)]} raycast={() => null} />;
 }
 
 export type Film = { id: number; title: string };
@@ -261,10 +284,97 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
   return art;
 }
 
+/** A screen picture the caller paints (SRC-008 WAIT-1, the cold-start countdown): one canvas, repainted whenever
+ *  `paint` changes - the caller changes it once a second - and one frame drawn per repaint (frameloop "demand"). */
+export type Paint = (g: CanvasRenderingContext2D, w: number, h: number) => void;
+function usePainted(paint: Paint | null, aspect: number): Texture | null {
+  const invalidate = useThree((s) => s.invalidate);
+  const on = !!paint;
+  const tex = useMemo(() => {
+    if (!on) return null;
+    const c = document.createElement("canvas");
+    c.width = 2048;
+    c.height = Math.round(2048 / aspect);
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }, [on, aspect]);
+  useEffect(() => () => tex?.dispose(), [tex]);
+  useEffect(() => {
+    if (!tex || !paint) return;
+    const c = tex.image as HTMLCanvasElement;
+    paint(c.getContext("2d")!, c.width, c.height);
+    tex.needsUpdate = true;
+    invalidate();
+  }, [tex, paint, invalidate]);
+  return tex;
+}
+
+/** CR-003: the Blender-baked room, /halls/hallN.glb. bake_* meshes carry their light in the texture and draw unlit;
+ *  emit_* (LED strips, step lights, signs) are flat colour above 1 for the bloom; the screen shows the same picture as
+ *  the procedural hall. Seats are not in the file - SeatKind draws them, live, lit by the lights below. */
+function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null }) {
+  const invalidate = useThree((s) => s.invalidate);
+  const painted = usePainted(paint, meta.screen.w / meta.screen.h);
+  const still = useScreenArt(film, tone);
+  const art = painted ?? still;
+  const [room, setRoom] = useState<Group | null>(null);
+  const screen = useRef<Mesh | null>(null);
+  useEffect(() => {
+    let live = true;
+    new GLTFLoader().load(`/halls/hall${n}.glb`, (g) => {
+      if (!live) return;
+      g.scene.traverse((o) => {
+        const m = o as Mesh;
+        if (!m.isMesh) return;
+        const was = m.material as MeshStandardMaterial;
+        if (m.name.startsWith("bake_")) {
+          m.material = new MeshBasicMaterial({ map: was.map, color: new Color(ROOM_GAIN, ROOM_GAIN, ROOM_GAIN), toneMapped: false });
+        } else if (m.name.includes("screen")) {
+          const geo = m.geometry;
+          geo.computeBoundingBox();
+          const bb = geo.boundingBox!, pos = geo.attributes.position, uv = new Float32Array(pos.count * 2);
+          for (let i = 0; i < pos.count; i++) {
+            // the seats look along -z at a screen facing +z, so the picture's left is the mesh's +x (unmirrored)
+            uv[2 * i] = (bb.max.x - pos.getX(i)) / (bb.max.x - bb.min.x);
+            uv[2 * i + 1] = (pos.getY(i) - bb.min.y) / (bb.max.y - bb.min.y);
+          }
+          geo.setAttribute("uv", new BufferAttribute(uv, 2));
+          screen.current = m;
+        } else if (m.name.startsWith("emit_")) {
+          m.material = new MeshBasicMaterial({ color: was.emissive.clone().multiplyScalar(Math.min(was.emissiveIntensity * 0.6, 6)), toneMapped: false });
+        }
+      });
+      setRoom(g.scene);
+      invalidate();
+    }, undefined, () => null); // no room file: the seats still draw
+    return () => {
+      live = false;
+    };
+  }, [n, invalidate]);
+  useEffect(() => {
+    if (!screen.current) return;
+    screen.current.material = new MeshBasicMaterial({ map: art, color: art ? new Color(1.2, 1.2, 1.2) : tone.screen, toneMapped: false });
+    invalidate();
+  }, [art, room, tone, invalidate]);
+  const look = meta.allseats.look;
+  return (
+    <group>
+      {room && <primitive object={room} />}
+      <pointLight position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
+      <pointLight position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
+      <ambientLight intensity={0.35} color="#6b4a3a" />
+    </group>
+  );
+}
+
 /** Floor tiers on the rake, the stage floor, dark walls, the glowing screen, brass step lights in every aisle. */
-function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null }) {
+function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film | null; paint: Paint | null }) {
   const ref = useRef<InstancedMesh>(null);
-  const art = useScreenArt(film, tone);
+  const painted = usePainted(paint, 2.39);
+  const still = useScreenArt(film, tone);
+  const art = painted ?? still;
   const w = hall.halfWidth + 1.8;
   const { screen, depth, top } = hall;
   const height = screen.y + screen.height / 2 + 2.5;
@@ -340,22 +450,24 @@ function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null
   );
 }
 
-export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving }: {
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null }: {
   map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
-  onMoving: (moving: boolean) => void;
+  onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null; paint?: Paint | null;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
   // The room's shape changes only when the seats themselves move, not on every poll.
   const shape = map.seats.map((s) => `${s.id}:${s.gr}:${s.gc}`).join();
   const hall = useMemo(() => computeHall(map.seats), [shape]);
+  const baked = useMemo(() => (meta && hallNo ? bakedHall(map.seats, meta) : null), [shape, meta, hallNo]);
+  const placed = baked?.placed ?? hall.placed;
   const byKind = useMemo(() => {
     const name = new Map(map.categories.map((c) => [c.id, c.name]));
     const out: Record<ModelKind, Placed[]> = { standard: [], premium: [], recliner: [] };
-    for (const p of hall.placed) out[modelKind(name.get(p.seat.cat) ?? "")].push(p);
+    for (const p of placed) out[modelKind(name.get(p.seat.cat) ?? "")].push(p);
     return out;
-  }, [hall, map.categories]);
+  }, [placed, map.categories]);
   // The live state of each seat, from this poll's payload.
   const live = useMemo(() => new Map(map.seats.map((s) => [s.id, s])), [map]);
   const closed = map.showtime.sales_closed;
@@ -366,10 +478,10 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
       const seat = live.get(stale.id) ?? stale;
       const v = visualOf(seat, mine);
       const base = !seat.is_active ? tone.sold.clone().multiplyScalar(0.5)
-        : v === "held_by_me" ? tone.mine.clone().multiplyScalar(1.6) : v === "held_by_other" ? tone.other.clone() : v === "sold" ? tone.sold.clone() : tone.free.clone();
+        : v === "held_by_me" ? tone.mine.clone().multiplyScalar(1.6) : v === "held_by_other" ? tone.other.clone() : v === "sold" ? tone.sold.clone() : baked ? LEATHER.clone() : tone.free.clone();
       return hover === seat.id && selectable(seat, v, closed) ? base.lerp(lit, 0.35) : base;
     };
-  }, [live, mine, hover, tone, closed]);
+  }, [live, mine, hover, tone, closed, baked]);
 
   const pick = (stale: Seat) => {
     const seat = live.get(stale.id) ?? stale;
@@ -388,20 +500,21 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
   }, []);
 
   return (
-    <Canvas frameloop="demand" dpr={[1, 1.75]} camera={{ fov: 50, near: 0.1, far: 200 }}
+    <Canvas frameloop="demand" dpr={[1, 1.75]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
-      <color attach="background" args={[tone.field]} />
-      <fog attach="fog" args={[tone.field, 22, 70]} />
-      <Room hall={hall} tone={tone} film={film} />
+      <color attach="background" args={[baked ? "#000000" : tone.field]} />
+      {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
       {KINDS.map((k) => (byKind[k].length ? (
-        <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} />
+        <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} baked={!!baked} />
       ) : null))}
-      <Halos hall={hall} mine={mine} tone={tone} />
-      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} />
+      <Halos placed={placed} mine={mine} tone={tone} />
+      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} />
       <EffectComposer multisampling={4}>
-        <Bloom mipmapBlur luminanceThreshold={1} intensity={0.9} />
+        <Bloom mipmapBlur luminanceThreshold={1} intensity={baked ? 0.6 : 0.9} />
         <Vignette offset={0.3} darkness={0.55} />
-        <ToneMapping />
+        {/* a baked room is display-referred already: tone mapping it again would grey it */}
+        {baked ? <></> : <ToneMapping />}
       </EffectComposer>
     </Canvas>
   );

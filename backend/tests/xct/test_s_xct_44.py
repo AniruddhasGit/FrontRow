@@ -42,11 +42,12 @@ def test_six_screens_carry_the_layout_of_the_oracle(seeded):
     assert one(db, "SELECT count(*) FROM seat") == SUMMARY["tables"]["seat"]["rows"]
 
 
-def test_no_row_label_contains_i_and_screen_1_ends_at_j(seeded):
+def test_no_row_label_contains_i_and_screen_1_ends_at_h(seeded):
     db, _ = seeded
     assert one(db, "SELECT count(*) FROM seat WHERE row_label LIKE '%%I%%'") == 0
+    # CR-003: the Studio is eight rows, A-H
     assert one(db, "SELECT string_agg(DISTINCT row_label, ' ' ORDER BY row_label) FROM seat JOIN screen "
-                   "ON screen.id = seat.screen_id WHERE screen.name = 'SCREEN 1'") == "A B C D E F G H J"
+                   "ON screen.id = seat.screen_id WHERE screen.name = 'SCREEN 1'") == "A B C D E F G H"
 
 
 def test_seats_number_from_1_left_to_right_and_labels_are_unique(seeded):
@@ -56,13 +57,17 @@ def test_seats_number_from_1_left_to_right_and_labels_are_unique(seeded):
     assert one(db, "SELECT count(*) FROM seat WHERE seat_number < 1 OR grid_row < 1 OR grid_col < 1") == 0
     labels = {r + str(n) for r, n in owner_sql(
         db, "SELECT row_label, seat_number FROM seat")}
-    assert {"A1", "A10", "J20"} <= labels
+    assert {"A1", "A11", "N19"} <= labels  # CR-003: Studio row A has 11, Stadium row N has 19
 
 
-@pytest.mark.parametrize("rows,expected", [(9, (5, 3, 1)), (10, (5, 3, 2)), (11, (6, 4, 1)), (12, (6, 4, 2))])
-def test_bands_are_computed_with_ceil_never_typed(rows, expected):
-    assert seed.bands(rows) == expected
-    assert expected[0] == math.ceil(rows * 5 / 10) and expected[1] == math.ceil(rows * 3 / 10)
+def test_every_hall_keeps_standard_nearest_the_screen_and_a_recliner_row():
+    """CR-003 replaces the computed bands (ceil(rows*0.5), ceil(rows*0.3)) with each row's category as drawn; what
+    still binds is checked here from the oracle, typed independently of the seed."""
+    for s in SUMMARY["screens"]:
+        bands = {b["category"]: b for b in s["bands"]}
+        assert s["row_labels"][0] in bands["Standard"]["row_labels"], s["screen"]
+        assert bands["Recliner"]["rows"] >= 1, s["screen"]
+        assert sum(b["seats"] for b in s["bands"]) == s["seats"], s["screen"]
 
 
 def test_each_band_reads_back_from_the_database(seeded):
@@ -78,7 +83,7 @@ def test_each_band_reads_back_from_the_database(seeded):
             assert got == total > 0, (s["screen"], band)  # the band's seat count moved with CR-001's row widths
     assert [one(db, "SELECT count(*) FROM seat JOIN seat_category c ON c.id = seat.seat_category_id "
                     "JOIN screen ON screen.id = seat.screen_id WHERE screen.name = 'SCREEN 1' AND c.name = %s", (n,))
-            for n in ("Standard", "Premium", "Recliner")] == [50, 30, 10]
+            for n in ("Standard", "Premium", "Recliner")] == [47, 37, 6]  # CR-003: A-D 11+12+12+12, E-G 12+12+13, H 6
 
 
 def test_three_category_prices_come_from_seat_price_paise(seeded):
@@ -156,16 +161,17 @@ def test_every_lookup_row_is_referenced_by_a_visible_film(seeded):
 
 def test_a_layout_that_disagrees_with_itself_exits_non_zero_naming_the_screen_before_any_write(empty_db, monkeypatch, capsys):
     before = table_counts(empty_db)
-    monkeypatch.setattr(seed, "LAYOUT", [(1, 90, [((10,), 1)] * 9), (2, 120, [((6, 5), 1)] * 10)])
+    monkeypatch.setattr(seed, "LAYOUT", [(1, 90, [("A", "S", ((0, 45),)), ("B", "R", ((0, 45),))]),
+                                         (2, 120, [("A", "S", ((0, 60),)), ("B", "R", ((0, 59),))])])
     code, _ = run_seed(empty_db.app_url)
     assert code != 0
     assert "SCREEN 2" in capsys.readouterr().err
     assert table_counts(empty_db) == before
 
 
-def test_a_band_of_zero_rows_is_refused():
+def test_a_hall_without_a_recliner_row_is_refused():
     with pytest.raises(seed.SeedError, match="SCREEN 9"):
-        seed.check_layout([(9, 2, [((2,), 1)])])
+        seed.check_layout([(9, 2, [("A", "S", ((0, 2),))])])
 
 
 def test_the_seed_fetches_nothing_and_uses_no_fake_data_library_and_no_card_shaped_number():

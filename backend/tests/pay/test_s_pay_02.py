@@ -56,9 +56,20 @@ def test_exactly_one_implementation_of_the_formula():
     assert [h[0] for h in defs] == ["backend/app/domain/pricing.py"]
 
 
+# CR-002 A-1: a hit is excused only when it is a whole-line assignment of a named duration constant (*_MS, *_SECONDS).
+DURATION_CONSTANT = re.compile(r"^\s*[A-Z][A-Z0-9_]*_(MS|SECONDS)\s*=\s*\d+\s*(#.*)?$")
+
+
 def test_no_literal_denominator_or_half_outside_pricing():
     hits = rg(r"\b10000\b|\b5000\b", "backend/app/domain", "backend/app/api", "backend/app/workers")
-    assert [h for h in hits if not h[0].endswith("/pricing.py")] == []
+    hits = [h for h in hits if not h[0].endswith("/pricing.py")]
+    assert [h for h in hits if not DURATION_CONSTANT.match(h[2])] == []
+
+
+def test_the_duration_excuse_takes_no_arithmetic():
+    assert DURATION_CONSTANT.match("MUTEX_TTL_MS = 5000  # five seconds")
+    for line in ("MUTEX_TTL_MS = 5 * 1000", "price = base * u // 10000", "HALF = 5000", "X_MS = base + 5000"):
+        assert not DURATION_CONSTANT.match(line), line
 
 
 def test_no_caller_does_its_own_uplift_arithmetic():

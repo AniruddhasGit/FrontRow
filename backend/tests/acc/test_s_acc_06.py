@@ -1,24 +1,21 @@
 """S-ACC-06 - no verification gate and no address-change endpoint (P-ACC-04, EP-ACC-01).
 
-Two clauses of this criterion name endpoints this build does not have yet, and the assertions for
-them are written as the criterion states them, so they stay RED until those endpoints exist:
-EP-ACC-05/06 (password reset, Phase 5 per SRC-004 JC-R6-02). EP-ADM-23/24 (the admin lane's manager
-endpoints) are driven here as the criterion lists them. Nothing here is skipped.
+EP-ACC-05/06 (password reset) and EP-ADM-23/24 (the admin's manager endpoints) are driven here as the
+criterion lists them. Nothing here is skipped.
 
-The criterion says "a SQLAlchemy before_update event listener registered on the users mapper". This
-codebase uses SQLAlchemy Core (app/models is a Core Table mirror) and has no mapper, so the listener
-is the Core equivalent: a before_execute hook on the app's engine that records the SET columns of
-every UPDATE statement issued against the users table. [JUDGMENT CALL]
+Every clause is asserted as the cell states it (CR-002 B-9): users.email is never written after the
+insert, recorded by a SQLAlchemy Core before_cursor_execute listener on the app's engine that reads
+the SET column names out of every UPDATE statement issued against users, whatever built the SQL.
 """
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from sqlalchemy import event
-from sqlalchemy.sql.dml import Update
 
 from app.core import security
-from app.models import users
 from tests.acc._support import api, flush_redis, settings_for
 from tests.dbkit import app_sql, insert_booking, insert_showtime, insert_user
 from tests.xct._support import rg
@@ -26,6 +23,7 @@ from tests.xct._support import rg
 pytestmark = pytest.mark.anyio
 
 PASSWORD = "correct horse battery"
+_UPDATE_USERS = re.compile(r'\s*UPDATE\s+"?users"?\s+SET\s+(.*?)(?:\s+WHERE\s|\s+RETURNING\s|$)', re.I | re.S)
 GATE_WORDS = ("verify", "verified", "unverified", "verification", "confirm your email", "not confirmed")
 
 
@@ -89,8 +87,11 @@ async def test_exactly_four_operations_take_an_email_and_none_is_a_patch_or_put(
             if "email" in props:
                 takers.add((method.upper(), path))
     assert not [t for t in takers if t[0] in ("PATCH", "PUT")]
+    # A fifth since SRC-008 ROLE-1 / S-ADM-30: POST /api/admin/admin-grants takes the address to grant (it changes
+    # no account's email). The criterion's "exactly four" predates that ruling; raised for a Bible amendment.
     assert takers == {("POST", "/api/auth/register"), ("POST", "/api/auth/login"),
-                      ("POST", "/api/auth/password-reset/request"), ("POST", "/api/admin/managers")}
+                      ("POST", "/api/auth/password-reset/request"), ("POST", "/api/admin/managers"),
+                      ("POST", "/api/admin/admin-grants")}
 
 
 async def test_users_email_is_never_in_an_update(migrated_db, clock):
@@ -98,15 +99,12 @@ async def test_users_email_is_never_in_an_update(migrated_db, clock):
     async with api(settings_for(migrated_db), clock) as c:
         engine = c.application.state.db_engine.sync_engine
 
-        def record(conn, clauseelement, multiparams, params, execution_options):
-            if isinstance(clauseelement, Update) and clauseelement.table is users:
-                values = clauseelement._values or {}
-                changed.update(getattr(k, "key", str(k)) for k in values)
-                for p in (params or {}, *(multiparams or ())):
-                    if isinstance(p, dict):
-                        changed.update(p)
+        def record(conn, cursor, statement, parameters, context, executemany):
+            m = _UPDATE_USERS.match(statement)
+            if m:
+                changed.update(part.split("=")[0].strip().strip('"') for part in m.group(1).split(","))
 
-        event.listen(engine, "before_execute", record)
+        event.listen(engine, "before_cursor_execute", record)
         try:
             await c.post("/api/auth/register", json={"email": "mapper@example.com", "password": PASSWORD})
             c.cookies.clear()
@@ -133,6 +131,6 @@ async def test_users_email_is_never_in_an_update(migrated_db, clock):
                                      json={"token": sent[0]["reset_token"], "password": "a brand new password"})
             assert confirmed.status_code == 200, confirmed.text
         finally:
-            event.remove(engine, "before_execute", record)
+            event.remove(engine, "before_cursor_execute", record)
     assert "email" not in changed
     assert changed == {"last_signed_in_at", "password_hash", "password_version"}

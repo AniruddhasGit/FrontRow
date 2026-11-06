@@ -73,11 +73,13 @@ def test_the_only_row_lock_is_the_showtime_row():
 
 
 def test_no_line_in_backend_app_takes_a_row_lock_to_test_a_seat():
-    """The AC's own rg, line by line over all of backend/app (rg is line-oriented)."""
-    pattern = re.compile(r"booking_seat[^;]*FOR UPDATE|seat[^;]*FOR UPDATE")
-    hits = [f"{p.relative_to(APP)}:{n}" for p in APP.rglob("*.py")
-            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if pattern.search(line)]
-    assert hits == []
+    """CR-002 A-2: the seat sweep is replaced by 'the S-XCT-03 allow-list holds' - every code lock in backend/app
+    is on the list, and none is on booking_seat or showtime_seat."""
+    from tests.xct._support import lock_violations, row_locks
+
+    locks = row_locks()
+    assert [t for r, _, t in locks if r == "api/bookings.py"] == [{"showtime"}]
+    assert lock_violations(locks) == []
 
 
 async def test_the_dispatch_row_is_pending_and_no_outbox_row_lacks_its_dispatch_row_after_fifty_confirms(world):

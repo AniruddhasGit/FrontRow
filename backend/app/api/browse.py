@@ -4,9 +4,9 @@ No session dependency - a guest browses. GET only: Lax cookies ride on cross-sit
 No route here carries ANY dependency (S-BRW-07): settings, the clock, Redis and the engine come from app.state,
 and a handler opens its own connection AFTER its parameters validate, so a 422 runs no SQL at all.
 
-Not mounted: GET /api/movies/{movie_id}/poster (EP-BRW-03). A presigned S3 URL needs the AWS SDK's credential
-chain (the ECS task role), and the SDK arrives with Phase 5 (SRC-004 JC-R6-04). poster_url still names that
-path, and the client draws the perforation motif when the image does not load (P-BRW-02 exception 1).
+GET /api/movies/{movie_id}/poster (EP-BRW-03, S-BRW-18): a 302 to a presigned GET on the private bucket - S3 on AWS,
+Cloudflare R2 on the Render copy (SRC-007 STORE-1, environment only). No visibility gate, by the story's own statement.
+Without a bucket (no credentials) presigning fails and the client draws the motif (P-BRW-02 exception 1).
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request, Response
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from redis.exceptions import RedisError
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -28,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.api.errors import ApiError
 from app.core import cache
 from app.core.ratelimit import Bucket, client_ip, enforce
+from app.domain import posters
 from app.domain.browse import catalogue, seatmap
+from app.models import movie
 from app.domain.money import BIGINT_MAX
 
 router = APIRouter(prefix="/api")
@@ -137,6 +141,19 @@ async def get_movie(request: Request, movie_id: Id) -> Response:
     return Response(_json(film), media_type="application/json")
 
 
+@router.get("/movies/{movie_id}/poster")
+async def get_poster(request: Request, movie_id: Id) -> Response:
+    """EP-BRW-03. The bytes never pass through this one-worker API: the browser follows the redirect to the bucket.
+    The cache lifetime is POSTER_REDIRECT_CACHE_SECONDS, which config check 11 keeps below the presign expiry."""
+    async with _db(request) as conn:
+        key = (await conn.execute(select(movie.c.poster_object_key).where(movie.c.id == movie_id))).scalar()
+    if key is None:  # no such film, or a film with no poster: the same answer
+        raise ApiError(404, "NOT_FOUND")
+    settings = request.app.state.settings
+    return RedirectResponse(posters.store(request.app.state).presign(key), status_code=302,
+                            headers={"Cache-Control": f"max-age={settings.POSTER_REDIRECT_CACHE_SECONDS}"})
+
+
 @router.get("/showtimes")
 async def list_showtimes(request: Request, movie_id: str | None = Query(None), date: str | None = Query(None),
                          cinema_id: str | None = Query(None), format_id: str | None = Query(None)) -> Response:
@@ -193,7 +210,8 @@ async def get_seatmap(request: Request, showtime_id: Id) -> Response:
             values = await state.redis.mget([cache.seat_lock_key(showtime_id, s.id) for s in seats])
             held = {s.id for s, v in zip(seats, values) if v is not None}
         try:
-            built = seatmap.assemble(head, seats, held, now, _cutoff(request), state.settings.SEATMAP_POLL_INTERVAL_SECONDS)
+            built = seatmap.assemble(head, seats, held, now, _cutoff(request), state.settings.SEATMAP_POLL_INTERVAL_SECONDS,
+                                     state.settings.MAX_SEATS_PER_BOOKING)
         except seatmap.SeatMapFault:
             log.error("seat map fault", exc_info=True, extra={"showtime_id": showtime_id})
             raise ApiError(500, "INTERNAL_ERROR") from None

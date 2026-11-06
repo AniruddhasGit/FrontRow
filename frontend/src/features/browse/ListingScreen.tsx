@@ -4,6 +4,7 @@
 // (P-BRW-04); each reference-backed control renders only when /api/reference holds two or more values for it.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navigate } from "../../router";
+import { takeNotice } from "../auth/session";
 import { get, query, type Film } from "./api";
 import { ChoiceGroup, DayStrip } from "./DayStrip";
 import { Hero } from "./Hero";
@@ -39,6 +40,14 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   const [announce, setAnnounce] = useState(boot.announce ?? "");
   const [attempt, setAttempt] = useState(0);
   const first = useRef(true);
+  // One sentence another screen left for this one, read once (P-ACC-13 row 6: the showtime has gone).
+  const [notice] = useState(() => {
+    try {
+      return takeNotice(window.sessionStorage);
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     get<Reference>("/api/reference").then((r) => setReference(r.ok ? r.body : null));
@@ -75,6 +84,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
 
   return (
     <section className="fr-listing">
+      {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
       <Hero film={films?.[0] ?? null} />
       <h1 id="now-showing">Now showing</h1>
       <div role="group" aria-label="Filter what is showing" className="fr-filters">

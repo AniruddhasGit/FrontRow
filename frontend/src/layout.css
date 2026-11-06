@@ -84,3 +84,13 @@
   border-radius: var(--fr-radius-md); min-height: var(--fr-tap-min); padding: 0 var(--fr-space-3); font: inherit; cursor: pointer; }
 .fr-signout:disabled { opacity: 0.6; cursor: progress; }
 .fr-shell-wait { display: inline-block; width: 8rem; height: var(--fr-tap-min); border-radius: var(--fr-radius-sm); background: var(--fr-surface-inset); }
+
+/* Phones (CR-003 mobile): brand + account on the first row; the nav takes its own row and scrolls sideways
+   instead of stacking into a column or pushing the page wider. The email truncates; its full text is the title. */
+@media (max-width: 48rem) {
+  .fr-header-inner { flex-wrap: wrap; row-gap: var(--fr-space-2); }
+  .fr-nav { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; gap: var(--fr-space-4); scrollbar-width: none; }
+  .fr-nav-link { white-space: nowrap; }
+  .fr-account { min-width: 0; }
+  .fr-account-email { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

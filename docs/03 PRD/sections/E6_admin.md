@@ -2579,6 +2579,8 @@ free-text action column becomes unqueryable within a month.
 | `manager.created` | `user` | `P-ADM-17` |
 | `manager.screen_assigned` | `manager_screen_assignment` | `P-ADM-17` |
 | `manager.screen_unassigned` | `manager_screen_assignment` | `P-ADM-17` |
+| `admin_grant.created` | `admin_grant` | `EP-ADM-31` (`SRC-008 ROLE-1`, `S-ADM-30`) |
+| `admin_grant.deleted` | `admin_grant` | `EP-ADM-32` (`SRC-008 ROLE-1` ADDENDUM, `S-ADM-30`) |
 | `language.created` | `language` | `P-ADM-23` |
 | `certification.created` | `certification` | `P-ADM-23` |
 | `genre.created` | `genre` | `P-ADM-23` |
@@ -5174,6 +5176,87 @@ Replacing a manager's assigned halls. The complete set is sent; the server compu
   "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An assignment row is current state, so removing one is a permitted deletion under FR-ADR-011; the audit rows carry its history.",
   "satisfies": ["P-ADM-17", "P-ADM-19", "P-ADM-20"],
   "brd": ["R-ADM-05", "R-ADM-06", "R-ADM-07"]
+}
+```
+
+### Admin access by email (`SRC-008 ROLE-1` and its ADDENDUM, `S-ADM-30`)
+
+Added after the client ruled that only an existing admin makes another admin, by typing the email address into an
+admin-only Settings section. **No P-row publishes these endpoints, their paths or their refusal sentences**; they are
+the build session's `[JUDGMENT CALL]` names, raised by `S-ADM-30`. A granted email (trimmed, compared
+case-insensitively) makes the account `admin` when it registers (`EP-ACC-01`) or signs in (`EP-ACC-02`), a manager
+account included (its hall assignments are kept, unused). Removing the email makes an admin account with that address
+a `customer` at once, in the same transaction as the removal and its `admin_grant.deleted` audit row. The seeded admin
+is never on the list, an address that already belongs to an admin is refused, and an admin cannot remove their own.
+A `role` in any request body is still ignored.
+
+```endpoint
+{
+  "id": "EP-ADM-30",
+  "method": "GET",
+  "path": "/api/admin/admin-grants",
+  "summary": "List the email addresses granted admin access",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {},
+  "responses": {
+    "200": {"description": "Every grant, ORDER BY email ASC, id ASC", "body": {"items": "array of {id, email, granted_by, created_at}"}},
+    "403": {"description": "Authenticated but not an admin"}
+  },
+  "errors": ["AUTH_REQUIRED", "FORBIDDEN", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code.",
+  "satisfies": ["P-ADM-18"],
+  "brd": ["R-ADM-05"]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ADM-31",
+  "method": "POST",
+  "path": "/api/admin/admin-grants",
+  "summary": "Grant admin access to an email address",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {"body": {"email": "string, 3..254 after trimming, a valid address (P-ACC-01's rules), stored lower-case, unique case-insensitively, required"}},
+  "responses": {
+    "400": {"description": "The body does not parse, or it carries a property this endpoint does not define"},
+    "201": {"description": "The new grant; one admin_grant.created audit row in the same transaction", "body": {"id": "integer", "email": "string", "granted_by": "integer", "created_at": "string"}},
+    "403": {"description": "Authenticated but not an admin"},
+    "422": {"description": "The email is not a valid address, already has admin access, or belongs to an account that is already an admin (the seeded admin)"}
+  },
+  "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "FORBIDDEN", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "A repeat is refused with 422 and writes nothing: the unique index on lower(email) is the guard.",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An existing account is not changed here; it becomes admin at its next sign-in.",
+  "satisfies": ["P-ADM-18", "P-ADM-19"],
+  "brd": ["R-ADM-05", "R-ADM-06"]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ADM-32",
+  "method": "DELETE",
+  "path": "/api/admin/admin-grants/{grant_id}",
+  "summary": "Remove an email's admin access, making its admin account a customer",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {"path_params": {"grant_id": "integer, positive"}},
+  "responses": {
+    "204": {"description": "The grant row is deleted, an admin account with that email is set to customer, and one admin_grant.deleted audit row is written, all in one transaction"},
+    "403": {"description": "Authenticated but not an admin"},
+    "404": {"description": "No grant with that id"},
+    "422": {"description": "The grant is the caller's own email"}
+  },
+  "errors": ["AUTH_REQUIRED", "FORBIDDEN", "NOT_FOUND", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "A repeat answers 404 and writes nothing.",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. The role is read from the user row on every request, so the demoted account's next admin request is 403.",
+  "satisfies": ["P-ADM-18", "P-ADM-19"],
+  "brd": ["R-ADM-05", "R-ADM-06"]
 }
 ```
 

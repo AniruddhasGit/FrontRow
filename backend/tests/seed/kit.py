@@ -86,7 +86,7 @@ def run_seed_process(db_url: str | None, *argv: str, password: str | None = PASS
 def table_counts(db) -> dict[str, int]:
     tables = [t for (t,) in owner_sql(db, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
                                           "AND table_type = 'BASE TABLE' AND table_name <> 'alembic_version' ORDER BY 1")]
-    assert len(tables) == 22, tables  # a vacuous comparison is not a comparison
+    assert len(tables) == 23, tables  # a vacuous comparison is not a comparison
     return {t: owner_sql(db, f"SELECT count(*) FROM {t}")[0][0] for t in tables}
 
 

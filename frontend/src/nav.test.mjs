@@ -10,7 +10,7 @@ test("each role sees exactly its links, in order, and a guest sees none", () => 
   assert.deepEqual(labels(null), []);
   assert.deepEqual(labels("customer"), ["My bookings"]);
   assert.deepEqual(labels("manager"), ["Dashboard", "My bookings"]);
-  assert.deepEqual(labels("admin"), ["Dashboard", "Change log", "Films", "Showtimes", "Pricing", "Halls", "Managers", "Lists", "My bookings"]);
+  assert.deepEqual(labels("admin"), ["Dashboard", "Change log", "Films", "Showtimes", "Pricing", "Halls", "Managers", "Lists", "Admin access", "My bookings"]);
   assert.ok(!labels("manager").includes("Change log"), "the change log is the admin's alone");
   assert.deepEqual(labels("staff"), []);
 });
@@ -24,6 +24,7 @@ test("the current area is the longest matching link, and none off the nav", () =
 });
 
 test("the address truncates past 24 characters", () => {
-  assert.equal(shortEmail("asha@example.com"), "asha@example.com");
-  assert.equal(shortEmail("customer-12@demo.frontrow.invalid"), "customer-12@demo.frontr…");
+  assert.equal(shortEmail("asha@example.invalid"), "asha@example.invalid");
+  const long = "customer-12@demo.frontrow.invalid"; // the expected display is derived, so no address-like fragment is typed (S-XCT-28)
+  assert.equal(shortEmail(long), long.slice(0, 23) + "…");
 });

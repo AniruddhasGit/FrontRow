@@ -182,9 +182,14 @@ fresh zero-context session grades every irreversible call.
 2. **Store money as an integer in the currency's minor unit. Never a float.** Decimal at the
    boundary, integer in the persistence layer, formatted string at render time only. A float
    anywhere on the money path is a defect regardless of whether a test caught it.
-3. **RULED 2026-08-14** (`SRC-003 OPEN-LOCALE-01`): the market is **India**, the currency is
-   **INR**, the minor unit is **paise** at a ratio of **100**, and the timezone is
-   **Asia/Kolkata**. Money is stored as an integer number of paise. **The ratio is a one-way door**
+3. **RULED 2026-08-14** (`SRC-003 OPEN-LOCALE-01`), **currency amended 2026-11-06** (`SRC-006 CUR-1`;
+   the client authorised this amendment in `SRC-008 NIGHT-1`, "Amend both to USD"): the currency is
+   **USD**, the minor unit is **cents** at a ratio of **100**, and the timezone stays
+   **Asia/Kolkata** (the cinema is still in India; only the currency changed). Money is stored as an
+   integer number of cents. Internal names such as the `*_paise` columns are unchanged: each means
+   one-hundredth of the currency unit, and renaming them is a migration that `SRC-006 CUR-1` does not
+   order. *(It was INR, minor unit paise, from 2026-08-14 to 2026-11-06. No booking existed in any
+   environment when it changed, so no amount already paid was reinterpreted.)* **The ratio is a one-way door**
    — `SRC-001 §7.6` makes bookings permanent, so a currency reinterpreted later silently rewrites
    what every past customer paid. It stays a named configuration value rather than a literal
    scattered through the code, and it is never changed by inference.
@@ -410,7 +415,7 @@ alongside so the PRD's references resolve without editing 21,000 lines.
 
 | ID | PRD id | Question | Class |
 |---|---|---|---|
-| `OPEN-PRICEBOUND-01` | `PROPOSED-PRICEBOUND-01` | An upper bound on a base price and on a category uplift. **A mistyped ₹25,000 for ₹250 is currently accepted.** | **reserved: money** |
+| `OPEN-PRICEBOUND-01` | `PROPOSED-PRICEBOUND-01` | An upper bound on a base price and on a category uplift. **A mistyped $25,000 for $250 is currently accepted.** | **reserved: money** |
 | `OPEN-RPTSCOPE-01` | `PROPOSED-RPTSCOPE-01` | A manager assignment has no validity period, so a manager assigned today reads that hall's **entire financial history**. | **reserved: access to financial data** |
 | `OPEN-RPTIMMUT-01` | `PROPOSED-RPTIMMUT-01` | A showtime's film or start time edited after bookings exist **rewrites reported history**. | **reserved: reporting integrity** |
 | `OPEN-ADMINCOUNT-01` | `PROPOSED-ADMINCOUNT-01` | How a second admin account is created. No endpoint was invented and no role selector exists. | **reserved: access control** |

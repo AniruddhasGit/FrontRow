@@ -125,7 +125,7 @@ def test_nothing_imports_schedules_or_upserts_a_film():
     assert rg(r"tmdb|themoviedb|omdb|movie_api|external_id", *trees) == []
     # "Naming movie" is read as the movie TABLE: the seed's movie_genre join insert carries ON CONFLICT DO NOTHING
     # (scripts/seed.py, the seed lane's), and a join row is not a film (reported as an AC ambiguity).
-    assert [h for h in rg(r"ON CONFLICT", *trees) if re.search(r"movie", h[2])] == []
+    assert [h for h in rg(r"ON CONFLICT", *trees) if re.search(r"\bmovie\b", h[2])] == []
     assert rg(r"APScheduler|celery|crontab|schedule[.]every|EventBridge", *trees) == []
 
 

@@ -1,0 +1,5 @@
+# S-ADM-09 — Done
+
+Run 2026-11-07 (fork A of the blocked-rows sweep), `MSYS_NO_PATHCONV=1 docker compose -p frontrow --profile test run --rm --no-deps test python -m pytest -q -p no:cacheprovider tests/adm/test_s_adm_04.py ... tests/adm/test_s_adm_18.py -rA`.
+
+**Evidence:** backend/tests/adm/test_s_adm_09.py, 10 passed. New or changed: test_nothing_schedules_and_no_worker_or_job_creates_a_showtime now runs the cell's own pattern (?i)INSERT INTO showtime\b|insert\(showtime\) over backend/app, backend/migrations and scripts (exactly domain/admin/showtimes.py and scripts/seed.py; 0 under workers and jobs) and the scheduler census over the named trees; test_ends_at_is_stored_never_derived_from_runtime now changes runtime_minutes 148 -> 120 through PATCH /api/admin/movies/{id} (EP-ADM-04, 200) and compares every showtime's ends_at of that film before and after; test_a_showtime_carrying_a_since_withdrawn_format_still_returns_it_on_a_get (format set is_active false after the create; GET /api/showtimes still returns format.id). The other seven tests were already there and pass.

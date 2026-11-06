@@ -1,9 +1,8 @@
 """S-ADM-09 - a showtime is created by hand, and nothing else creates one (P-ADM-07).
 
-NOT covered: "a showtime already carrying a withdrawn format_id still returns it on a GET" needs the
-browse GET (Phase 3); the ripgrep "INSERT INTO showtime|Showtime[(] hits exactly three files" needs
-scripts/seed.py and names backend/app/domain/showtimes.py (see the lane report); the runtime PATCH needs
-EP-ADM-04 (Phase 6) and is proved here against a direct runtime change instead.
+Every clause of the cell is asserted here: the withdrawn format still returned on GET /api/showtimes (EP-BRW-04), the
+cell's own (?i) census over backend/app, migrations and scripts/, and the runtime change made through the
+EP-ADM-04 PATCH, not a direct UPDATE.
 """
 
 from __future__ import annotations
@@ -137,7 +136,9 @@ def test_the_insert_waits_on_the_screen_row_lock(client):
 
 def test_nothing_schedules_and_no_worker_or_job_creates_a_showtime():
     assert rg(r"INSERT INTO showtime|Showtime[(]|insert[(]showtime[)]", "backend/app/workers", "backend/app/jobs") == []
-    assert {h[0] for h in rg(r"insert[(]showtime[)]", "backend/app")} == {"backend/app/domain/admin/showtimes.py"}
+    census = rg(r"(?i)INSERT INTO showtime\b|insert\(showtime\)", "backend/app", "backend/migrations", "scripts")
+    assert {h[0] for h in census} == {"backend/app/domain/admin/showtimes.py", "scripts/seed.py"}
+    assert rg(r"(?i)INSERT INTO showtime\b|insert\(showtime\)", "backend/app/workers", "backend/app/jobs") == []
     assert rg(r"APScheduler|celery|crontab|cron.d|schedule[.]every|EventBridge", "backend/app", "backend/migrations",
               "frontend/src", "scripts", *zone_c(".github/workflows")) == []
 
@@ -147,6 +148,23 @@ def test_ends_at_is_stored_never_derived_from_runtime(client):
     hall, movie = _hall(client.db), make_movie(client.db, runtime=148)
     st = client.post("/api/admin/showtimes", json=_body(movie, hall, starts_at="2026-09-10 18:30",
                                                          ends_at="2026-09-10 20:58")).json()["id"]
-    before = owner_sql(client.db, "SELECT ends_at::text FROM showtime WHERE id = %s", (st,))
-    owner_sql(client.db, "UPDATE movie SET runtime_minutes = 120 WHERE id = %s", (movie,))
-    assert owner_sql(client.db, "SELECT ends_at::text FROM showtime WHERE id = %s", (st,)) == before
+    before = owner_sql(client.db, "SELECT id, ends_at::text FROM showtime WHERE movie_id = %s ORDER BY id", (movie,))
+    r = client.patch(f"/api/admin/movies/{movie}", json={"version": 1, "runtime_minutes": 120})
+    assert r.status_code == 200 and r.json()["runtime_minutes"] == 120, r.text
+    assert owner_sql(client.db, "SELECT id, ends_at::text FROM showtime WHERE movie_id = %s ORDER BY id", (movie,)) == before
+
+
+def test_a_showtime_carrying_a_since_withdrawn_format_still_returns_it_on_a_get(client):
+    sign_in(client)
+    hall = _hall(client.db)
+    # A visible film (the injected clock reads 2026-10-18), so the customer GET of its showtimes answers.
+    movie = make_movie(client.db, window=("2026-10-01T00:00:00+05:30", "2026-11-01T00:00:00+05:30"))
+    owner_sql(client.db, "UPDATE movie SET published_at = '2026-09-30T00:00:00Z' WHERE id = %s", (movie,))
+    fmt = one(client.db, "INSERT INTO format (name, is_active) VALUES (%s, true) RETURNING id", (f"Fmt {hall}",))
+    r = client.post("/api/admin/showtimes", json=_body(movie, hall, format_id=fmt, starts_at="2026-10-20 18:30",
+                                                        ends_at="2026-10-20 20:58"))
+    assert r.status_code == 201, r.text
+    owner_sql(client.db, "UPDATE format SET is_active = false WHERE id = %s", (fmt,))  # withdrawn after the fact
+    got = client.get("/api/showtimes", params={"movie_id": movie, "date": "2026-10-20"})
+    assert got.status_code == 200, got.text
+    assert [(s["id"], s["format"]["id"]) for s in got.json()["showtimes"]] == [(r.json()["id"], fmt)]

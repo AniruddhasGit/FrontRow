@@ -1,14 +1,16 @@
 """S-SEA-09 (P-HLD-04): at most MAX_SEATS_PER_BOOKING seats held at once, per customer, per showtime.
 
-Not here: the BOUGHT-ten-then-ten-more case (needs the confirm, EP-PAY-01, lane PAY), and the client's
-`Up to 6 seats.` at MAX_SEATS_PER_BOOKING=6 - the cap reaches the client through no endpoint today.
+The BOUGHT-ten-then-ten-more case drives the real confirm (EP-PAY-01). The client's `Up to 6 seats.` is rendered from the seat map's max_seats_per_booking (CR-002 C-1): the server half is
+asserted here, the rendered note in frontend/src/features/seatmap/render.test.mjs.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from tests.sea.kit import SHOWTIME, T0, SetClock, api, r_call, r_keys, r_pttl, session, user, world77
+from tests.dbkit import owner_sql
+from tests.sea.kit import (SHOWTIME, T0, SetClock, api, confirm, flush, r_call, r_keys, r_pttl, seat,
+                            session, user, world77)
 from tests.xct._support import rg
 
 pytestmark = pytest.mark.anyio
@@ -80,6 +82,61 @@ async def test_the_server_strings_render_the_configured_cap(world):
     assert _err(seven) == (422, "SEAT_LIMIT_EXCEEDED", "You can hold up to 6 seats for one showtime. You chose 7.")
     assert _err(three) == (422, "SEAT_LIMIT_EXCEEDED",
                            "You can hold up to 6 seats for one showtime. You are holding 4 and chose 3 more.")
+
+
+async def test_bought_seats_count_nothing_against_the_cap(migrated_db):
+    """Ten bought on 77, then ten more held at once on 77: 201, because the commit removed the spent token."""
+    from tests.sea.kit import confirm, owner_sql
+
+    world = world77(migrated_db, retire_412=False)  # 401..418 and 420 in 77's set: 19 seats
+    for n in (21, 22):  # one more in-service seat in 77's set, so twenty distinct seats exist
+        owner_sql(migrated_db, "INSERT INTO seat (id, screen_id, row_label, seat_number, grid_row, grid_col, seat_category_id) "
+                               "OVERRIDING SYSTEM VALUE VALUES (%s, 3, 'C', %s, 3, %s, %s)", (400 + n, n, n, world["standard"]))
+        owner_sql(migrated_db, "INSERT INTO showtime_seat (showtime_id, seat_id) VALUES (77, %s)", (400 + n,))
+    first, second = list(range(401, 411)), [411, 412, 413, 414, 415, 416, 417, 418, 420, 421]
+    customer = user(migrated_db)
+    async with api(migrated_db, _clock()) as c:
+        cookies = session(c, customer)
+        held = await c.post(URL, json={"seat_ids": first}, cookies=cookies)
+        assert held.status_code == 201, held.text
+        bought = await confirm(c, customer, held.json()["hold_token"])
+        assert bought.status_code == 201, bought.text
+        after_purchase = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+        again = await c.post(URL, json={"seat_ids": second}, cookies=cookies)
+        after_hold = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+    assert after_purchase == 0
+    assert again.status_code == 201, again.text
+    assert len(again.json()["seats"]) == 10 and after_hold == 1
+
+
+async def test_bought_ten_then_ten_more_is_a_201(world):
+    """Bought seats count against nothing: the confirm removes the spent token from the cap set (OPEN-BULKBUY-01)."""
+    for n in range(1, 11):  # row D: ten more in-service seats in showtime 77's set, so twenty are free
+        seat(world["db"], world["screen"], 430 + n, "D", n, 4, n, world["standard"])
+    owner_sql(world["db"], "INSERT INTO showtime_seat (showtime_id, seat_id) SELECT 77, id FROM seat WHERE id > 430")
+    customer = user(world["db"])
+    first, second = ELEVEN[:10], [431 + i for i in range(10)]
+    async with api(world["db"], _clock()) as c:
+        cookies = session(c, customer)
+        held = (await c.post(URL, json={"seat_ids": first}, cookies=cookies)).json()
+        bought = await confirm(c, customer, held["hold_token"])
+        after_purchase = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+        again = await c.post(URL, json={"seat_ids": second}, cookies=cookies)
+        after_hold = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+    assert bought.status_code == 201, bought.text
+    assert (after_purchase, after_hold) == (0, 1)
+    assert again.status_code == 201 and len(again.json()["seats"]) == 10
+
+
+async def test_the_seat_map_publishes_the_configured_cap(world):
+    """CR-002 C-1: EP-BRW-06 carries max_seats_per_booking, so the client's note needs no literal of its own."""
+    async with api(world["db"], _clock(), MAX_SEATS_PER_BOOKING="6") as c:
+        six = (await c.get(f"/api/showtimes/{SHOWTIME}/seatmap")).json()
+    flush()  # the seat map is cached in Redis; the second app builds its own
+    async with api(world["db"], _clock()) as c:
+        ten = (await c.get(f"/api/showtimes/{SHOWTIME}/seatmap")).json()
+    assert (six["max_seats_per_booking"], ten["max_seats_per_booking"]) == (6, 10)
+    assert type(six["max_seats_per_booking"]) is int
 
 
 def test_no_literal_ten_ships_in_a_cap_string():

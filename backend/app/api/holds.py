@@ -101,9 +101,8 @@ async def create_hold(request: Request, showtime_id: Id, body: HoldRequest, conn
     return granted
 
 
-# A token carrying `/` is two path segments and reaches no route at all: 404 NOT_FOUND, not P-HLD-03's 400. The
-# contract's paths are plain segments, so a `:path` convertor (which would answer 400) would change the published
-# route; the gap is reported rather than routed around.
+# A token carrying `/` is two path segments and reaches no route; app/api/errors.py's not-found handler answers it
+# with P-HLD-03's 400 (CR-002 B-13), so the published routes keep plain segments.
 @router.get("/holds/{hold_token}")
 async def read_hold(request: Request, hold_token: str) -> dict:
     """EP-HLD-02: a reloaded page restores itself. No query and no body: the server takes no client instant."""

@@ -1,6 +1,9 @@
 """S-SCP-14 (P-SCP-11): booking status and its cancellation timestamp are exposed by no endpoint and settable by none.
 
-The confirmation page's two lines are asserted in frontend/src/features/ticket/ticket.test.mjs."""
+The teardown census (no cancellation instant, no status but 'confirmed') runs in the shared migrated_db fixture of
+backend/tests/conftest.py, through tests/dbkit.py drop_database, for every module; the last test here proves the check
+fails on a violating row. The confirmation page's two lines are asserted in
+frontend/src/features/ticket/ticket.test.mjs."""
 
 from __future__ import annotations
 
@@ -68,3 +71,25 @@ async def test_neither_can_be_set_and_status_is_written_once(world):
         assert (await confirm(c, u, h2["hold_token"], key="another")).status_code == 201
     assert count(db, f"SELECT count(*) FROM booking WHERE {STAMP} IS NOT NULL") == 0
     assert owner_sql(db, "SELECT DISTINCT status FROM booking") == [("confirmed",)]
+
+
+async def test_the_shared_teardown_check_fails_on_a_violating_booking():
+    """Red-proof of the conftest fixture's teardown: a database holding a cancelled or non-confirmed booking fails it."""
+    from tests.dbkit import assert_bookings_never_cancelled, create_database, drop_database
+    from tests.pay.kit import book
+
+    db = create_database(migrate=True)
+    try:
+        w = world7(db)
+        b, _ = book(db, user(db), 7, [F7])
+        assert_bookings_never_cancelled(db)  # a confirmed, uncancelled booking passes
+        owner_sql(db, f"UPDATE booking SET {STAMP} = '2026-08-14T14:00:00Z' WHERE id = %s", (b,))
+        with pytest.raises(AssertionError, match="S-SCP-14"):
+            assert_bookings_never_cancelled(db)
+        owner_sql(db, f"UPDATE booking SET {STAMP} = NULL, status = 'withdrawn' WHERE id = %s", (b,))
+        with pytest.raises(AssertionError, match="S-SCP-14"):
+            assert_bookings_never_cancelled(db)
+        owner_sql(db, "UPDATE booking SET status = 'confirmed' WHERE id = %s", (b,))
+        assert w["movie"]
+    finally:
+        drop_database(db)

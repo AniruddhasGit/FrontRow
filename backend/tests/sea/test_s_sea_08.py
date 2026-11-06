@@ -1,9 +1,8 @@
 """S-SEA-08 (P-HLD-03, EP-HLD-02, EP-PAY-01): whether a hold is alive is Redis's answer, never a clock comparison.
 
 Both liveness surfaces are asserted: the hold READ (GET /api/holds/{token}) and the CONFIRM (POST /api/bookings).
-Not here: a 43-character token carrying `/` (two path segments, so 404 - a contract gap), and the repository-wide
-wall-clock sweep, which finds other lanes' sleeping polls of external processes in tests/adm, tests/xct and
-tests/test_shutdown.py - this module's own sweep covers tests/sea.
+A 43-character token carrying `/` is two path segments and reaches no route; the application's not-found handler
+answers it with the same 400 (CR-002 B-13, Q-R3-05). The wall-clock sweep covers all of backend/tests (CR-002 A-5).
 """
 
 from __future__ import annotations
@@ -80,14 +79,14 @@ async def test_unmatched_foreign_and_malformed_tokens(world):
         r_call("SET", "lock:seat:77:402", "a-different-hold-token", "PX", "300000")
         foreign = await c.get(f"/api/holds/{hold['hold_token']}", cookies=cookies)
         malformed = []
-        # A 43-character token containing `/` is two path segments and reaches no route (404) - reported, not asserted.
-        for token in ("A" * 42, "A" * 44, "A" * 42 + "+", "A" * 42 + "="):
+        # 42, 44, and 43 carrying `+`, `/` or `=`. The `/` one is two path segments: the not-found handler (CR-002 B-13).
+        for token in ("A" * 42, "A" * 44, "A" * 42 + "+", "A" * 21 + "/" + "A" * 21, "A" * 42 + "="):
             c.redis_log.reset()
             r = await c.get(f"/api/holds/{token}", cookies=cookies)
             malformed.append((r.status_code, r.json()["error"]["code"], r.json()["error"]["message"], list(c.redis_log.commands)))
     assert (unmatched.status_code, unmatched.json()["error"]["code"], unmatched.json()["error"]["message"]) == (409, "HOLD_EXPIRED", ENDED)
     assert (foreign.status_code, foreign.json()["error"]["code"], foreign.json()["error"]["message"]) == (403, "HOLD_NOT_OWNED", ENDED)
-    assert malformed == [(400, "REQUEST_INVALID", BAD, [])] * 4
+    assert malformed == [(400, "REQUEST_INVALID", BAD, [])] * 5
 
 
 async def test_the_liveness_check_takes_no_clock_and_sends_one_get(world):
@@ -113,8 +112,41 @@ async def test_the_read_takes_no_client_instant(world):
     assert [p["in"] for p in op.get("parameters", [])] == ["path"]
 
 
+def _bounded(loop) -> bool:
+    """A for over range(...), or a while whose test compares a counter the body increments."""
+    import ast
+
+    if isinstance(loop, ast.For):
+        return isinstance(loop.iter, ast.Call) and getattr(loop.iter.func, "id", None) == "range"
+    counted = {n.target.id for n in ast.walk(loop) if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)}
+    return any(isinstance(c, ast.Compare) and isinstance(c.left, ast.Name) and c.left.id in counted
+               and all(isinstance(op, (ast.Lt, ast.LtE)) for op in c.ops) for c in ast.walk(loop.test))
+
+
 def test_no_test_in_this_lane_reads_the_wall_clock():
-    assert rg(r"time\.sleep\(|datetime\.now\(|datetime\.utcnow\(|time\.time\(", "backend/tests/sea") == []
+    """CR-002 A-5, over all of backend/tests."""
+    import ast
+
+    assert rg(r"datetime\.now\(|datetime\.utcnow\(|datetime\.today\(|date\.today\(|time\.time\(|time\.time_ns\(",
+              "backend/tests") == []
+    sleeps = rg(r"time\.sleep\(", "backend/tests")
+    assert sleeps, "no sleep found - a vacuous pass is not a pass"
+    unbounded = []
+    for path in sorted({h[0] for h in sleeps}):
+        tree = ast.parse((REPO / path).read_text(encoding="utf-8"))
+        parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "time.sleep":
+                loop = parents.get(node)
+                while loop is not None and not isinstance(loop, (ast.For, ast.While, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    loop = parents.get(loop)
+                if not isinstance(loop, (ast.For, ast.While)) or not _bounded(loop):
+                    unbounded.append(f"{path}:{node.lineno}")
+    assert unbounded == []
+    # The check itself: a clock-bounded loop and a bare sleep are both caught.
+    clocked = ast.parse("while time.monotonic() < end:\n    time.sleep(0.1)\n").body[0]
+    counted = ast.parse("while x and polls < 100:\n    polls += 1\n    time.sleep(0.1)\n").body[0]
+    assert not _bounded(clocked) and _bounded(counted) and _bounded(ast.parse("for _ in range(9):\n    pass\n").body[0])
 
 
 # ---- the confirm (EP-PAY-01) as the liveness surface ------------------------------------------------------

@@ -190,7 +190,7 @@
       "source": "FR-ADR-052 (extension) · FR-ADR-060 · FR-ADR-067 · raised by E4 in the iteration-6 fix pass"
     }
   ],
-  "endpoint_count": 58,
+  "endpoint_count": 61,
   "endpoints": [
     {
       "id": "EP-ACC-01",
@@ -2404,6 +2404,145 @@
       ]
     },
     {
+      "id": "EP-ADM-30",
+      "method": "GET",
+      "path": "/api/admin/admin-grants",
+      "summary": "List the email addresses granted admin access",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "description": "Every grant, ORDER BY email ASC, id ASC",
+          "body": {
+            "items": "array of {id, email, granted_by, created_at}"
+          }
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "safe method - no state change",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code.",
+      "satisfies": [
+        "P-ADM-18"
+      ],
+      "brd": [
+        "R-ADM-05"
+      ]
+    },
+    {
+      "id": "EP-ADM-31",
+      "method": "POST",
+      "path": "/api/admin/admin-grants",
+      "summary": "Grant admin access to an email address",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {
+        "body": {
+          "email": "string, 3..254 after trimming, a valid address (P-ACC-01's rules), stored lower-case, unique case-insensitively, required"
+        }
+      },
+      "responses": {
+        "400": {
+          "description": "The body does not parse, or it carries a property this endpoint does not define"
+        },
+        "201": {
+          "description": "The new grant; one admin_grant.created audit row in the same transaction",
+          "body": {
+            "id": "integer",
+            "email": "string",
+            "granted_by": "integer",
+            "created_at": "string"
+          }
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        },
+        "422": {
+          "description": "The email is not a valid address, already has admin access, or belongs to an account that is already an admin (the seeded admin)"
+        }
+      },
+      "errors": [
+        "REQUEST_INVALID",
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "A repeat is refused with 422 and writes nothing: the unique index on lower(email) is the guard.",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An existing account is not changed here; it becomes admin at its next sign-in.",
+      "satisfies": [
+        "P-ADM-18",
+        "P-ADM-19"
+      ],
+      "brd": [
+        "R-ADM-05",
+        "R-ADM-06"
+      ]
+    },
+    {
+      "id": "EP-ADM-32",
+      "method": "DELETE",
+      "path": "/api/admin/admin-grants/{grant_id}",
+      "summary": "Remove an email's admin access, making its admin account a customer",
+      "auth": "role",
+      "roles": [
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "grant_id": "integer, positive"
+        }
+      },
+      "responses": {
+        "204": {
+          "description": "The grant row is deleted, an admin account with that email is set to customer, and one admin_grant.deleted audit row is written, all in one transaction"
+        },
+        "403": {
+          "description": "Authenticated but not an admin"
+        },
+        "404": {
+          "description": "No grant with that id"
+        },
+        "422": {
+          "description": "The grant is the caller's own email"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "A repeat answers 404 and writes nothing.",
+      "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+      "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. The role is read from the user row on every request, so the demoted account's next admin request is 403.",
+      "satisfies": [
+        "P-ADM-18",
+        "P-ADM-19"
+      ],
+      "brd": [
+        "R-ADM-05",
+        "R-ADM-06"
+      ]
+    },
+    {
       "id": "EP-BRW-01",
       "method": "GET",
       "path": "/api/movies",
@@ -2742,7 +2881,8 @@
             "categories": "array of {id, name, price_paise} — already rounded by FR-ADR-038's rule. Ordered by the lowest gr at which the category appears in THIS SHOWTIME'S SEAT SET, ascending, with id ascending as the tiebreak, so the legend reads in the order the bands are drawn and the client never sorts (P-BRW-16). A category with no seat in this showtime's seat set is not returned. Scoped to the seat set and never to the screen's current seats, exactly as seats, rows and cols already are (P-ADM-14): the two sets genuinely differ once a seat is added to or retired from the hall, and a category present on the screen but absent from this showtime could otherwise order a legend row for a band the map does not draw.",
             "seats": "array of {id, row, num, gr, gc, cat, price_paise, state, is_active} — this showtime's seat set as materialised at showtime creation (P-ADM-14), never the screen's current seats — ordered by gr ASC then gc ASC; state is one of available|held|sold; price_paise is this seat's own already-rounded integer price, equal to its category's, so the client sums integers and performs no rounding of its own (P-BRW-10, FR-ADR-038, FR-ADR-045); is_active is a required boolean, false for a seat retired after this showtime was created, which is returned and drawn but is never selectable and still carries its true state — is_active is not a fifth state and the state enum stays three values wide (P-BRW-08 exception 3, P-BRW-09, P-ADM-15). Every seat sharing a gr carries the same row string, which is the label the gutter renders (P-BRW-16).",
             "generated_at": "string, ISO-8601 with +05:30 offset",
-            "poll_interval_seconds": "integer, the value of SEATMAP_POLL_INTERVAL_SECONDS, default 3. Server configuration validated at boot (S7.9 cross-check 10) and published here so the client holds no constant of its own and one value governs (P-BRW-11). The server publishes the interval and does not police it; a client polling faster meets the rate limiter and nothing else."
+            "poll_interval_seconds": "integer, the value of SEATMAP_POLL_INTERVAL_SECONDS, default 3. Server configuration validated at boot (S7.9 cross-check 10) and published here so the client holds no constant of its own and one value governs (P-BRW-11). The server publishes the interval and does not police it; a client polling faster meets the rate limiter and nothing else.",
+            "max_seats_per_booking": "integer, the value of MAX_SEATS_PER_BOOKING, default 10. Server configuration published here, exactly as poll_interval_seconds is, so the seat map's cap note (`Up to 10 seats.`) and its local eleventh-tap refusal render the server's figure and the client ships no literal of its own (S-SEA-09, CR-002 C-1, approved SRC-008 NIGHT-1). The hold endpoint stays the enforcement point (P-HLD-04)."
           }
         },
         "404": {

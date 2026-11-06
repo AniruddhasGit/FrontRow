@@ -17,7 +17,7 @@ export function navFor(role: string | null): NavLink[] {
     return [DASHBOARD, { label: "Change log", to: "/dashboard/audit" }, { label: "Films", to: "/admin/movies" },
       { label: "Showtimes", to: "/admin/showtimes" }, { label: "Pricing", to: "/admin/seat-categories" },
       { label: "Halls", to: "/admin/halls" }, { label: "Managers", to: "/admin/managers" },
-      { label: "Lists", to: "/admin/lookups" }, BOOKINGS];
+      { label: "Lists", to: "/admin/lookups" }, { label: "Admin access", to: "/admin/access" }, BOOKINGS];
   }
   return []; // guest, or an unknown role: no links (never speculative)
 }

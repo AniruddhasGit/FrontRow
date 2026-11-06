@@ -61,6 +61,34 @@ def _respond(status: int, code: str, details: dict[str, Any] | None = None, mess
 _HTTP_CODES = {401: "AUTH_REQUIRED", 403: "FORBIDDEN", 404: "NOT_FOUND"}
 
 
+def _a_template_really_matches(request: Request) -> bool:
+    """True when some route matches the path for another method AND every path parameter parses as its type."""
+    from fastapi.routing import APIRoute
+    from starlette.routing import Match
+
+    def leaves(routes):
+        # FastAPI 0.143 wraps each included router in an _IncludedRouter; its routes are its effective candidates.
+        for r in routes:
+            nested = []
+            for attr in ("effective_candidates", "effective_low_priority_routes"):
+                found = getattr(r, attr, ())
+                nested.extend(found() if callable(found) else found)
+            yield from leaves(nested) if nested else (r,)
+
+    for route in leaves(request.app.routes):
+        match, child = route.matches(request.scope)
+        if match is Match.NONE:
+            continue
+        api_route = getattr(route, "original_route", route)  # an included router's entry wraps the APIRoute
+        if not isinstance(api_route, APIRoute):
+            return True  # a plain route (e.g. /metrics) declares no parameter types to check
+        values = child.get("path_params", {})
+        if all(not field.validate(values.get(field.alias), {}, loc=("path", field.alias))[1]
+               for field in api_route.dependant.path_params):
+            return True
+    return False
+
+
 def install_error_handlers(app: FastAPI) -> None:
     """Mounted on the APPLICATION, never on a router (P-XCT-11 3a): routing has already failed when
     404 and 405 are raised, so a router-level handler would never see them."""
@@ -73,6 +101,10 @@ def install_error_handlers(app: FastAPI) -> None:
     async def method_not_allowed(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         # The path exists for another method. Generic and entity-blind by necessity: the path is only a
         # string here. Keeps the framework's Allow header, which names the methods that do exist.
+        # Unless no matched template's path parameter parses as its declared type (POST /api/admin/movies/import
+        # against /movies/{movie_id: int}): then no such address exists, so 404 (S-SCP-01, CR-002 B-7).
+        if not _a_template_really_matches(request):
+            return _respond(404, "NOT_FOUND")
         return _respond(405, "METHOD_NOT_ALLOWED", headers=getattr(exc, "headers", None))
 
     @app.exception_handler(StarletteHTTPException)
@@ -82,6 +114,12 @@ def install_error_handlers(app: FastAPI) -> None:
         # registry code for it; any other 4xx is a request the server could not read (REQUEST_INVALID),
         # and only a 5xx is INTERNAL_ERROR - the one code whose sentence quotes the request id.
         code = _HTTP_CODES.get(exc.status_code) or ("INTERNAL_ERROR" if exc.status_code >= 500 else "REQUEST_INVALID")
+        # A hold token carrying `/` is two path segments and reaches no route. It is still a malformed token, so it
+        # gets P-HLD-03's 400 and its sentence, with no Redis command (CR-002 B-13, Q-R3-05). Published routes unchanged.
+        rest = request.url.path.removeprefix("/api/holds/")
+        if exc.status_code == 404 and rest != request.url.path and "/" in rest and len(rest) >= 43:
+            from app.domain.holds import BAD_TOKEN
+            return _respond(400, "REQUEST_INVALID", message=BAD_TOKEN)
         return _respond(exc.status_code, code, headers=getattr(exc, "headers", None))
 
     @app.exception_handler(RequestValidationError)

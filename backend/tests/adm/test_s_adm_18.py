@@ -1,8 +1,8 @@
 """S-ADM-18 - create a manager account and assign it halls (P-ADM-17).
 
-NOT covered: POST /api/auth/login refusing the new account (the account lane's endpoint) and the
-manager dashboard returning an empty rows array (Phase 8). The "no usable password" half that this lane
-owns - a real, unique bcrypt digest of a secret nobody holds - is proved below.
+Every clause is asserted here, including POST /api/auth/login refusing the new account and the Phase 8 dashboard
+(EP-RPT-01 / EP-RPT-02) answering 200 with an empty rows array for a manager with no halls and for a hall that has
+no manager. The reporting routes rate-limit through Redis, so those requests use this module's Redis database 14.
 """
 
 from __future__ import annotations
@@ -167,3 +167,30 @@ def test_no_credential_ever_enters_an_audit_row(client):
     assert count(client.db, "audit_log", "before ?| array['password_hash','password_version'] "
                                          "OR after ?| array['password_hash','password_version']") == 0
     assert count(client.db, "audit_log", "entity_type = 'user'") > 0
+
+
+def test_an_unassigned_manager_and_an_unmanaged_hall_get_200_and_empty_rows(client, clock):
+    from app.core.security import SESSION_COOKIE, issue_session_token
+
+    admin = sign_in(client)
+    r = _create(client, "empty.halls@example.invalid", [])
+    assert r.status_code == 201, r.text
+    manager = r.json()["user_id"]
+    lonely = make_screen(client.db)  # a hall no manager is assigned to
+    assert count(client.db, "manager_screen_assignment", "screen_id = %s", (lonely,)) == 0
+    redis_url = re.sub(r"/\d+$", "/14", os.environ["TEST_REDIS_URL"])
+    settings = app_settings(client.db, REDIS_URL=redis_url)
+    app_ = create_app(settings, clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    mint = lambda uid, role: issue_session_token(user_id=uid, role=role, password_version=1, now=clock.now(),  # noqa: E731
+                                                 settings=settings)
+    with TestClient(app_) as c:
+        c.cookies.set(SESSION_COOKIE, mint(manager, "manager"))
+        rows = c.get("/api/reports/showtimes", params={"period": "day"})
+        assert rows.status_code == 200, rows.text
+        assert rows.json()["rows"] == []
+        dash = c.get("/api/reports/dashboard", params={"period": "day"})
+        assert dash.status_code == 200 and dash.json()["scope_empty"] is True and dash.json()["films"] == []
+        c.cookies.set(SESSION_COOKIE, mint(admin, "admin"))
+        rows = c.get("/api/reports/showtimes", params={"period": "day", "screen_id": lonely})
+        assert rows.status_code == 200, rows.text
+        assert rows.json()["rows"] == []

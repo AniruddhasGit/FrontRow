@@ -1,10 +1,13 @@
 """S-XCT-12 - credentials are stored so they cannot be read back.
 
-Covered: the length rules (characters for the floor, BYTES for the ceiling), bcrypt confined to
-core/security.py and never inside an `async def`, the dummy-hash comparison for an unknown email, the
-lower(email) unique index, the email stored as entered, and no plaintext column. NOT covered: the
-registration / sign-in HTTP responses (422 / 409 / 401, email 254/255) and `to_thread.run_sync` in
-the auth router - the account lane's EP-ACC-01/02.
+Every clause runs as the cell states it. Over HTTP (EP-ACC-01/02): 11 characters -> 422 with the floor
+sentence, 25 Devanagari characters (75 bytes) -> 422 quoting 75 and nothing stored, 72 Latin characters
+-> 201, a second registration -> 409 EMAIL_ALREADY_REGISTERED, a wrong password or unknown email at
+sign-in -> 401 CREDENTIALS_INVALID, Nikhil@Example.invalid read back unchanged, a 255-character email ->
+422 and a 254-character one -> 201, and Correct-Horse-99! in no captured stdout line (DEBUG) and no
+response body. The rg sweeps (bcrypt outside security.py, no async def in it, to_thread.run_sync over
+api/auth.py + domain/accounts >= 1) and the catalogue checks run on the source and the database.
+password_problem() is the seed's check (scripts/seed.py), tested here too.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import pytest
 
 from app.core import security
 from app.core.security import hash_password, password_problem, verify_password
+from tests.acc._support import api, flush_redis, settings_for
 from tests.dbkit import BACKEND_DIR, app_sql
 
 COST = 4  # bcrypt's minimum, for test speed; production default is BCRYPT_COST=12
@@ -91,3 +95,75 @@ def test_the_email_is_stored_as_entered_and_unique_case_insensitively(migrated_d
 def test_no_plaintext_password_column_exists(migrated_db):
     assert app_sql(migrated_db, "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' "
                                 "AND table_name = 'users' AND column_name IN ('password', 'password_plain')") == []
+
+
+def _email(length: int) -> str:
+    domain = "a" * 63 + "." + "b" * 63 + "."
+    local = "x" * 64
+    tail = ".com"
+    middle = length - len(local) - 1 - len(domain) - len(tail)
+    address = f"{local}@{domain}{'c' * middle}{tail}"
+    assert len(address) == length
+    return address
+
+
+@pytest.mark.anyio
+async def test_the_http_rules_for_register_and_sign_in(migrated_db, clock):
+    from tests.dbkit import owner_sql
+
+    flush_redis()
+    owner_sql(migrated_db, "DELETE FROM users WHERE lower(email) = 'nikhil@example.invalid'")  # the catalogue test's row
+    async with api(settings_for(migrated_db, PASSWORD_MIN_LENGTH="12", RATE_LIMIT_REGISTER_IP_PER_HOUR="25"), clock) as c:
+        short = await c.post("/api/auth/register", json={"email": "short@example.com", "password": "abcdefghijk"})
+        long_ = await c.post("/api/auth/register", json={"email": "deva@example.com", "password": "क" * 25})
+        latin = await c.post("/api/auth/register", json={"email": "latin@example.com", "password": "L" * 72})
+        c.cookies.clear()
+        twice = await c.post("/api/auth/register", json={"email": "LATIN@example.com", "password": "L" * 72})
+        wrong = await c.post("/api/auth/login", json={"email": "latin@example.com", "password": "L" * 71 + "M"})
+        unknown = await c.post("/api/auth/login", json={"email": "nobody@example.com", "password": "L" * 72})
+        nikhil = await c.post("/api/auth/register", json={"email": "Nikhil@Example.invalid", "password": "L" * 72})
+        c.cookies.clear()
+        e255 = await c.post("/api/auth/register", json={"email": _email(255), "password": "L" * 72})
+        e254 = await c.post("/api/auth/register", json={"email": _email(254), "password": "L" * 72})
+    err = lambda r: (r.status_code, r.json()["error"]["code"], r.json()["error"]["message"])  # noqa: E731
+    assert err(short) == (422, "VALIDATION_FAILED",
+                          "Your password must be at least 12 characters. It does not have to contain numbers or symbols.")
+    assert err(long_) == (422, "VALIDATION_FAILED", "Your password is too long. The limit is 72 bytes and yours is 75. "
+                          "Most characters count as one byte; accented and non-Latin characters count as two, three or four.")
+    assert app_sql(migrated_db, "SELECT count(*) FROM users WHERE email = 'deva@example.com'") == [(0,)]  # never truncated
+    assert latin.status_code == 201, latin.text
+    assert twice.status_code == 409 and twice.json()["error"]["code"] == "EMAIL_ALREADY_REGISTERED"
+    assert (wrong.status_code, wrong.json()["error"]["code"]) == (401, "CREDENTIALS_INVALID")
+    assert (unknown.status_code, unknown.json()["error"]["code"]) == (401, "CREDENTIALS_INVALID")
+    assert nikhil.status_code == 201
+    assert app_sql(migrated_db, "SELECT email FROM users WHERE lower(email) = 'nikhil@example.invalid'") == [("Nikhil@Example.invalid",)]
+    assert e255.status_code == 422 and e255.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert e254.status_code == 201, e254.text
+
+
+def test_to_thread_run_sync_runs_bcrypt_for_the_auth_router():
+    files = [BACKEND_DIR / "app" / "api" / "auth.py", *(BACKEND_DIR / "app" / "domain" / "accounts").rglob("*.py")]
+    assert sum(p.read_text(encoding="utf-8").count("to_thread.run_sync") for p in files) >= 1
+
+
+@pytest.mark.anyio
+async def test_the_password_appears_in_no_stdout_line_and_no_response_body(migrated_db, clock, capsys):
+    import io
+    import logging
+
+    from app.core.logging import configure_logging
+
+    flush_redis()
+    stream = io.StringIO()
+    configure_logging(level="DEBUG", service="api", instance_id="test0001", now=clock.now, stream=stream)
+    try:
+        async with api(settings_for(migrated_db, LOG_LEVEL="DEBUG"), clock) as c:
+            r = await c.post("/api/auth/register", json={"email": "horse99@example.com", "password": "Correct-Horse-99!"})
+    finally:
+        logging.getLogger().handlers.clear()
+        logging.getLogger().setLevel(logging.WARNING)
+    assert r.status_code == 201, r.text
+    lines = (stream.getvalue() + capsys.readouterr().out).splitlines()
+    assert any("/api/auth/register" in ln for ln in lines)  # the capture covered the request
+    assert [ln for ln in lines if "Correct-Horse-99!" in ln] == []
+    assert "Correct-Horse-99!" not in r.text

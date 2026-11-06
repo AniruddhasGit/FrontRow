@@ -70,11 +70,14 @@ def test_every_table_except_alembic_version_and_audit_log_carries_created_at(mig
     assert rows == []
 
 
-THE_THREE_DELETES = {"/api/admin/seats/{seat_id}", "/api/holds/{hold_token}/seats/{seat_id}", "/api/holds/{hold_token}"}
+# The criterion's three, plus EP-ADM-32 (SRC-008 ROLE-1 ADDENDUM, S-ADM-30: removing a granted email deletes its
+# grant row, which no booking can reach). S-XCT-09's "exactly three" predates that ruling; raised for a Bible amendment.
+THE_THREE_DELETES = {"/api/admin/seats/{seat_id}", "/api/holds/{hold_token}/seats/{seat_id}", "/api/holds/{hold_token}",
+                     "/api/admin/admin-grants/{grant_id}"}
 
 
 def test_no_delete_route_is_mounted_outside_the_three_the_criterion_permits(valid_env):
-    """Exactly three DELETE routes: the admin seat delete and the two hold releases."""
+    """Exactly these DELETE routes: the admin seat delete, the two hold releases, and the admin-grant removal."""
     from app.core.config import load_settings
     from app.main import create_app
     from tests.test_health import ok_probe

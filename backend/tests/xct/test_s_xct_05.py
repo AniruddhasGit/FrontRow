@@ -2,8 +2,13 @@
 
 Covered here: boot validation of the currency pair, the money-column census, the one pricing function
 and its half-up rule with the PRD's worked examples (P-PAY-03 / P-PAY-04 / FR-ADR-038), the strict
-paise boundary type that refuses 250.00 / -1 / 0, the single-formula scan, and SUM cast back to int.
-NOT covered (other lanes' endpoints): POST/PATCH /api/admin/showtimes, and the five importing files.
+paise boundary type that refuses 250.00 / -1 / 0, the single-formula scan, the five importing files, the
+real POST /api/admin/showtimes and PATCH /api/admin/showtimes/41 refusing 250.00, -1 and 0 with 422
+VALIDATION_FAILED and storing nothing, and SUM cast back to int.
+
+NOT passing as written: `rg -nP 'float\(|:\s*float|->\s*float' backend/app` returning 0 hits. About ten
+non-money duration and metrics annotations hit it (core/config.py, clock.py, metrics.py, server.py,
+workers/queue.py); the sweep here covers the money modules only. That clause needs a Bible amendment.
 """
 
 from __future__ import annotations
@@ -66,11 +71,11 @@ def test_every_price_amount_total_column_is_bigint_and_named_paise(migrated_db):
         migrated_db,
         r"""SELECT table_name, column_name, data_type FROM information_schema.columns
              WHERE table_schema = 'public' AND column_name ~ '(price|amount|total)'
-               AND (data_type <> 'bigint' OR column_name NOT LIKE '%\_paise')""",
+               AND (data_type <> 'bigint' OR column_name !~ '_paise(_applied)?$')""",
     )
     assert rows == []
     # Not vacuous: the money columns are there and visible to this query.
-    assert len(owner_sql(migrated_db, "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name LIKE '%\\_paise'")) >= 5
+    assert len(owner_sql(migrated_db, "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name ~ '_paise(_applied)?$'")) >= 5
 
 
 # ---- the one function -----------------------------------------------------------------------------------
@@ -121,17 +126,32 @@ def test_negative_inputs_are_refused(base, uplift):
 
 
 def test_the_formula_is_written_once_uplift_appears_nowhere_else_in_app():
-    """rg -n 'uplift_basis_points' backend/app --glob '!**/domain/pricing.py' --glob '!**/models/**'
-    --glob '!**/migrations/**' returns 0 hits. (scripts/ does not exist yet.)"""
-    hits = [
-        f"{p.relative_to(BACKEND_DIR)}:{i}"
-        for p in APP.rglob("*.py")
-        if p.name != "pricing.py" or p.parent.name != "domain"
-        if "models" not in p.relative_to(APP).parts and "migrations" not in p.parts
-        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if "uplift_basis_points" in line
-    ]
-    assert hits == []
+    r"""CR-002 A-10 (2): rg -nP 'uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points' backend/app scripts
+    --glob '!**/domain/pricing.py' returns 0 hits. Reading, storing and validating the column stays allowed."""
+    from tests.xct._support import rg
+
+    hits = rg(r"uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points", "backend/app", "scripts")
+    assert [f"{h[0]}:{h[1]}" for h in hits if h[0] != "backend/app/domain/pricing.py"] == []
+    rx = re.compile(r"uplift_basis_points\w*\s*[-+*/%]|[-+*/%]\s*uplift_basis_points")
+    assert rx.search("base * uplift_basis_points") and rx.search("uplift_basis_points_applied % 7")
+    assert not rx.search('row["uplift_basis_points"]') and not rx.search("uplift_basis_points=Column(BigInteger)")
+
+
+def test_only_the_five_real_importers_use_pricing_and_the_receipt_and_reports_do_not():
+    """CR-002 A-10 (3): the seat-map read, the hold snapshot, the booking total, the admin base-price bound and
+    scripts/seed.py import app.domain.pricing; the receipt render and the reporting domain import nothing from it."""
+    from tests.xct._support import rg
+
+    files = {h[0] for h in rg(r"from app\.domain\.pricing import", "backend/app", "scripts")}
+    assert files <= {"backend/app/domain/browse/seatmap.py", "backend/app/domain/holds/__init__.py",
+                     "backend/app/domain/booking/__init__.py", "backend/app/domain/admin/common.py", "scripts/seed.py"}, files
+    assert rg(r"app\.domain\.pricing|app\.domain import pricing", "backend/app/workers/render.py", "backend/app/domain/reports") == []
+    # They read stored paise, never a recomputed price: the reports sum booking_seat.price_paise, and the receipt's
+    # one read (RECEIPT_FACTS) takes booking.total_paise, the confirm-time sum of booking_seat.price_paise (S-PAY-07).
+    from app.workers import RECEIPT_FACTS
+
+    assert "b.total_paise" in str(RECEIPT_FACTS) and "seat_price_paise" not in (APP / "workers" / "render.py").read_text()
+    assert rg(r"SUM\(bs\.price_paise\)", "backend/app/domain/reports")
 
 
 # ---- the request boundary: integer paise, or 422 ---------------------------------------------------------
@@ -174,6 +194,34 @@ def test_a_json_250_00_body_field_is_422_validation_failed_through_the_product_e
 
 class Body(BaseModel):
     base_price_paise: PositivePaise
+
+
+def test_the_real_showtime_endpoints_refuse_250_00_minus_1_and_0_and_store_nothing(migrated_db, clock):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from tests.adm.kit import make_movie, make_screen, make_seats, sign_in
+    from tests.dbkit import app_settings
+    from tests.test_health import ok_probe
+
+    app = create_app(app_settings(migrated_db), clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    with TestClient(app, raise_server_exceptions=False) as c:
+        c.clock, c.db = clock, migrated_db
+        sign_in(c)
+        hall, movie = make_screen(migrated_db), make_movie(migrated_db)
+        make_seats(migrated_db, hall, 1)
+        owner_sql(migrated_db, "INSERT INTO showtime (id, movie_id, screen_id, starts_at, ends_at, base_price_paise, "
+                               "seat_count_at_creation, version) OVERRIDING SYSTEM VALUE VALUES (41, %s, %s, "
+                               "'2026-12-01T12:30:00Z', '2026-12-01T15:00:00Z', 25000, 1, 1)", (movie, hall))
+        before = owner_sql(migrated_db, "SELECT count(*), sum(base_price_paise) FROM showtime")
+        fields = (f'"movie_id": {movie}, "screen_id": {hall}, '
+                  '"starts_at": "2026-09-01T18:00:00", "ends_at": "2026-09-01T20:30:00"')
+        for bad in ("250.00", "-1", "0"):
+            for method, url, body in (("POST", "/api/admin/showtimes", "{" + fields + ', "base_price_paise": ' + bad + "}"),
+                                      ("PATCH", "/api/admin/showtimes/41", '{"base_price_paise": ' + bad + "}")):
+                r = c.request(method, url, content=body, headers={"content-type": "application/json"})
+                assert (r.status_code, r.json()["error"]["code"]) == (422, "VALIDATION_FAILED"), (method, bad, r.text)
+        assert owner_sql(migrated_db, "SELECT count(*), sum(base_price_paise) FROM showtime") == before  # never rounded
 
 
 # ---- SUM over bigint comes back as int, never Decimal -----------------------------------------------------

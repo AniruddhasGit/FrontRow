@@ -100,7 +100,8 @@ async def test_a_receipt_for_no_confirmed_booking_is_deleted_and_logged(db, capl
 
 def test_the_claim_never_inserts_and_never_reads_the_database_clock():
     assert _scan(r"insert into receipt_dispatch", re.IGNORECASE) == []
-    assert _scan(r"now\(\)|CURRENT_TIMESTAMP") == []
+    # CR-002 A-4 (rg -niP): clock.now() is the injected clock; the database's clock functions are what is barred.
+    assert _scan(r"(?<![.\w])now\(\)|CURRENT_TIMESTAMP|statement_timestamp|clock_timestamp|transaction_timestamp|LOCALTIMESTAMP", re.IGNORECASE) == []
 
 
 def test_the_sqs_row_carries_both_orderings():

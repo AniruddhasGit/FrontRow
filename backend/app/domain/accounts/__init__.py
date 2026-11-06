@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import anyio
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import case, exists, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -29,7 +29,7 @@ from app.api.errors import ApiError
 from app.core import security
 from app.core.config import Settings
 from app.domain.booking import MESSAGE_VERSION  # the one version the worker accepts, for both topics
-from app.models import outbox_message, password_reset_token, users
+from app.models import admin_grant, outbox_message, password_reset_token, users
 
 log = logging.getLogger("app.accounts")
 
@@ -51,6 +51,13 @@ CREDENTIALS_INVALID = "That email address and password do not match an account."
 ALREADY_REGISTERED = ("An account already exists for that email address. Sign in instead, or reset the password "
                       "if you have forgotten it.")
 _UNIQUE_EMAIL = "uq_users__email_ci"
+
+
+def _granted_role(email: str, otherwise: Any) -> Any:
+    """admin if an admin has granted this address (SRC-008 ROLE-1, S-ADM-30), else `otherwise`. Evaluated by the
+    database inside the write, so the grant is read in the same statement that sets the role. Never from a request
+    body: the role in one is still ignored (S-ACC-01)."""
+    return case((exists().where(admin_grant.c.email == email.strip().lower()), Role.ADMIN.value), else_=otherwise)
 
 
 def _invalid(message: str, field: str, **details: Any) -> ApiError:
@@ -120,7 +127,7 @@ def identity_of(user: Any) -> dict[str, Any]:
 
 
 async def register(conn: AsyncConnection, state: Any, settings: Settings, email: str, password: str) -> dict[str, Any]:
-    """Insert one customer row (P-ACC-01). The unique index on lower(email) is the guard; the read
+    """Insert one customer row (P-ACC-01) - or admin, for an address an admin granted (SRC-008 ROLE-1). The unique index on lower(email) is the guard; the read
     first only spares a bcrypt call for the common case."""
     taken = (await conn.execute(select(users.c.id).where(func.lower(users.c.email) == email.lower()))).first()
     await conn.rollback()
@@ -129,21 +136,22 @@ async def register(conn: AsyncConnection, state: Any, settings: Settings, email:
     password_hash = await _bcrypt(state, settings, UNAVAILABLE_REGISTER, "hash_password", password, settings.BCRYPT_COST)
     try:
         async with conn.begin():
-            user_id = (await conn.execute(
-                insert(users).values(email=email, password_hash=password_hash, role=Role.CUSTOMER.value, password_version=1)
-                .returning(users.c.id))).scalar_one()
+            user_id, role = (await conn.execute(
+                insert(users).values(email=email, password_hash=password_hash, role=_granted_role(email, Role.CUSTOMER.value),
+                                     password_version=1).returning(users.c.id, users.c.role))).one()
     except IntegrityError as exc:
         if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) == _UNIQUE_EMAIL:
             raise ApiError(409, "EMAIL_ALREADY_REGISTERED", ALREADY_REGISTERED) from None  # a simultaneous twin won
         raise
-    return {"id": user_id, "email": email, "role": Role.CUSTOMER.value, "password_version": 1}
+    return {"id": user_id, "email": email, "role": role, "password_version": 1}
 
 
 async def sign_in(conn: AsyncConnection, state: Any, settings: Settings, email: str, password: str, now) -> dict[str, Any]:
     """P-ACC-02. Exactly one bcrypt verification on every branch - a found row, an unknown address,
     an account whose hash is unusable - so the two failures cost the same and look the same."""
     row = (await conn.execute(
-        select(users.c.id, users.c.email, users.c.password_hash, users.c.role, users.c.password_version)
+        select(users.c.id, users.c.email, users.c.password_hash, users.c.role, users.c.password_version,
+               _granted_role(email, users.c.role).label("granted_role"))
         .where(func.lower(users.c.email) == email.lower()))).first()
     await conn.rollback()  # no transaction stays open across the bcrypt wait
     stored = row.password_hash if row is not None else None
@@ -151,9 +159,14 @@ async def sign_in(conn: AsyncConnection, state: Any, settings: Settings, email: 
     if not ok or row is None:
         raise ApiError(401, "CREDENTIALS_INVALID", CREDENTIALS_INVALID)
     async with conn.begin():
-        # The one write on the sign-in path, and not an audit row: signing in is not a privileged write.
-        await conn.execute(update(users).where(users.c.id == row.id).values(last_signed_in_at=now))
-    return {"id": row.id, "email": row.email, "role": row.role, "password_version": row.password_version}
+        # The one write on the sign-in path, and not an audit row: signing in is not a privileged write. A granted
+        # address becomes admin here, a manager included (SRC-008 ROLE-1 ADDENDUM; its hall rows are kept, unused).
+        # role is in the SET only when the read saw a promotion due, and the grant is re-checked inside the statement,
+        # so a removal that commits in between leaves the role as it was.
+        promote = {"role": _granted_role(row.email, users.c.role)} if row.granted_role != row.role else {}
+        role = (await conn.execute(update(users).where(users.c.id == row.id).values(last_signed_in_at=now, **promote)
+                                   .returning(users.c.role))).scalar_one()
+    return {"id": row.id, "email": row.email, "role": role, "password_version": row.password_version}
 
 
 # ---- password reset (P-ACC-07 / P-ACC-08, EP-ACC-05 / EP-ACC-06) ----------------------------------------------------

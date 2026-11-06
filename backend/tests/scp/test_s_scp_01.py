@@ -34,9 +34,10 @@ def _mounted(app) -> set[tuple[str, str]]:
     return mounted_routes(app)
 
 
-def test_the_contract_lists_58_endpoints():
-    assert CONTRACT["endpoint_count"] == 58
-    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 58
+def test_the_contract_lists_61_endpoints():
+    # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30), the count generate_api.py emits.
+    assert CONTRACT["endpoint_count"] == 61
+    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 61
 
 
 def test_mounted_minus_contract_is_empty(app):
@@ -71,3 +72,19 @@ def test_excluded_urls_are_404_in_the_envelope(app, log_capture, method, path):
     assert body["error"]["code"] == "NOT_FOUND"
     assert isinstance(body["error"]["request_id"], str) and body["error"]["request_id"]
     assert RID.match(body["error"]["request_id"])
+
+
+@pytest.mark.anyio
+async def test_the_import_probe_changes_no_movie_count_and_a_real_wrong_method_is_still_405(migrated_db):
+    """CR-002 B-7: the 405 handler answers 404 only when the matched template's path parameter fails its type."""
+    from ..pay.kit import api, clock_at, count, world7
+
+    world7(migrated_db)
+    before = count(migrated_db, "SELECT count(*) FROM movie")
+    assert before > 0
+    async with api(migrated_db, clock_at()) as c:
+        r = await c.post("/api/admin/movies/import")
+        assert (r.status_code, r.json()["error"]["code"]) == (404, "NOT_FOUND")
+        wrong_method = await c.post("/api/admin/movies/1")  # the path exists for GET and PATCH
+        assert (wrong_method.status_code, wrong_method.json()["error"]["code"]) == (405, "METHOD_NOT_ALLOWED")
+    assert count(migrated_db, "SELECT count(*) FROM movie") == before

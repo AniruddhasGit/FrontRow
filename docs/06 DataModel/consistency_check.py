@@ -410,7 +410,7 @@ def r_reserved_not_decided(model):
 # orphaned actions against a perfectly correct model.
 ACTION_PREFIXES = set("""
 manager user seat_category certification language genre format movie_genre
-manager_screen_assignment
+manager_screen_assignment admin_grant
 """.split())
 
 DOTTED = re.compile(
@@ -578,8 +578,8 @@ def r_seed_expectations(model):
     # Hall sizes and grid dimensions (OPEN-SCALE-02, ASSUMED).  Bare small numbers
     # collide with unrelated constraints (a {8} in a regex, BETWEEN 1 AND 60), so
     # they are checked only on the tables that describe a hall's geometry.
-    geometry = sorted(set(str(lay[k]) for lay in se.get("screens", {}).get("layouts", [])
-                          for k in ("seats", "rows", "cols")), key=int)
+    geometry = sorted(set([str(lay["seats"]) for lay in se.get("screens", {}).get("layouts", [])]
+                          + [str(len(lay["rows"])) for lay in se.get("screens", {}).get("layouts", [])]), key=int)
     for t in model["tables"]:
         blobs = [("CHECK " + ck.get("name", "?"), ck.get("expression", ""))
                  for ck in t.get("checks", [])]
@@ -813,7 +813,7 @@ def selftest():
           "reserved-not-decided")
     probe("harden a hall grid width into a seat CHECK",
           lambda m: first_table(m, "seat")["checks"].append(
-              {"name": "ck_seat__grid_col_max", "expression": "grid_col <= 20", "cite": "x"}),
+              {"name": "ck_seat__grid_col_max", "expression": "grid_col <= 13", "cite": "x"}),  # 13: a CR-003 row count
           "seed-expectations")
     probe("cite an ADR the ledger marks NOT_INCLUDED",
           lambda m: first_table(m, "booking")["columns"][0].__setitem__(

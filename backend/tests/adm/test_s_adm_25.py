@@ -6,8 +6,7 @@ Locally there is no bucket (FR-ADR-061: no local S3 stand-in, no MinIO). So:
     botocore with no network call, and its error mapping runs against botocore's own Stubber.
 NOT covered, because only the client's real bucket can answer them (Zone C, docs/30 Deployment): GetPublicAccessBlock,
 GetBucketPolicy, an unauthenticated GET of the object URL returning 403, GetBucketLifecycleConfiguration, and
-ListObjectsV2 / GetObject against S3 itself. GET /api/movies/{id}/poster (EP-BRW-03) is not mounted by any lane yet,
-so its 404 for a draft is asserted but is the unmounted-route 404 today.
+ListObjectsV2 / GetObject against S3 itself. GET /api/movies/{id}/poster (EP-BRW-03) is S-BRW-18's (tests/brw).
 """
 
 from __future__ import annotations
@@ -196,7 +195,9 @@ def test_the_admin_read_is_a_302_to_a_one_hour_presigned_url_even_for_a_draft(cl
     assert "X-Amz-Expires=3600" in location and f"posters/{film['id']}/{'b' * 32}" in location
     assert "frontrow-posters-test" in location and "X-Amz-Signature=" in location
     client.cookies.clear()
-    assert client.get(f"/api/movies/{film['id']}/poster").status_code == 404
+    # S-BRW-18: the public poster route applies no visibility gate, so a draft's poster redirects too (it 404'd only
+    # while the route was unmounted).
+    assert client.get(f"/api/movies/{film['id']}/poster", follow_redirects=False).status_code == 302
     sign_in(client)
     bare = new_film(client)
     assert client.get(f"/api/admin/movies/{bare['id']}/poster", follow_redirects=False).status_code == 404

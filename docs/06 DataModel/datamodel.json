@@ -28,7 +28,8 @@
     "genre": "P-ADM-23, one of four admin-maintained vocabularies.",
     "language": "P-ADM-23.",
     "certification": "P-ADM-23.",
-    "format": "P-ADM-23."
+    "format": "P-ADM-23.",
+    "admin_grant": "SRC-008 ROLE-1 and its ADDENDUM, S-ADM-30: the list of granted admin emails. The Bible names the behaviour, not the table."
   },
   "bible_reference_exceptions": {
     "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
@@ -78,7 +79,9 @@
     "genre.withdrawn",
     "genre.restored",
     "format.withdrawn",
-    "format.restored"
+    "format.restored",
+    "admin_grant.created",
+    "admin_grant.deleted"
   ],
   "roles": [
     {
@@ -93,6 +96,7 @@
       "cite": "S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11 · least-privilege matrix: checks/roles_local.sql section 3 (each table's privileges cited there; verify_invariants.sql A4 fails on any excess) · CREATED BY THE OPERATOR, NOT BY schema.sql: checks/roles_local.sql locally, the client on RDS (AWS_PREP_QUEUE row 20); schema.sql only GRANTs and fails loudly if the role is absent.",
       "grants": [
         "GRANT USAGE ON SCHEMA public TO frontrow_app",
+        "GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app",
         "GRANT SELECT, INSERT ON audit_log TO frontrow_app",
         "GRANT SELECT, INSERT ON booking TO frontrow_app",
         "GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
@@ -138,67 +142,389 @@
       "cite": "P-XCT-30 happy path step 1 · S-ADM-29 ('^DEMO CINEMA$') · SRC-003 C-2 (one cinema, PROVISIONAL) · SRC-003 OPEN-LOCALE-01 (zone, RULED)"
     },
     "screens": {
-      "status": "ASSUMED - hall sizes are OPEN-SCALE-02 'pick random'; the grids are P-XCT-30's derivation of them. Never a constraint.",
-      "cite": "SRC-003 OPEN-SCALE-02 · SRC-003 OPEN-SCALE-01 (six halls, RULED) · P-XCT-30 'The six hall layouts' · S-XCT-44",
+      "status": "ASSUMED - hall shapes are OPEN-SCALE-02 'pick random' and category placement OPEN-SEAT-01 'you pick'; the approved revision 5 plans, CR-003. Never a constraint.",
+      "cite": "SRC-003 OPEN-SCALE-02 · SRC-003 OPEN-SCALE-01 (six halls, RULED) · P-XCT-30 'The six hall layouts' · S-XCT-44 · CR-003 (revision 5 layouts, 2026-11-06)",
       "name_pattern": "^SCREEN [1-6]$",
       "name_pattern_cite": "S-ADM-29",
       "layouts": [
         {
           "number": 1,
           "seats": 90,
-          "rows": 9,
-          "cols": 10
+          "rows": [
+            [
+              "A",
+              "Standard",
+              11
+            ],
+            [
+              "B",
+              "Standard",
+              12
+            ],
+            [
+              "C",
+              "Standard",
+              12
+            ],
+            [
+              "D",
+              "Standard",
+              12
+            ],
+            [
+              "E",
+              "Premium",
+              12
+            ],
+            [
+              "F",
+              "Premium",
+              12
+            ],
+            [
+              "G",
+              "Premium",
+              13
+            ],
+            [
+              "H",
+              "Recliner",
+              6
+            ]
+          ]
         },
         {
           "number": 2,
           "seats": 120,
-          "rows": 10,
-          "cols": 12
+          "rows": [
+            [
+              "A",
+              "Standard",
+              10
+            ],
+            [
+              "B",
+              "Standard",
+              10
+            ],
+            [
+              "C",
+              "Standard",
+              10
+            ],
+            [
+              "D",
+              "Standard",
+              12
+            ],
+            [
+              "E",
+              "Premium",
+              12
+            ],
+            [
+              "F",
+              "Premium",
+              12
+            ],
+            [
+              "G",
+              "Premium",
+              12
+            ],
+            [
+              "H",
+              "Premium",
+              12
+            ],
+            [
+              "J",
+              "Premium",
+              12
+            ],
+            [
+              "K",
+              "Premium",
+              12
+            ],
+            [
+              "L",
+              "Recliner",
+              6
+            ]
+          ]
         },
         {
           "number": 3,
           "seats": 150,
-          "rows": 10,
-          "cols": 15
+          "rows": [
+            [
+              "A",
+              "Standard",
+              14
+            ],
+            [
+              "B",
+              "Standard",
+              16
+            ],
+            [
+              "C",
+              "Standard",
+              16
+            ],
+            [
+              "D",
+              "Standard",
+              16
+            ],
+            [
+              "E",
+              "Premium",
+              16
+            ],
+            [
+              "F",
+              "Premium",
+              16
+            ],
+            [
+              "G",
+              "Premium",
+              16
+            ],
+            [
+              "H",
+              "Premium",
+              16
+            ],
+            [
+              "J",
+              "Premium",
+              16
+            ],
+            [
+              "K",
+              "Recliner",
+              8
+            ]
+          ]
         },
         {
           "number": 4,
           "seats": 180,
-          "rows": 12,
-          "cols": 15
+          "rows": [
+            [
+              "A",
+              "Standard",
+              12
+            ],
+            [
+              "B",
+              "Standard",
+              14
+            ],
+            [
+              "C",
+              "Standard",
+              14
+            ],
+            [
+              "D",
+              "Standard",
+              16
+            ],
+            [
+              "E",
+              "Standard",
+              16
+            ],
+            [
+              "F",
+              "Standard",
+              18
+            ],
+            [
+              "G",
+              "Premium",
+              18
+            ],
+            [
+              "H",
+              "Premium",
+              20
+            ],
+            [
+              "J",
+              "Premium",
+              20
+            ],
+            [
+              "K",
+              "Premium",
+              21
+            ],
+            [
+              "L",
+              "Recliner",
+              11
+            ]
+          ]
         },
         {
           "number": 5,
           "seats": 200,
-          "rows": 10,
-          "cols": 20
+          "rows": [
+            [
+              "A",
+              "Standard",
+              14
+            ],
+            [
+              "B",
+              "Standard",
+              14
+            ],
+            [
+              "C",
+              "Standard",
+              14
+            ],
+            [
+              "D",
+              "Standard",
+              14
+            ],
+            [
+              "E",
+              "Recliner",
+              11
+            ],
+            [
+              "F",
+              "Premium",
+              16
+            ],
+            [
+              "G",
+              "Premium",
+              16
+            ],
+            [
+              "H",
+              "Premium",
+              16
+            ],
+            [
+              "J",
+              "Premium",
+              16
+            ],
+            [
+              "K",
+              "Premium",
+              16
+            ],
+            [
+              "L",
+              "Premium",
+              16
+            ],
+            [
+              "M",
+              "Premium",
+              18
+            ],
+            [
+              "N",
+              "Premium",
+              19
+            ]
+          ]
         },
         {
           "number": 6,
           "seats": 220,
-          "rows": 11,
-          "cols": 20
+          "rows": [
+            [
+              "A",
+              "Standard",
+              16
+            ],
+            [
+              "B",
+              "Standard",
+              16
+            ],
+            [
+              "C",
+              "Standard",
+              16
+            ],
+            [
+              "D",
+              "Standard",
+              18
+            ],
+            [
+              "E",
+              "Standard",
+              18
+            ],
+            [
+              "F",
+              "Premium",
+              18
+            ],
+            [
+              "G",
+              "Premium",
+              18
+            ],
+            [
+              "H",
+              "Premium",
+              18
+            ],
+            [
+              "J",
+              "Recliner",
+              10
+            ],
+            [
+              "K",
+              "Premium",
+              18
+            ],
+            [
+              "L",
+              "Premium",
+              18
+            ],
+            [
+              "M",
+              "Premium",
+              18
+            ],
+            [
+              "N",
+              "Premium",
+              18
+            ]
+          ]
         }
       ]
     },
     "row_letters": {
-      "letters": "ABCDEFGHJKLM",
+      "letters": "ABCDEFGHJKLMN",
       "status": "[JUDGMENT CALL] of P-XCT-30, seed layout only",
       "cite": "P-XCT-30 'The row letter skips I' · S-XCT-44 · P-XCT-30 exception 8",
       "reserved_rows": "OPEN-SEATALPHA-01 and OPEN-SEATLABEL-01 were reserved and unruled when P-XCT-30 was written; SRC-004 R-4 (received 2026-10-18) now rules them: row_label stored upper(trim(input)), and the letter I PERMITTED - 'the seed's habit of skipping it is demonstration data and binds nothing'. So the I-skip binds what the SEED writes and is NOT a schema rule; the seed's upper-case letters already satisfy the ruled case rule. Whether the schema carries SRC-004's CHECK is the schema lane's, not this block's. Running the seed still freezes all six halls (P-ADM-14, P-XCT-30 exception 11)."
     },
     "bands": {
-      "standard_fraction": [
-        1,
-        2
-      ],
-      "premium_fraction": [
-        3,
-        10
-      ],
-      "rule": "standard_rows = ceil(rows * 0.5); premium_rows = ceil(rows * 0.3); recliner_rows = rows - standard_rows - premium_rows. Standard nearest the screen.",
-      "status": "[JUDGMENT CALL] of P-XCT-30",
-      "cite": "P-XCT-30 'Category bands are computed from the row count, never typed' · S-XCT-44"
+      "rule": "Each row carries its category as drawn in the approved plans (CR-003), replacing P-XCT-30's computed bands. Standard is nearest the screen and every hall has at least one Recliner row (seed check_layout).",
+      "status": "ASSUMED - OPEN-SEAT-01, CR-003 supersedes the [JUDGMENT CALL] ceil bands",
+      "cite": "CR-003 · P-XCT-30 (superseded rule) · S-XCT-44"
     },
     "seat_categories": {
       "status": "ASSUMED under SRC-003 OPEN-SEAT-01 'you pick' - names and uplifts alike. Never a constraint.",
@@ -219,9 +545,9 @@
       ]
     },
     "base_price_paise": {
-      "value": 24999,
+      "value": 1299,
       "status": "ASSUMED - P-XCT-30 seed value. Integer minor unit; the ratio is CURRENCY_MINOR_UNIT_RATIO configuration and is not used here.",
-      "cite": "P-XCT-30 'On the seeded base price of 24999 paise' · S-XCT-44 · E4 P-TKT worked example ('P-XCT-30 seeds a base price of 24999 paise')"
+      "cite": "P-XCT-30 'On the seeded base price of 24999 paise' · S-XCT-44 · E4 P-TKT worked example ('P-XCT-30 seeds a base price of 24999 paise') · SRC-006 CUR-1 ($12.99 = 1299 cents)"
     },
     "price_rule": {
       "rule": "price_paise = (base_price_paise * (10000 + uplift_basis_points) + 5000) // 10000",
@@ -314,7 +640,7 @@
     },
     "published_figures": {
       "$comment": "Figures the PRD and the Bible PUBLISH. generate.py derives each one independently from the rules above and refuses to emit on any disagreement - S1.5 transcribes these into tests, so a wrong published figure is a wrong test.",
-      "cite": "P-XCT-30 · S-XCT-44 · S-XCT-45",
+      "cite": "P-XCT-30 · S-XCT-44 · S-XCT-45 · CR-003 (screen1_bands = Studio rows A-D / E-G / H)",
       "showtimes": 720,
       "showtimes_per_screen": 120,
       "showtimes_per_film": 90,
@@ -331,14 +657,14 @@
       "lookup_rows": 11,
       "accounts": 63,
       "screen1_bands": [
-        5,
+        4,
         3,
         1
       ],
       "price_paise_by_category": {
-        "Standard": 24999,
-        "Premium": 28124,
-        "Recliner": 33331
+        "Standard": 1299,
+        "Premium": 1461,
+        "Recliner": 1732
       },
       "worked_example_k399_screen": 5,
       "worked_example_k399_booked_seats": 80,
@@ -446,6 +772,10 @@
         "rows": null,
         "cite": "none - no document states a figure",
         "note": "Nothing in P-XCT-30 or P-XCT-32 creates a reset token, but no sentence says zero; null rather than an inferred 0. OPEN-RESETTOKEN-01 is ruled by SRC-004 R-3 (the token rides in the queue message only, never in the database), which adds no seeded row here."
+      },
+      "admin_grant": {
+        "rows": 0,
+        "cite": "S-ADM-30 ('after a fresh seed the list holds 0 rows') · SRC-008 ROLE-1 ADDENDUM (the seeded admin is not on the list)"
       }
     },
     "invariants": [
@@ -595,6 +925,83 @@
     ]
   },
   "tables": [
+    {
+      "name": "admin_grant",
+      "purpose": "One row per email address an existing admin has granted admin access to. A sign-up or sign-in with that address (trimmed, case-insensitive) makes the account admin; deleting the row makes an admin account with that address a customer again.",
+      "cite": "SRC-008 ROLE-1 and its ADDENDUM · S-ADM-30 · P-ADM-18 · P-ADM-19",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table) · S-ADM-30 (removing one deletes that grant row)",
+          "note": "The audit row of a removal records the id the deleted row held, as manager.screen_unassigned does.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "SRC-008 ROLE-1 ('typing their email into a section in setting') · S-ADM-30 (stored and compared trimmed and case-insensitively)",
+          "note": "Stored trimmed and lower-cased by the application, so the unique index on lower(email) and the comparison with users.email agree.",
+          "reserved_row": null
+        },
+        {
+          "name": "granted_by",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "SRC-008 ROLE-1 ('only an existing admin can make someone an admin') · S-ADM-02 (who made the change)",
+          "note": "The admin who typed the address. The audit row carries the same id as actor_user_id.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 · no table in `public` other than `alembic_version` may lack a `created_at` · FR-ADR-018",
+          "note": "Row metadata; the list orders by email, not by this.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "lower(email)"
+          ],
+          "cite": "SRC-008 ROLE-1 and its ADDENDUM · S-ADM-30 (a second add of the same address in another case leaves exactly one grant row)",
+          "why": "One grant per address, case-insensitively. The guard, not the read before it: a simultaneous twin add is a unique violation translated to 422.",
+          "name": "uq_admin_grant__email_ci",
+          "expression_index": true
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "granted_by"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "S-XCT-09 (every FK in the schema is confdeltype 'r') · FR-ADR-012",
+          "on_update": "RESTRICT",
+          "name": "fk_admin_grant__granted_by"
+        }
+      ],
+      "checks": [],
+      "indexes": []
+    },
     {
       "name": "audit_log",
       "purpose": "One append-only row per privileged write, inserted in the same database transaction as the change itself, recording who, when, which action, which row, and the changed fields before and after.",

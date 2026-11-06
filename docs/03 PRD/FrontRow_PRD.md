@@ -1052,7 +1052,7 @@ exclusion in `S2.4` or an `OPEN` row, and neither may be quietly filled in.
 disagree** — a check added after this table silently went stale at 53 while claiming it could
 not.*
 
-**58 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
+**61 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
 once, under the **narrowest** router that admits it.
 
 **Public — no session required** — 12
@@ -1095,10 +1095,13 @@ once, under the **narrowest** router that admits it.
 | `EP-RPT-03` | `GET` | `/api/reports/scope` | manager / admin |
 | `EP-RPT-02` | `GET` | `/api/reports/showtimes` | manager / admin |
 
-**Admin only — every privileged write, plus the change log** — 30
+**Admin only — every privileged write, plus the change log** — 33
 
 | Id | Method | Path | Who |
 |---|---|---|---|
+| `EP-ADM-30` | `GET` | `/api/admin/admin-grants` | admin |
+| `EP-ADM-31` | `POST` | `/api/admin/admin-grants` | admin |
+| `EP-ADM-32` | `DELETE` | `/api/admin/admin-grants/{grant_id}` | admin |
 | `EP-ADM-28` | `GET` | `/api/admin/cinemas` | admin |
 | `EP-ADM-29` | `PATCH` | `/api/admin/cinemas/{cinema_id}` | admin |
 | `EP-ADM-25` | `GET` | `/api/admin/lookups/{kind}` | admin |
@@ -6679,7 +6682,7 @@ per seat  = (24999 * (10000 + 1250) + 5000) // 10000
           =  28,124 paise                      exact quotient 28,123.875, so the +5000 rounds it up
 total     = 28124 + 28124 + 28124 = 84,372 paise    the sum of already-rounded per-seat prices,
                                                      never a total that is itself rounded
-rendered  = ₹843.72
+rendered  = $843.72                                  US dollars (SRC-006 CUR-1)
 ```
 
 The page renders the stored total; it never recomputes it (`FR-ADR-039`).
@@ -7132,8 +7135,8 @@ the account's email address (`FR-ADR-014`); it is never taken from a request.
    (`E5 P-ACC-10`) — `F7, F8, F9`, never the insertion order `F9, F7, F8`, which is what a seat added
    to a hall already in service produces (`E6 P-ADM-14`). The receipt and the door are the two places
    the order is read aloud.
-4. Render the total from the stored integer paise at the last possible moment, with Indian digit
-   grouping and the `₹` symbol (`FR-ADR-036`). **No tax line, no fee line, no discount line, and no
+4. Render the total from the stored integer paise at the last possible moment, with en-US digit
+   grouping and the `$` symbol (`FR-ADR-036`; US dollars by `SRC-006 CUR-1`). **No tax line, no fee line, no discount line, and no
    space left for one** (`FR-ADR-040`).
 5. Render the reference in the `FR-XXXX-XXXX` presentation form.
 6. Send both a plain-text part and a minimal HTML part with the same content. `SCR-TKT-02` holds the
@@ -7159,7 +7162,7 @@ in.
 **Worked example.** Booking `FR-ACDE-FHJD`, three Premium seats `F7`, `F8`, `F9` in `Hall 3`, showtime
 stored as `2026-08-21T13:45:00Z`, total `84372` paise — the seeded figures worked through in
 `P-TKT-03`. The receipt renders the time as
-**21 Aug 2026, 7:15 pm (Asia/Kolkata)** and the amount as **₹843.72**. That is `S7.19`'s
+**21 Aug 2026, 7:15 pm (Asia/Kolkata)** and the amount as **$843.72** (`SRC-006 CUR-1`). That is `S7.19`'s
 date-with-time form plus the zone suffix its rule 2 gives the emailed receipt and nothing else, on the
 grounds that a receipt is the one surface read outside the site and months later. The exact rendered
 strings are in `SCR-TKT-02`.
@@ -8409,7 +8412,7 @@ depends on. **`used_at` is a third and separate thing**: it records the customer
    (`SRC-004 JC-R6-01a`). The response does not wait for the SES send.
 7. The server returns `202` with the same body as step 2.
 
-**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>`. `PUBLIC_BASE_URL` is a required
+**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>`. The token rides in the URL fragment, which the browser never sends to the server, so it is absent from every access log (`CR-002 B-1`, approved by `SRC-008 NIGHT-1`). `PUBLIC_BASE_URL` is a required
 variable with no default (`FR-ADR-053`). The email states that the link works once and expires in 30
 minutes, and it names the account address it was requested for.
 
@@ -11858,6 +11861,8 @@ free-text action column becomes unqueryable within a month.
 | `manager.created` | `user` | `P-ADM-17` |
 | `manager.screen_assigned` | `manager_screen_assignment` | `P-ADM-17` |
 | `manager.screen_unassigned` | `manager_screen_assignment` | `P-ADM-17` |
+| `admin_grant.created` | `admin_grant` | `EP-ADM-31` (`SRC-008 ROLE-1`, `S-ADM-30`) |
+| `admin_grant.deleted` | `admin_grant` | `EP-ADM-32` (`SRC-008 ROLE-1` ADDENDUM, `S-ADM-30`) |
 | `language.created` | `language` | `P-ADM-23` |
 | `certification.created` | `certification` | `P-ADM-23` |
 | `genre.created` | `genre` | `P-ADM-23` |
@@ -17764,7 +17769,7 @@ Film      DEMO MOVIE 01
 Hall      Hall 3
 Showtime  21 Aug 2026, 7:15 pm (Asia/Kolkata)
 Seats     F7, F8, F9
-Paid      Rs 843.72
+Paid      $843.72
 
 Show this reference at the entrance. A person will check it.
 
@@ -17787,8 +17792,8 @@ full is not one of the five forms, and a 24-hour clock never reaches a customer.
 
 The HTML part carries the same lines in the same order. **The last line is a statement of the ruled
 position** (`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`, `FR-ADR-013`) and not a policy invented here.
-The amount is written `Rs 843.72` in the plain-text part because the `₹` symbol renders unreliably in
-plain-text mail clients; the HTML part uses `₹843.72`. There is no tax line, no fee line and no
+The amount is written `$843.72` in both parts (`SRC-006 CUR-1`, US dollars; amended 2026-11-07 under
+`SRC-008 NIGHT-1`). The plain-text part once used `Rs` only because `₹` is not ASCII; `$` is. There is no tax line, no fee line and no
 discount line, and no space is left for one (`FR-ADR-040`).
 
 **Accessibility.** The HTML part is a single-column document with real heading and list elements, no
@@ -17974,7 +17979,7 @@ a screen reader must be told the form was replaced rather than discover it by ex
 ---
 
 #### `SCR-ACC-03` · Choose a new password
-**Route.** `/account/reset/confirm?token=…` · **Who reaches it.** anyone following the emailed link
+**Route.** `/account/reset/confirm#token=…` (`CR-002 B-1`) · **Who reaches it.** anyone following the emailed link
 · **Component basis.** `COMPONENTS.md §11`
 
 **What the user arrives with / leaves with.** They arrive with a token in the query string. They leave
@@ -18206,7 +18211,7 @@ copy defect; it is a customer who cannot tell a genuine reset from a fraudulent 
 | Subject | none | names the product and the action, and **carries no token, no reference and no address** — a subject line is the part most likely to be shown on a lock screen | — |
 | Plain-text part | none | **the authoritative part.** Every sentence below appears in it | — |
 | HTML part | none | the same sentences in the same order, minimal markup | **no remote image, no web font, no tracking pixel, no external resource of any kind** |
-| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>` (`P-ACC-07`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
+| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>` (`P-ACC-07`, `CR-002 B-1`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
 | The expiry figure | none | **interpolated from `PASSWORD_RESET_TTL_SECONDS / 60`** as a whole number of minutes, into the one shared sentence — see below | a literal is a defect (`P-ACC-07`) |
 
 **The expiry is never typed, here or anywhere.** The sentence *"The link works once and expires in 30
@@ -18239,7 +18244,7 @@ Plain-text body, verbatim, with the bracketed values substituted:
 A password reset was requested for customer@example.invalid.
 
 Set a new password here:
-https://example.invalid/account/reset/confirm?token=<the token>
+https://example.invalid/account/reset/confirm#token=<the token>
 
 The link works once and expires in 30 minutes.
 
@@ -20305,14 +20310,14 @@ detail — which is what stops the list growing into a hundred one-off strings.
 | `HOLD_NOT_OWNED` | 403 | The hold token presented does not match the lock on those seats. | `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-025 |
 | `SEAT_LIMIT_EXCEEDED` | 422 | The request would take the customer past ten seats for this showtime. | `EP-HLD-01` | SRC-003 OPEN-BOOK-01 · FR-ADR-026 |
 | `SALES_CLOSED` | 409 | The showtime is past its sales cut-off. | `EP-HLD-01` | SRC-003 OPEN-BOOK-03 · FR-ADR-042 |
-| `AUTH_REQUIRED` | 401 | The caller is not signed in and the action requires an account. | `EP-ACC-04` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-003 OPEN-BOOK-02 · FR-ADR-014 |
+| `AUTH_REQUIRED` | 401 | The caller is not signed in and the action requires an account. | `EP-ACC-04` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-003 OPEN-BOOK-02 · FR-ADR-014 |
 | `IDEMPOTENCY_IN_FLIGHT` | 409 | The same Idempotency-Key is still being processed by an earlier request. | `EP-PAY-01` | SRC-002 §8.3.1 · FR-ADR-020 |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | The same Idempotency-Key arrived with a different request body. | `EP-PAY-01` | SRC-002 §8.3.1 · FR-ADR-020 |
 | `PAYMENT_FAILED` | 402 | The simulated payment provider returned the failed state. | `EP-PAY-01` | SRC-003 OPEN-PAY-01 · FR-ADR-041 |
 | `RATE_LIMITED` | 429 | The token bucket for this user or this address is empty. Carries Retry-After. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-08` `EP-BRW-06` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §8.4.1 · SRC-002 §8.4.2 · FR-ADR-058 |
-| `DEPENDENCY_UNAVAILABLE` | 503 | Redis is unreachable on the seat path. The system fails loudly and never falls back to the database for locks. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.9 · FR-ADR-028 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | Redis is unreachable on the seat path. The system fails loudly and never falls back to the database for locks. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.9 · FR-ADR-028 |
 | `VERSION_CONFLICT` | 409 | An admin edit lost optimistic concurrency against a concurrent change. | `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-29` | FR-ADR-035 |
-| `INTERNAL_ERROR` | 500 | Anything unhandled. The message is generic and the detail is in the logs against the request id. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.6 · FR-ADR-052 |
+| `INTERNAL_ERROR` | 500 | Anything unhandled. The message is generic and the detail is in the logs against the request id. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.6 · FR-ADR-052 |
 
 ### Extensions adjudicated in the `GOAL_05` merge pass
 
@@ -20323,11 +20328,11 @@ removed rather than left as furniture.
 
 | Code | HTTP | When it is raised | Raised by | Source |
 |---|---|---|---|---|
-| `REQUEST_INVALID` | 400 | A required header is missing or malformed, the body does not parse, or it carries a property the endpoint does not define. Unknown fields are rejected, never ignored. | `EP-ADM-02` `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-19` `EP-ADM-20` `EP-ADM-23` `EP-ADM-24` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-052 (extension) · FR-ADR-020 (which requires a missing Idempotency-Key to be 400) |
-| `VALIDATION_FAILED` | 422 | A well-formed request field failed server-side validation. `details` names the field and the bound it broke. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-HLD-03` `EP-RPT-01` `EP-RPT-02` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-002 §7.1 |
+| `REQUEST_INVALID` | 400 | A required header is missing or malformed, the body does not parse, or it carries a property the endpoint does not define. Unknown fields are rejected, never ignored. | `EP-ADM-02` `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-19` `EP-ADM-20` `EP-ADM-23` `EP-ADM-24` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-052 (extension) · FR-ADR-020 (which requires a missing Idempotency-Key to be 400) |
+| `VALIDATION_FAILED` | 422 | A well-formed request field failed server-side validation. `details` names the field and the bound it broke. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-HLD-03` `EP-RPT-01` `EP-RPT-02` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-002 §7.1 |
 | `CREDENTIALS_INVALID` | 401 | The email address and password did not match. The identical response is returned whether or not the address is registered, so the endpoint does not disclose which accounts exist. | `EP-ACC-02` | FR-ADR-052 (extension) · FR-ADR-050 |
-| `FORBIDDEN` | 403 | The caller is signed in and their role does not permit this action. Raised by the router dependency, never by a handler. | `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-009 |
-| `NOT_FOUND` | 404 | The addressed resource does not exist, or exists and is not visible to this caller. The two are deliberately indistinguishable, so no endpoint becomes an enumeration oracle. | `EP-ACC-08` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-RPT-01` `EP-RPT-02` `EP-TKT-01` `EP-TKT-02` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-015 |
+| `FORBIDDEN` | 403 | The caller is signed in and their role does not permit this action. Raised by the router dependency, never by a handler. | `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-009 |
+| `NOT_FOUND` | 404 | The addressed resource does not exist, or exists and is not visible to this caller. The two are deliberately indistinguishable, so no endpoint becomes an enumeration oracle. | `EP-ACC-08` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-32` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-RPT-01` `EP-RPT-02` `EP-TKT-01` `EP-TKT-02` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-015 |
 | `EMAIL_ALREADY_REGISTERED` | 409 | Registration was attempted with an address that already has an account. Nothing is ever deleted, so an address stays taken permanently. | `EP-ACC-01` | FR-ADR-052 (extension) · FR-ADR-050 · FR-ADR-012 |
 | `RESET_TOKEN_INVALID` | 400 | A password-reset token is unknown, already used, or past its lifetime. | `EP-ACC-06` | FR-ADR-052 (extension) · FR-ADR-050 |
 | `HOLD_LOCKED` | 409 | A release was attempted against a hold whose booking confirmation is already in flight. Without it the ordering of release against re-validation is non-deterministic. | — | FR-ADR-052 (extension) · FR-ADR-029 · raised by E2, which recorded its own doubt — see S8.5 |
@@ -20622,7 +20627,8 @@ client — which is what keeps one cached entry serving every viewer.
         "categories": "array of {id, name, price_paise} — already rounded by FR-ADR-038's rule. Ordered by the lowest gr at which the category appears in THIS SHOWTIME'S SEAT SET, ascending, with id ascending as the tiebreak, so the legend reads in the order the bands are drawn and the client never sorts (P-BRW-16). A category with no seat in this showtime's seat set is not returned. Scoped to the seat set and never to the screen's current seats, exactly as seats, rows and cols already are (P-ADM-14): the two sets genuinely differ once a seat is added to or retired from the hall, and a category present on the screen but absent from this showtime could otherwise order a legend row for a band the map does not draw.",
         "seats": "array of {id, row, num, gr, gc, cat, price_paise, state, is_active} — this showtime's seat set as materialised at showtime creation (P-ADM-14), never the screen's current seats — ordered by gr ASC then gc ASC; state is one of available|held|sold; price_paise is this seat's own already-rounded integer price, equal to its category's, so the client sums integers and performs no rounding of its own (P-BRW-10, FR-ADR-038, FR-ADR-045); is_active is a required boolean, false for a seat retired after this showtime was created, which is returned and drawn but is never selectable and still carries its true state — is_active is not a fifth state and the state enum stays three values wide (P-BRW-08 exception 3, P-BRW-09, P-ADM-15). Every seat sharing a gr carries the same row string, which is the label the gutter renders (P-BRW-16).",
         "generated_at": "string, ISO-8601 with +05:30 offset",
-        "poll_interval_seconds": "integer, the value of SEATMAP_POLL_INTERVAL_SECONDS, default 3. Server configuration validated at boot (S7.9 cross-check 10) and published here so the client holds no constant of its own and one value governs (P-BRW-11). The server publishes the interval and does not police it; a client polling faster meets the rate limiter and nothing else."
+        "poll_interval_seconds": "integer, the value of SEATMAP_POLL_INTERVAL_SECONDS, default 3. Server configuration validated at boot (S7.9 cross-check 10) and published here so the client holds no constant of its own and one value governs (P-BRW-11). The server publishes the interval and does not police it; a client polling faster meets the rate limiter and nothing else.",
+        "max_seats_per_booking": "integer, the value of MAX_SEATS_PER_BOOKING, default 10. Server configuration published here, exactly as poll_interval_seconds is, so the seat map's cap note (`Up to 10 seats.`) and its local eleventh-tap refusal render the server's figure and the client ships no literal of its own (S-SEA-09, CR-002 C-1, approved SRC-008 NIGHT-1). The hold endpoint stays the enforcement point (P-HLD-04)."
       }
     },
     "404": {"description": "No showtime with that id"},
@@ -22169,6 +22175,87 @@ Replacing a manager's assigned halls. The complete set is sent; the server compu
   "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An assignment row is current state, so removing one is a permitted deletion under FR-ADR-011; the audit rows carry its history.",
   "satisfies": ["P-ADM-17", "P-ADM-19", "P-ADM-20"],
   "brd": ["R-ADM-05", "R-ADM-06", "R-ADM-07"]
+}
+```
+
+#### Admin access by email (`SRC-008 ROLE-1` and its ADDENDUM, `S-ADM-30`)
+
+Added after the client ruled that only an existing admin makes another admin, by typing the email address into an
+admin-only Settings section. **No P-row publishes these endpoints, their paths or their refusal sentences**; they are
+the build session's `[JUDGMENT CALL]` names, raised by `S-ADM-30`. A granted email (trimmed, compared
+case-insensitively) makes the account `admin` when it registers (`EP-ACC-01`) or signs in (`EP-ACC-02`), a manager
+account included (its hall assignments are kept, unused). Removing the email makes an admin account with that address
+a `customer` at once, in the same transaction as the removal and its `admin_grant.deleted` audit row. The seeded admin
+is never on the list, an address that already belongs to an admin is refused, and an admin cannot remove their own.
+A `role` in any request body is still ignored.
+
+```endpoint
+{
+  "id": "EP-ADM-30",
+  "method": "GET",
+  "path": "/api/admin/admin-grants",
+  "summary": "List the email addresses granted admin access",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {},
+  "responses": {
+    "200": {"description": "Every grant, ORDER BY email ASC, id ASC", "body": {"items": "array of {id, email, granted_by, created_at}"}},
+    "403": {"description": "Authenticated but not an admin"}
+  },
+  "errors": ["AUTH_REQUIRED", "FORBIDDEN", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code.",
+  "satisfies": ["P-ADM-18"],
+  "brd": ["R-ADM-05"]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ADM-31",
+  "method": "POST",
+  "path": "/api/admin/admin-grants",
+  "summary": "Grant admin access to an email address",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {"body": {"email": "string, 3..254 after trimming, a valid address (P-ACC-01's rules), stored lower-case, unique case-insensitively, required"}},
+  "responses": {
+    "400": {"description": "The body does not parse, or it carries a property this endpoint does not define"},
+    "201": {"description": "The new grant; one admin_grant.created audit row in the same transaction", "body": {"id": "integer", "email": "string", "granted_by": "integer", "created_at": "string"}},
+    "403": {"description": "Authenticated but not an admin"},
+    "422": {"description": "The email is not a valid address, already has admin access, or belongs to an account that is already an admin (the seeded admin)"}
+  },
+  "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "FORBIDDEN", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "A repeat is refused with 422 and writes nothing: the unique index on lower(email) is the guard.",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. An existing account is not changed here; it becomes admin at its next sign-in.",
+  "satisfies": ["P-ADM-18", "P-ADM-19"],
+  "brd": ["R-ADM-05", "R-ADM-06"]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ADM-32",
+  "method": "DELETE",
+  "path": "/api/admin/admin-grants/{grant_id}",
+  "summary": "Remove an email's admin access, making its admin account a customer",
+  "auth": "role",
+  "roles": ["admin"],
+  "request": {"path_params": {"grant_id": "integer, positive"}},
+  "responses": {
+    "204": {"description": "The grant row is deleted, an admin account with that email is set to customer, and one admin_grant.deleted audit row is written, all in one transaction"},
+    "403": {"description": "Authenticated but not an admin"},
+    "404": {"description": "No grant with that id"},
+    "422": {"description": "The grant is the caller's own email"}
+  },
+  "errors": ["AUTH_REQUIRED", "FORBIDDEN", "NOT_FOUND", "VALIDATION_FAILED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "idempotency": "A repeat answers 404 and writes nothing.",
+  "rate_limit": "none - FR-ADR-058 lists no admin bucket",
+  "authorisation_rule": "The /api/admin router dependency has already resolved the session and required role admin; this handler contains no authorisation code. The role is read from the user row on every request, so the demoted account's next admin request is 403.",
+  "satisfies": ["P-ADM-18", "P-ADM-19"],
+  "brd": ["R-ADM-05", "R-ADM-06"]
 }
 ```
 

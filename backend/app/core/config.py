@@ -26,6 +26,8 @@
 # would be evaluated at import, before the class exists.
 from __future__ import annotations
 
+# The boot WARNINGs of venue_zone_check below: without it a mismatched venue zone is silent.
+import logging
 # Regular expressions, for SECRET_NAME below: without it the boot log cannot tell which values to hide.
 import re
 # NamedTuple gives each cross-field check a name the boot error can print; Callable types its rule.
@@ -487,3 +489,46 @@ def load_settings() -> Settings:
 def redacted(settings: Settings) -> dict[str, object]:
     # By NAME, so a new secret-named variable is redacted without anyone remembering to.
     return {k: REDACTED if SECRET_NAME.search(k) else v for k, v in settings.model_dump().items()}
+
+
+# P-ADM-26 / S-ADM-04: one read of the cinema rows at boot, and a WARNING when the venue is unseeded or a row's zone
+# differs from CINEMA_TIMEZONE (the row wins on every request; the variable only seeds). It reads only and never stops
+# boot: an unreachable database is the readiness probe's to report. Without it a wrong zone shows wrong local times silently.
+async def venue_zone_check(settings: Settings) -> None:
+    # Imported here so loading the settings never imports the database driver.
+    from sqlalchemy import text
+
+    # The same engine factory the API uses, so the check reads what requests will read.
+    from app.db import make_engine
+
+    # The lifecycle logger, where every other boot line goes.
+    log = logging.getLogger("app.lifecycle")
+    # A short-lived engine of its own, disposed below, so no pool outlives the check.
+    engine = make_engine(settings)
+    # A failed read is logged and skipped: boot must not depend on this check.
+    try:
+        # One connection, one statement.
+        async with engine.connect() as conn:
+            # Every venue row and its stored zone.
+            rows = (await conn.execute(text("SELECT id, timezone FROM cinema ORDER BY id"))).all()
+    # Any failure: the readiness probe reports the database; this only notes it was not checked.
+    except Exception:  # noqa: BLE001
+        # Without this line an unchecked zone would look like a checked one.
+        log.warning("venue time zone not checked at boot: the cinema table could not be read", exc_info=True)
+        # Nothing to compare.
+        return
+    # Always release the engine.
+    finally:
+        # Without it a connection stays open until the process exits.
+        await engine.dispose()
+    # No venue row: say so, or the first visitor finds out instead.
+    if not rows:
+        # S-ADM-04's unseeded warning.
+        log.warning("the venue has not been seeded: no cinema row exists, so no local time can be shown")
+    # Each venue row against the variable.
+    for cinema_id, zone in rows:
+        # A mismatch is the case the operator must hear about.
+        if zone != settings.CINEMA_TIMEZONE:
+            # S-ADM-04's mismatch warning, with both zones named.
+            log.warning("the cinema row's time zone differs from CINEMA_TIMEZONE; the row's zone is used",
+                        extra={"cinema_id": cinema_id, "row_timezone": zone, "cinema_timezone_variable": settings.CINEMA_TIMEZONE})

@@ -40,13 +40,19 @@ test("the fact list is exactly FILM, HALL, SHOWTIME, SEATS, PAID, and PAID is th
   assert.equal(spoken("FR-ACDE-FHJ2"), "F R, A C D E, F H J 2");
 });
 
-test("the word is named exactly once in frontend/src: the policy line", () => {
+// S-PAY-11 as amended (CR-002 A-11 / B-2): the policy line once, and otherwise only the PRD's published admin withdrawal
+// confirmations ("...nothing is refunded."), each found word for word in the PRD's E6 section.
+test("the word appears only as the policy line and the published withdrawal confirmations", () => {
   const word = new RegExp("re" + "fund", "i");
   const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
   const lines = walk(SRC).filter((f) => /\.(ts|tsx)$/.test(f))
     .flatMap((f) => readFileSync(f, "utf8").split("\n").filter((l) => word.test(l)).map((l) => l.trim()));
-  assert.equal(lines.length, 1);
-  assert.ok(lines[0].includes(POLICY));
+  assert.equal(lines.filter((l) => l.includes(POLICY)).length, 1);
+  const e6 = readFileSync(join(SRC, "..", "..", "docs", "03 PRD", "sections", "E6_admin.md"), "utf8");
+  for (const l of lines.filter((x) => !x.includes(POLICY))) {
+    const sentence = /"([^"]*nothing is refunded\.?)/.exec(l)?.[1];
+    assert.ok(sentence && e6.includes(sentence.slice(-60)), `not a published confirmation: ${l}`);
+  }
 });
 
 test("CR-001 B.2: the hall still is chosen from the hall's number, and none without one", async () => {
@@ -54,4 +60,17 @@ test("CR-001 B.2: the hall still is chosen from the hall's number, and none with
   assert.equal(hallViewSrc("SCREEN 6"), "/art/hall_6_view.jpg");
   assert.equal(hallViewSrc("Screen 02"), "/art/hall_2_view.jpg");
   assert.equal(hallViewSrc("Main hall"), null);
+});
+
+// S-TKT-13: two bookings identical except that one receipt_dispatch row reads sent and the other failed. Whatever the
+// state, the rendered page differs only in the reference (its facts here are identical), so queued, in flight, sent and
+// failed are indistinguishable on SCR-TKT-01.
+test("dispatch state: a sent and a failed receipt render pages that differ only in the reference", () => {
+  const page = (booking) => renderToStaticMarkup(ConfirmationPage({ booking, startsLabel: "Fri 14 Aug · 8:00 pm",
+    money: formatPaise, receiptTo: null, copied: false, onCopy() {} }));
+  const sent = page({ ...BOOKING, reference: "FR-ACDE-FHJD", receipt_status: "sent", status: "sent" });
+  const failed = page({ ...BOOKING, reference: "FR-CDEF-HJKM", receipt_status: "failed", status: "failed" });
+  assert.notEqual(sent, failed);
+  const strip = (html, ref) => html.split(ref).join("REF").split(spoken(ref)).join("REF");
+  assert.equal(strip(sent, "FR-ACDE-FHJD"), strip(failed, "FR-CDEF-HJKM"));
 });

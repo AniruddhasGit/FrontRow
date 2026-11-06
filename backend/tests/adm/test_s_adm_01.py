@@ -1,7 +1,7 @@
 """S-ADM-01 - admin authorisation is applied once, on the /api/admin router (P-ADM-18).
 
 Phase 6 mounted the film and lookup routes (EP-ADM-01..08, 25..27), so the role matrix runs on GET /api/admin/movies
-and the mounted set is all 29 EP-ADM endpoints of api/contract.json.
+and the mounted set is all 32 EP-ADM endpoints of api/contract.json (EP-ADM-30..32: SRC-008 ROLE-1).
 """
 
 from __future__ import annotations
@@ -53,9 +53,9 @@ def test_every_admin_route_carries_require_admin_in_its_resolved_dependencies(cl
         assert require_admin in _calls(route.dependant), route.path
 
 
-def test_the_mounted_admin_routes_are_exactly_the_29_endpoints_of_the_contract(client):
+def test_the_mounted_admin_routes_are_exactly_the_32_endpoints_of_the_contract(client):
     contract = _contract_admin()
-    assert len(contract) == 29
+    assert len(contract) == 32  # 29 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30), as generate_api.py emits
     mounted = {pair for pair in mounted_routes(client.app) if pair[1].startswith("/api/admin")}
     assert mounted == set(contract.values())
 

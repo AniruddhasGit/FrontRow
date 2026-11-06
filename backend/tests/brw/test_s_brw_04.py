@@ -1,8 +1,8 @@
 """S-BRW-04 (P-BRW-04): cinema, date, language and format filters; ONE showtime satisfies every showtime filter.
 
-Not here: the rendered empty state and its 'Clear filters' control (browser harness). The repository-wide
-`rg 'Asia/Kolkata' backend/app/api backend/app/domain backend/app/models` clause is asserted only over this
-lane's files, because app/domain/admin/cinemas.py (the admin lane's) carries the zone name in a help sentence.
+The rendered empty state and its 'Clear filters' control are asserted in frontend/src/features/browse/render.test.mjs.
+The `rg 'Asia/Kolkata' backend/app/api backend/app/domain backend/app/models` clause is asserted as amended: every
+hit is a line carrying P-ADM-25's published sentence (app/domain/admin/cinemas.py's ZONE_BAD).
 """
 
 from __future__ import annotations
@@ -100,8 +100,12 @@ async def test_the_zone_is_read_from_the_cinema_row(world):
     assert film in [m["id"] for m in movies]
 
 
-def test_this_lanes_code_names_no_zone_literal():
-    assert rg("Asia/Kolkata", "backend/app/api/browse.py", "backend/app/domain/browse", "backend/app/models") == []
+P_ADM_25 = "That is not a time zone this system recognises. Enter an IANA zone name, such as Asia/Kolkata."
+
+
+def test_the_zone_literal_appears_only_on_p_adm_25s_sentence():
+    hits = rg("Asia/Kolkata", "backend/app/api", "backend/app/domain", "backend/app/models", fixed=True)
+    assert [h for h in hits if P_ADM_25 not in h[2]] == []
 
 
 @pytest.mark.parametrize("params,message", [

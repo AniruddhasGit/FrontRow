@@ -7,16 +7,17 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "89a849ba103208a57e98112a17ce2a3bd539fae34f0783f7bfbb0a408e7e9c7c",
-    "TRACEABILITY.tsv": "78753609ffcd6a93f1637d404380ca00ec8d3c8b97fdfdbfbd2850ea6e205bcf",
-    "schema.sql": "5e5494cd9017347e23c023a5dc998394f9e1586954cd5e34057d343846fad4d2",
-    "seed/expected_summary.json": "5c443e2989c59d42dbef9d8af1f901f585a96c65fb0407ec82cbee75f3e2b4d3"
+    "datamodel.json": "5f793714f9fe99f51d07b536677936d7ff55e880befe0f479c2589535b58ca80",
+    "TRACEABILITY.tsv": "900068c34f7ef7d7616d6c33b85cf26599f18ce0922aa8269b47beb2923a30f7",
+    "schema.sql": "651d703ee122b5c88e99df19b60fcbfd391d48b3f46cc2caa9be2664fd3c9cf1",
+    "seed/expected_summary.json": "23ddcf9dae3e57448e8c6366c960ac18285a55b6da6e7cc857eb38f6c3283624"
   },
-  "schema_structure_sha256": "ef621d98da3c8d1a9485533fff77c00b8149f23d115da2e67c8a0a8461e2394c",
+  "schema_structure_sha256": "f4fcc217a2637823507387337e134aa0e857fa08fb361d047a62fd976cd54346",
   "roles_and_grants": [
     "role frontrow_owner",
     "role frontrow_app",
     "grant GRANT USAGE ON SCHEMA public TO frontrow_app",
+    "grant GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app",
     "grant GRANT SELECT, INSERT ON audit_log TO frontrow_app",
     "grant GRANT SELECT, INSERT ON booking TO frontrow_app",
     "grant GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
@@ -42,6 +43,19 @@
     "grant GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app"
   ],
   "tables": {
+    "admin_grant": {
+      "sha256": "989c3af3eed41ddd108b8543341a7a53e2ddc618bd8a3490698b066cd02bf362",
+      "columns": 4,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column email text NOT NULL",
+        "column granted_by bigint NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "foreign_key fk_admin_grant__granted_by (granted_by) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_admin_grant__email_ci (lower(email))"
+      ]
+    },
     "audit_log": {
       "sha256": "58d876fb984d057452b1a2baaabcac068c6979b5ea87ff25400634466ad59b04",
       "columns": 10,

@@ -316,7 +316,6 @@ def derive_seed(model):
     if not se:
         die("datamodel.json has no seed_expectations block")
     letters = se["row_letters"]["letters"]
-    std_f, prem_f = se["bands"]["standard_fraction"], se["bands"]["premium_fraction"]
     cats = se["seat_categories"]["rows"]
     if [c["name"] for c in cats] != ["Standard", "Premium", "Recliner"]:
         die("seed_expectations.seat_categories must list the three bands in "
@@ -326,25 +325,23 @@ def derive_seed(model):
 
     screens = []
     for lay in se["screens"]["layouts"]:
-        rows, cols = lay["rows"], lay["cols"]
-        if rows * cols != lay["seats"]:
-            die("Screen %d: %d x %d != %d seats (P-XCT-30 exception 9)"
-                % (lay["number"], rows, cols, lay["seats"]))
-        if rows > len(letters):
-            die("Screen %d has more rows than row letters" % lay["number"])
-        std = ceil_frac(rows, std_f)
-        prem = ceil_frac(rows, prem_f)
-        rec = rows - std - prem
-        if min(std, prem, rec) < 1:
-            die("Screen %d: a category band is empty (P-XCT-30 exception 9)" % lay["number"])
-        labels = letters[:rows]
-        row_cat = ["Standard"] * std + ["Premium"] * prem + ["Recliner"] * rec
+        # CR-003: rows are typed per hall - (label, category, seats) front to back - not a rows x cols grid.
+        rows = lay["rows"]
+        if sum(r[2] for r in rows) != lay["seats"]:
+            die("Screen %d: its rows hold %d seats, not %d (P-XCT-30 exception 9)"
+                % (lay["number"], sum(r[2] for r in rows), lay["seats"]))
+        labels = "".join(r[0] for r in rows)
+        if len(set(labels)) != len(labels) or not set(labels) <= set(letters):
+            die("Screen %d: row labels %s are not unique row letters" % (lay["number"], labels))
+        if rows[0][1] != "Standard" or "Recliner" not in [r[1] for r in rows]:
+            die("Screen %d: Standard must be nearest the screen and a Recliner row must exist (CR-003)" % lay["number"])
+        seat_cat = [r[1] for r in rows for _ in range(r[2])]   # seat order: row A seat 1 onward
         screens.append({
-            "number": lay["number"], "seats": lay["seats"], "rows": rows, "cols": cols,
-            "row_labels": labels, "row_cat": row_cat,
-            "bands": [("Standard", std, labels[:std]),
-                      ("Premium", prem, labels[std:std + prem]),
-                      ("Recliner", rec, labels[std + prem:])],
+            "number": lay["number"], "seats": lay["seats"], "rows": len(rows), "row_labels": labels,
+            "seat_cat": seat_cat,
+            "bands": [(c["name"], sum(1 for r in rows if r[1] == c["name"]),
+                       "".join(r[0] for r in rows if r[1] == c["name"]),
+                       sum(r[2] for r in rows if r[1] == c["name"])) for c in cats],
         })
 
     sch, occ, bk = se["schedule"], se["occupancy"], se["bookings"]
@@ -387,7 +384,7 @@ def derive_seed(model):
                 per_screen[scr["number"]]["booked"] += booked
                 booked_total += booked
                 for seat_i in range(booked):           # contiguous from row A seat 1
-                    cat = scr["row_cat"][seat_i // scr["cols"]]
+                    cat = scr["seat_cat"][seat_i]
                     booked_by_cat[cat] += 1
                     revenue_by_cat[cat] += prices[cat]
                 remaining = booked
@@ -565,17 +562,16 @@ def emit_expected_summary(model):
     for s in dv["screens"]:
         ps = dv["per_screen"][s["number"]]
         screens.append({
-            "screen": s["number"], "seats": s["seats"], "rows": s["rows"], "cols": s["cols"],
+            "screen": s["number"], "seats": s["seats"], "rows": s["rows"],
             "row_labels": s["row_labels"],
-            "bands": [{"category": b[0], "rows": b[1], "row_labels": b[2],
-                       "seats": b[1] * s["cols"]} for b in s["bands"]],
+            "bands": [{"category": b[0], "rows": b[1], "row_labels": b[2], "seats": b[3]} for b in s["bands"]],
             "showtimes": ps["showtimes"],
             "showtime_seat_rows": s["seats"] * ps["showtimes"],
             "booked_seats": ps["booked"],
         })
     cats = []
     for c in se["seat_categories"]["rows"]:
-        seats = sum(b[1] * s["cols"] for s in dv["screens"] for b in s["bands"] if b[0] == c["name"])
+        seats = sum(b[3] for s in dv["screens"] for b in s["bands"] if b[0] == c["name"])
         cats.append({"name": c["name"], "uplift_basis_points": c["uplift_basis_points"],
                      "price_paise": dv["prices"][c["name"]], "seats": seats,
                      "booked_seats": dv["booked_by_cat"][c["name"]],
@@ -891,8 +887,8 @@ def selftest():
     results.append(_expect_die("a recorded disagreement that now agrees",
                                with_seed(lambda se: se["published_figures"].__setitem__(
                                    "worked_example_k399_booked_seats", 72))))
-    results.append(_expect_die("a hall whose rows x cols != seats",
-                               with_seed(lambda se: se["screens"]["layouts"][0].__setitem__("cols", 11))))
+    results.append(_expect_die("a hall whose rows do not hold its seats",
+                               with_seed(lambda se: se["screens"]["layouts"][0]["rows"][0].__setitem__(2, 99))))
     results.append(_expect_die("a table left out of table_expectations",
                                with_seed(lambda se: se["table_expectations"].pop("booking"))))
     results.append(_expect_die("a card-shaped number in an expectation",

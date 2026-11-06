@@ -1,13 +1,9 @@
 """S-BRW-16 (P-BRW-12): cache-aside on the read path, listings invalidated by a generation counter, browsing
 alive with Redis gone, and the seat-map stampede guard.
 
-Not here, and why the row stays Blocked:
-- 'after an admin PUBLISH commits, the counter has increased by exactly 1' - there is no publish endpoint until
-  Phase 6 (admin movie management), and the existing admin writes (app/domain/admin/, another lane's files) do
-  not yet call app.core.cache.bump_listing_generation. The function's own command is asserted below.
-- 'a booking commit issues DEL cache:seatmap:{id}' and 'the transaction still commits' - booking is Phase 4.
-  invalidate_seatmap's behaviour (one DEL, never retried, a WARNING with the request id, expiry) is asserted.
-- the rendered page text sweep (browser harness).
+The admin publish (EP-ADM-05, Phase 6) and the booking confirm (EP-PAY-01, Phase 4) are both driven through their real
+endpoints below. The rendered page-text sweep ('unavailable', 'not updating') is asserted in
+frontend/src/features/browse/render.test.mjs (S-BRW-16).
 """
 
 from __future__ import annotations
@@ -22,7 +18,10 @@ from app.core import cache
 from app.core.logging import bind_request_id
 from app.domain.browse import seatmap as seatmap_module
 from tests.brw.kit import (SetClock, api, flush_redis, make_category, make_cinema, make_hall, make_movie, make_screen,
-                           make_seat, make_showtime, redis_sync, reset_catalogue)
+                           make_seat, make_showtime, redis_sync, redis_url, reset_catalogue, settings_for)
+from app.core.security import SESSION_COOKIE, issue_session_token
+from tests.dbkit import insert_user
+from tests.pay import kit as pay
 
 pytestmark = pytest.mark.anyio
 
@@ -201,3 +200,65 @@ def test_the_stampede_site_names_the_scenario():
     from tests.xct._support import rg
 
     assert rg("stampede", "backend/app/core/cache.py", fixed=True)
+
+
+async def test_an_admin_publish_raises_the_generation_by_exactly_one_and_the_next_read_shows_the_film(world):
+    db = world["db"]
+    draft = make_movie(db, published_at=None, poster_key="posters/1/" + "c" * 32)
+    admin = insert_user(db, role="admin")
+    clock = SetClock()
+    clock.set("2026-08-15T06:30:00+00:00")  # the audit row takes an aware UTC instant
+    token = issue_session_token(user_id=admin, role="admin", password_version=1, now=clock.now(), settings=settings_for(db))
+    async with api(db, clock, **CACHED) as c:
+        before_ids = [m["id"] for m in (await c.get("/api/movies")).json()["movies"]]
+        before = int(redis_sync().get(cache.LISTING_GENERATION) or 0)
+        log = record(c)
+        r = await c.post(f"/api/admin/movies/{draft}/publish", json={"version": 1}, cookies={SESSION_COOKIE: token})
+        assert r.status_code == 200, r.text
+        after = int(redis_sync().get(cache.LISTING_GENERATION))
+        after_ids = [m["id"] for m in (await c.get("/api/movies")).json()["movies"]]
+    assert draft not in before_ids and draft in after_ids
+    assert after == before + 1
+    commands = [cmd for cmd, _ in log]
+    assert len([x for x in commands if re.match(r"^INCR cache:listing:generation$", x)]) == 1
+    assert len([x for x in commands if re.match(r"^SETEX cache:listing:", x)]) >= 1
+    for pattern in (r"^SET cache:listing:", r"^SCAN", r"^(SET|DEL) cache:listing:generation"):
+        assert [x for x in commands if re.match(pattern, x)] == [], pattern
+
+
+async def test_a_booking_commit_whose_seatmap_del_raises_still_commits_logs_once_and_the_entry_expires(migrated_db, log_capture):
+    """The booking lane's fixture world, on THIS lane's Redis database 13 (database 11 is the booking lane's and is
+    flushed by its own runs), with the seat-map cache on at its 10-second TTL."""
+    db = migrated_db
+    pay.world7(db)
+    flush_redis()
+    r_call = lambda *args: redis_sync().execute_command(*args)  # noqa: E731
+    u = pay.user(db)
+    key = f"cache:seatmap:{pay.SHOWTIME}"
+    async with pay.api(db, pay.clock_at(), SEATMAP_CACHE_TTL_SECONDS="10", REDIS_URL=redis_url()) as c:
+        h = await pay.hold(c, u, [pay.F7])
+        assert (await c.get(f"/api/showtimes/{pay.SHOWTIME}/seatmap")).status_code == 200
+        assert r_call("EXISTS", key) == 1
+        redis = c.application.state.redis
+        inner = redis.execute_command
+
+        async def failing(*args, **options):
+            if str(args[0]).upper() == "DEL" and str(args[1]) == key:
+                raise ConnectionError("a Redis blip")
+            return await inner(*args, **options)
+
+        redis.execute_command = failing
+        log = pay.CommandLog()
+        log.wrap(redis)  # records every command, then hands it to the failing layer
+        r = await pay.confirm(c, u, h["hold_token"])
+        assert r.status_code == 201, r.text
+        request_id = r.headers["x-request-id"]
+    assert pay.count(db, "SELECT count(*) FROM booking") == 1
+    assert pay.count(db, "SELECT count(*) FROM booking_seat WHERE seat_id = %s", (pay.F7,)) == 1
+    assert [x for x in log.commands if x[0].upper() == "DEL" and x[1] == key] == [("DEL", key)]
+    warnings = [ln for ln in log_capture.lines() if ln["level"] == "WARNING" and ln.get("request_id") == request_id]
+    assert len(warnings) == 1, warnings
+    remaining = r_call("PTTL", key)
+    assert 0 < remaining <= 10000  # the entry the failed DEL left behind expires within 10 seconds
+    await asyncio.sleep(remaining / 1000 + 0.2)  # Redis's own clock, which no injected clock reaches
+    assert r_call("TTL", key) == -2

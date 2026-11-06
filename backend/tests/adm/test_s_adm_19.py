@@ -14,7 +14,9 @@ GENERIC_405 = "That action is not available. Nothing was changed."
 
 def test_exactly_one_delete_route_under_api_admin_and_it_is_the_seat(client):
     deletes = sorted(p for m, p in mounted_routes(client.app) if m == "DELETE" and p.startswith("/api/admin"))
-    assert deletes == ["/api/admin/seats/{seat_id}"]
+    # Plus EP-ADM-32 since SRC-008 ROLE-1 ADDENDUM / S-ADM-30 (removing a granted email); the criterion's "exactly one"
+    # predates that ruling and is raised for a Bible amendment. Still no DELETE for any never-deleted entity.
+    assert deletes == ["/api/admin/admin-grants/{grant_id}", "/api/admin/seats/{seat_id}"]
 
 
 def test_delete_on_every_never_deleted_entity_is_the_same_405(client):
@@ -39,7 +41,9 @@ def test_only_seat_and_assignment_rows_are_ever_deleted_and_nothing_cascades(cli
     # movie_genre: a film's genres ARE its join rows, so a genre edit replaces them (P-ADM-02, EP-ADM-04 genre_ids), and
     # datamodel.json grants DELETE on exactly seat, manager_screen_assignment and movie_genre. The AC's two-table list
     # predates EP-ADM-04 and is reported as a doc defect. No film, booking or audit row is deleted anywhere.
-    assert {"seat", "msa"} <= tables <= {"seat", "msa", "movie_genre"}  # msa is manager_screen_assignment
+    # admin_grant: SRC-008 ROLE-1 ADDENDUM / S-ADM-30 rule that removing a granted email deletes its grant row; no
+    # booking reaches it (its only foreign key points at users). Raised against S-XCT-09's "exactly two entities".
+    assert {"seat", "msa"} <= tables <= {"seat", "msa", "movie_genre", "admin_grant"}  # msa is manager_screen_assignment
     assert owner_sql(client.db, """
         SELECT count(*) FROM information_schema.referential_constraints rc
         JOIN information_schema.key_column_usage k ON k.constraint_name = rc.constraint_name

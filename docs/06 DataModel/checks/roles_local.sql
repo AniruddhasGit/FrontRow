@@ -155,6 +155,8 @@ REVOKE CREATE ON SCHEMA public FROM frontrow_app;
 --    genre, format                       FR-ADR-012 / P-ADM-24 withdrawal is is_active=false, not DELETE
 --    manager_screen_assignment S I D     EP-ADM-24 replaces the whole set; S-XCT-09 ("... and a
 --                                        manager_screen_assignment row")
+--    admin_grant               S I D     SRC-008 ROLE-1 ADDENDUM, S-ADM-30: an admin adds a granted email and
+--                                        removing one deletes that grant row
 --
 --    No table:  TRUNCATE, REFERENCES, TRIGGER - nothing in the product needs
 --    them, and TRUNCATE on audit_log would defeat FR-ADR-019 outright.
