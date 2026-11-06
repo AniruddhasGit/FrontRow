@@ -7,8 +7,8 @@ CONTAINER actually stopped and then started again, is the host drill backend/tes
 `redis-stop`), because a container cannot stop a sibling container from inside the test image.
 
 Recorded deviation: the command log of a failing request is not empty - it holds exactly ONE attempted command,
-the rate limiter's EVAL, which is the command that failed. Nothing after it is sent. Not here: `boot exits non-zero
-when REDIS_*_TIMEOUT_MS is absent` - config.py defaults both to 500, which the same criterion also states.
+the rate limiter's EVAL, which is the command that failed. Nothing after it is sent. An absent REDIS_*_TIMEOUT_MS
+boots with the S7.9 default of 500 and a non-integer or <= 0 value stops the boot, both asserted below.
 """
 
 from __future__ import annotations
@@ -89,6 +89,15 @@ def test_a_timeout_that_is_not_a_positive_integer_stops_the_boot(valid_env, name
     with pytest.raises(ConfigError) as caught:
         load_settings()
     assert name in caught.value.names
+
+
+def test_absent_redis_timeouts_boot_with_the_default_of_500(valid_env):
+    """valid_env starts from an environment with every setting deleted and sets neither timeout."""
+    import os
+
+    assert "REDIS_CONNECT_TIMEOUT_MS" not in os.environ and "REDIS_COMMAND_TIMEOUT_MS" not in os.environ
+    s = load_settings()
+    assert (s.REDIS_CONNECT_TIMEOUT_MS, s.REDIS_COMMAND_TIMEOUT_MS) == (500, 500)
 
 
 async def test_redis_failing_after_a_seat_was_won_sends_nothing_more(world, monkeypatch):

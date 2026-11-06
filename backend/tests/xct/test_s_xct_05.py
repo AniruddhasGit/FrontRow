@@ -2,8 +2,13 @@
 
 Covered here: boot validation of the currency pair, the money-column census, the one pricing function
 and its half-up rule with the PRD's worked examples (P-PAY-03 / P-PAY-04 / FR-ADR-038), the strict
-paise boundary type that refuses 250.00 / -1 / 0, the single-formula scan, and SUM cast back to int.
-NOT covered (other lanes' endpoints): POST/PATCH /api/admin/showtimes, and the five importing files.
+paise boundary type that refuses 250.00 / -1 / 0, the single-formula scan, the five importing files, the
+real POST /api/admin/showtimes and PATCH /api/admin/showtimes/41 refusing 250.00, -1 and 0 with 422
+VALIDATION_FAILED and storing nothing, and SUM cast back to int.
+
+NOT passing as written: `rg -nP 'float\(|:\s*float|->\s*float' backend/app` returning 0 hits. About ten
+non-money duration and metrics annotations hit it (core/config.py, clock.py, metrics.py, server.py,
+workers/queue.py); the sweep here covers the money modules only. That clause needs a Bible amendment.
 """
 
 from __future__ import annotations
@@ -189,6 +194,34 @@ def test_a_json_250_00_body_field_is_422_validation_failed_through_the_product_e
 
 class Body(BaseModel):
     base_price_paise: PositivePaise
+
+
+def test_the_real_showtime_endpoints_refuse_250_00_minus_1_and_0_and_store_nothing(migrated_db, clock):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from tests.adm.kit import make_movie, make_screen, make_seats, sign_in
+    from tests.dbkit import app_settings
+    from tests.test_health import ok_probe
+
+    app = create_app(app_settings(migrated_db), clock=clock, probes=[ok_probe("postgres"), ok_probe("redis")])
+    with TestClient(app, raise_server_exceptions=False) as c:
+        c.clock, c.db = clock, migrated_db
+        sign_in(c)
+        hall, movie = make_screen(migrated_db), make_movie(migrated_db)
+        make_seats(migrated_db, hall, 1)
+        owner_sql(migrated_db, "INSERT INTO showtime (id, movie_id, screen_id, starts_at, ends_at, base_price_paise, "
+                               "seat_count_at_creation, version) OVERRIDING SYSTEM VALUE VALUES (41, %s, %s, "
+                               "'2026-12-01T12:30:00Z', '2026-12-01T15:00:00Z', 25000, 1, 1)", (movie, hall))
+        before = owner_sql(migrated_db, "SELECT count(*), sum(base_price_paise) FROM showtime")
+        fields = (f'"movie_id": {movie}, "screen_id": {hall}, '
+                  '"starts_at": "2026-09-01T18:00:00", "ends_at": "2026-09-01T20:30:00"')
+        for bad in ("250.00", "-1", "0"):
+            for method, url, body in (("POST", "/api/admin/showtimes", "{" + fields + ', "base_price_paise": ' + bad + "}"),
+                                      ("PATCH", "/api/admin/showtimes/41", '{"base_price_paise": ' + bad + "}")):
+                r = c.request(method, url, content=body, headers={"content-type": "application/json"})
+                assert (r.status_code, r.json()["error"]["code"]) == (422, "VALIDATION_FAILED"), (method, bad, r.text)
+        assert owner_sql(migrated_db, "SELECT count(*), sum(base_price_paise) FROM showtime") == before  # never rounded
 
 
 # ---- SUM over bigint comes back as int, never Decimal -----------------------------------------------------

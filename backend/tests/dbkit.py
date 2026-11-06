@@ -105,7 +105,12 @@ def drop_database(db: TestDatabase) -> None:
 def migrated_db():
     db = create_database(migrate=True)
     yield db
-    drop_database(db)
+    try:
+        # S-ADM-02: "SELECT count(*) FROM audit_log WHERE actor_user_id IS NULL returns 0 after the whole suite has run".
+        # Every module has its own database, so the suite's audit rows are the union of these; each is checked last.
+        assert owner_sql(db, "SELECT count(*) FROM audit_log WHERE actor_user_id IS NULL") == [(0,)]
+    finally:
+        drop_database(db)
 
 
 @pytest.fixture

@@ -61,3 +61,16 @@ test("CR-001 B.2: the hall still is chosen from the hall's number, and none with
   assert.equal(hallViewSrc("Screen 02"), "/art/hall_2_view.jpg");
   assert.equal(hallViewSrc("Main hall"), null);
 });
+
+// S-TKT-13: two bookings identical except that one receipt_dispatch row reads sent and the other failed. Whatever the
+// state, the rendered page differs only in the reference (its facts here are identical), so queued, in flight, sent and
+// failed are indistinguishable on SCR-TKT-01.
+test("dispatch state: a sent and a failed receipt render pages that differ only in the reference", () => {
+  const page = (booking) => renderToStaticMarkup(ConfirmationPage({ booking, startsLabel: "Fri 14 Aug · 8:00 pm",
+    money: formatPaise, receiptTo: null, copied: false, onCopy() {} }));
+  const sent = page({ ...BOOKING, reference: "FR-ACDE-FHJD", receipt_status: "sent", status: "sent" });
+  const failed = page({ ...BOOKING, reference: "FR-CDEF-HJKM", receipt_status: "failed", status: "failed" });
+  assert.notEqual(sent, failed);
+  const strip = (html, ref) => html.split(ref).join("REF").split(spoken(ref)).join("REF");
+  assert.equal(strip(sent, "FR-ACDE-FHJD"), strip(failed, "FR-CDEF-HJKM"));
+});

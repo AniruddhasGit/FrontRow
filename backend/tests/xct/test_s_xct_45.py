@@ -3,9 +3,10 @@ idempotently. Every figure is read from docs/06 DataModel/seed/expected_summary.
 few CR-001 (four films on fixed screens, +105-minute second screens) and SRC-006 (base price 1299) moved before that
 generated oracle was re-derived; each of those carries its citation.
 
-The queue clause ("the queue's message count being 0 after the run") is asserted through the outbox, the only
-route a receipt job has onto the queue (FR-ADR-031); there is no queue in Phase 2 to count (ElasticMQ arrives
-with the worker in Phase 5), which the lane report records.
+The queue clause ("the queue's message count being 0 after the run") is asserted on the queue itself: this module's
+seed runs with QUEUE_URL naming a fresh ElasticMQ queue, and that queue's message counts (visible, in flight and
+delayed) are read after the run. The outbox, the only route a receipt job has onto the queue (FR-ADR-031), is
+counted too.
 """
 
 from __future__ import annotations
@@ -14,11 +15,47 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.domain import reference
-from tests.dbkit import owner_sql
-from tests.seed.kit import NOW, SUMMARY, one, run_seed, seed, seeded, table_counts  # noqa: F401
+import os
+import uuid
+
+import pytest
+
+from tests.dbkit import create_database, drop_database, owner_sql
+from tests.seed.kit import NOW, SUMMARY, one, run_seed, seed, table_counts  # noqa: F401
 from tests.xct._support import rg
 
 IST = ZoneInfo("Asia/Kolkata")
+QUEUE: dict[str, object] = {}
+
+
+def _sqs():
+    import boto3
+
+    endpoint = os.environ.get("TEST_QUEUE_ENDPOINT")
+    if not endpoint:
+        pytest.fail("TEST_QUEUE_ENDPOINT is not set: run the suite with `docker compose --profile test run --rm test`", pytrace=False)
+    return boto3.client("sqs", region_name="ap-south-1", endpoint_url=endpoint), endpoint
+
+
+@pytest.fixture(scope="module")
+def seeded():
+    """tests/seed/kit.py's seeded, with QUEUE_URL naming a fresh ElasticMQ queue for the run, so the queue can be counted."""
+    sqs, endpoint = _sqs()
+    url = sqs.create_queue(QueueName=f"xct45-{uuid.uuid4().hex[:12]}")["QueueUrl"]
+    QUEUE.update(sqs=sqs, url=endpoint + "/" + url.split("/", 3)[3])
+    db = create_database(migrate=True)
+    saved = os.environ.get("QUEUE_URL")
+    os.environ["QUEUE_URL"] = QUEUE["url"]
+    try:
+        code, lines = run_seed(db.app_url)
+        assert code == 0, lines
+        yield db, lines
+    finally:
+        if saved is None:
+            os.environ.pop("QUEUE_URL", None)
+        else:
+            os.environ["QUEUE_URL"] = saved
+        drop_database(db)
 TODAY_START = datetime.combine(NOW.astimezone(IST).date(), time(0), tzinfo=IST)
 
 
@@ -127,6 +164,9 @@ def test_payments_captured_and_dispatch_rows_suppressed_and_no_receipt_job(seede
                    "WHERE r.status IS DISTINCT FROM 'suppressed' OR r.attempts <> 0 OR r.sent_at IS NOT NULL "
                    "OR r.claimed_at IS NOT NULL") == 0
     assert one(db, "SELECT count(*) FROM outbox_message WHERE topic = 'receipt.send'") == 0
+    names = ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible", "ApproximateNumberOfMessagesDelayed"]
+    attrs = QUEUE["sqs"].get_queue_attributes(QueueUrl=QUEUE["url"], AttributeNames=names)["Attributes"]
+    assert {n: int(attrs[n]) for n in names} == dict.fromkeys(names, 0)
 
 
 def test_the_oracle_invariants_hold(seeded):

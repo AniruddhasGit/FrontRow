@@ -1,16 +1,23 @@
 """S-XCT-26 (PRD P-XCT-12, S7.8): central redaction, and no credential in any captured line.
 
-Not covered, because the code paths do not exist yet: the seeded password (no seed until Phase 2)
-and the "booking reference beside an email address" scan over the receipt and booking log paths
-(Phases 4 and 5). The pattern scans below run over a real process's stdout instead.
+Asserted: the central redaction of the five keys, the pattern scans over one real process's stdout, no line holding
+both a booking reference and an @ over the booking path (a real hold and confirm) and the receipt path (the real worker
+sending the receipt), both captured at DEBUG, and the LOG_LEVEL default and runbook clauses.
+
+NOT covered: "over the captured stdout of a full test run" for the seeded password, bcrypt, JWT, Authorization: Bearer
+and 13-19 digit scans. Those run over one real process's stdout, not the whole suite's.
 """
 
 from __future__ import annotations
 
+import io
 import logging
 import re
 
+import pytest
+
 from app.core.config import Settings
+from tests.dbkit import owner_sql
 
 from ._support import rg
 from .test_s_xct_24 import run_real_process
@@ -45,3 +52,36 @@ def test_log_level_defaults_to_info_and_nothing_switches_it_by_environment():
 
 def test_the_deployment_spec_refuses_debug():
     assert rg("LOG_LEVEL=DEBUG", "docs/30 Deployment", fixed=True)
+
+
+@pytest.mark.anyio
+async def test_no_booking_or_receipt_line_holds_a_reference_beside_an_email_address(migrated_db):
+    """A real hold and confirm (the booking path) and the real worker sending that booking's receipt (the receipt
+    path), every line captured at DEBUG; no line matches both a reference-shaped run and an @."""
+    from app.core.logging import configure_logging
+    from tests.pay.kit import C1, api, clock_at, confirm, hold, user, world7
+    from tests.tkt.kit import Clock, message, worker
+
+    db = world7(migrated_db)["db"]
+    u = user(db, email="ref.beside@example.com")
+    stream, clock = io.StringIO(), clock_at()
+    configure_logging(level="DEBUG", service="api", instance_id="test0001", now=clock.now, stream=stream)
+    try:
+        async with api(db, clock) as c:
+            h = await hold(c, u, [C1])
+            r = await confirm(c, u, h["hold_token"])
+            assert r.status_code == 201, r.text
+        booking_id = owner_sql(db, "SELECT id FROM booking WHERE user_id = %s", (u,))[0][0]
+        w = worker(db, Clock())
+        try:
+            assert await w.handle(message(booking_id)) is True
+        finally:
+            await w.engine.dispose()
+        assert w.transport.calls  # the receipt was sent, so its log path ran
+    finally:
+        logging.getLogger().handlers.clear()
+        logging.getLogger().setLevel(logging.WARNING)
+    lines = [ln for ln in stream.getvalue().splitlines() if ln.strip()]
+    assert any("/api/bookings" in ln for ln in lines) and any("receipt" in ln.lower() for ln in lines)
+    ref = re.compile(r"[23456789ACDEFHJKMNPQRTVWXY]{8}")
+    assert [ln for ln in lines if ref.search(ln) and "@" in ln] == []

@@ -1,9 +1,8 @@
 """S-SEA-07 (P-HLD-02): the hold lasts SEAT_HOLD_TTL_SECONDS, its expiry is fixed at acquisition, and Redis alone
 removes the keys.
 
-Not here: `boot exits non-zero when SEAT_HOLD_TTL_SECONDS is absent`. app/core/config.py (the config lane's file)
-defaults it to 180 as PRD S7.9 publishes, so an absent value boots. The AC and S7.9 disagree; reported, not tested
-against the wrong side.
+The boot clause is the amended cell (SRC-008 HOLD-1): a non-integer or non-positive value stops the boot, and an
+ABSENT value boots with the S7.9 default of 180 - asserted with the variable deleted from the environment.
 """
 
 from __future__ import annotations
@@ -94,6 +93,14 @@ def test_the_boot_check_on_the_hold_and_the_payment_delay(valid_env, ttl, delay,
     else:
         with pytest.raises(ConfigError):
             load_settings()
+
+
+def test_an_absent_hold_ttl_boots_with_the_default_of_180(valid_env):
+    """SRC-008 HOLD-1: valid_env starts from an environment with every setting deleted and never sets this one."""
+    import os
+
+    assert "SEAT_HOLD_TTL_SECONDS" not in os.environ
+    assert load_settings().SEAT_HOLD_TTL_SECONDS == 180
 
 
 async def test_redis_alone_removes_the_keys_when_the_ttl_elapses(world):

@@ -1,7 +1,7 @@
 """S-SCP-11 (P-SCP-05, SRC-001 §6.5): no point-of-sale integration.
 
-The confirmation half of the listener is below, at the Core level. Still Blocked: the criterion names a mapper-level
-before_insert listener (no ORM mapper exists) and scripts/seed.py writes booking_seat with psycopg COPY.
+The point-of-sale sweep, the two-writer census, and the run-time trace with a Core before_cursor_execute listener on
+the engine, as the cell names it. The seed's COPY count is asserted in tests/xct/test_s_xct_45.py.
 """
 
 from __future__ import annotations
@@ -34,35 +34,46 @@ def test_exactly_two_code_sites_write_booking_seat():
 
 
 @pytest.mark.anyio
-async def test_every_booking_seat_insert_on_the_confirm_path_originates_in_app_domain(migrated_db, monkeypatch):
-    """The confirmation half of the criterion's listener, at the Core level (no ORM mapper exists in this codebase):
-    every INSERT INTO booking_seat the application sends is traced to the modules on its call stack, and the only
-    application module originating one is app.domain.booking. scripts/seed.py writes with psycopg COPY, which no
-    SQLAlchemy listener can see - that half is the doc defect reported with this row."""
+async def test_every_booking_seat_insert_on_the_confirm_path_originates_in_app_domain(migrated_db):
+    """A Core before_cursor_execute listener on the app's engine records inspect.getmodule(frame).__name__ for every
+    frame at each INSERT INTO booking_seat across a full confirm. SQLAlchemy's async layer runs the cursor call in a
+    child greenlet, so the frames are this greenlet's stack PLUS its parent's suspended stack (greenlet.parent.gr_frame
+    and its f_back chain), which holds the awaiting coroutines - the application's modules."""
     import inspect
 
-    from sqlalchemy.ext.asyncio import AsyncConnection
+    import greenlet
+    from sqlalchemy import event
 
     from tests.pay.kit import C1, api, clock_at, confirm, hold, user, world7
 
     db = world7(migrated_db)["db"]
     u = user(db)
-    origins: set[str] = set()
+    origins: list[set[str]] = []
 
-    real = AsyncConnection.execute
+    def frames():
+        f = inspect.currentframe()
+        g = greenlet.getcurrent()
+        while True:
+            while f is not None:
+                yield f
+                f = f.f_back
+            g = g.parent
+            if g is None:
+                return
+            f = g.gr_frame
 
-    # At the async boundary, where the awaiting coroutines' frames are still on the stack (the driver's own
-    # cursor event runs in a greenlet that has lost them).
-    async def trace(self, statement, *args, **kwargs):
-        if str(statement).lstrip().upper().startswith("INSERT INTO BOOKING_SEAT"):
-            names = {getattr(inspect.getmodule(f.frame), "__name__", "") for f in inspect.stack()}
-            origins.update(n for n in names if n.startswith("app."))
-        return await real(self, statement, *args, **kwargs)
-
-    monkeypatch.setattr(AsyncConnection, "execute", trace)
+    def record(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("INSERT INTO BOOKING_SEAT"):
+            origins.append({getattr(inspect.getmodule(f), "__name__", "") for f in frames()})
 
     async with api(db, clock_at()) as c:
-        h = await hold(c, u, [C1])
-        assert (await confirm(c, u, h["hold_token"])).status_code == 201
-    domain = {n for n in origins if n.startswith("app.domain")}
-    assert domain == {"app.domain.booking"}, origins
+        engine = c.application.state.db_engine.sync_engine
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            h = await hold(c, u, [C1])
+            assert (await confirm(c, u, h["hold_token"])).status_code == 201
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+    assert origins, "the confirm sent no INSERT INTO booking_seat the listener saw"
+    for names in origins:
+        assert {n for n in names if n.startswith("app.domain.")} == {"app.domain.booking"}, names

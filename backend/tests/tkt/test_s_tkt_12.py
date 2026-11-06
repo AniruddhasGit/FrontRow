@@ -1,7 +1,9 @@
 """S-TKT-12 (P-TKT-08): nothing is built for the door, and that is proved - the backend half.
 
-NOT covered here: presenting a reference twice through GET /api/bookings/by-reference/{r} (EP-TKT-01 is not mounted
-yet) and the SCR-TKT-01 render (frontend)."""
+Presenting a reference twice through GET /api/bookings/by-reference/FR-ACDE-FHJD (EP-TKT-01) writes nothing: every
+public table's row count is identical before and after. The SCR-TKT-01 entrance line is asserted in
+frontend/src/features/ticket/ticket.test.mjs (ENTRY). `python -m pip freeze` is read as importlib.metadata, the same
+dist-info pip freeze reads, because the image's venv is built --without-pip."""
 
 from __future__ import annotations
 
@@ -12,7 +14,8 @@ import pytest
 
 from tests.tkt.kit import Clock, booking, message, truncate, worker
 from tests.xct._support import REPO
-from tests.dbkit import app_sql
+from tests.dbkit import app_sql, owner_sql
+from tests.pay.kit import api, clock_at, cookies, flush
 
 pytestmark = pytest.mark.anyio
 CONTRACT = json.loads((REPO / "docs" / "03 PRD" / "api" / "contract.json").read_text(encoding="utf-8"))
@@ -54,3 +57,24 @@ async def test_the_sent_receipt_has_no_attachment_and_no_image_part(migrated_db)
     (_, msg), = w.transport.calls
     assert [p for p in msg.walk() if p.get_content_disposition() == "attachment" or p.get_content_type().startswith("image/")] == []
     assert "Show this reference at the entrance. A person will check it.\n" in msg.get_body(("plain",)).get_content()
+
+
+def _counts(db) -> dict[str, int]:
+    tables = [t for (t,) in owner_sql(db, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
+                                          "AND table_type = 'BASE TABLE' ORDER BY 1")]
+    return {t: owner_sql(db, f'SELECT count(*) FROM "{t}"')[0][0] for t in tables}
+
+
+async def test_presenting_one_reference_twice_writes_nothing(migrated_db):
+    truncate(migrated_db)
+    flush()
+    b = booking(migrated_db)
+    owner = owner_sql(migrated_db, "SELECT user_id FROM booking WHERE id = %s", (b,))[0][0]
+    before = _counts(migrated_db)
+    async with api(migrated_db, clock_at()) as c:
+        for _ in range(2):
+            r = await c.get("/api/bookings/by-reference/FR-ACDE-FHJD", cookies=cookies(c, owner))
+            assert r.status_code == 200, r.text
+    after = _counts(migrated_db)
+    assert "audit_log" in before and len(before) > 10
+    assert after == before
