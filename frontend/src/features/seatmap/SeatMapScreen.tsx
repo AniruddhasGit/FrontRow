@@ -9,13 +9,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { formatPaise } from "../admin/money";
 import { forgetBooking } from "../booking/checkout";
 import { navigate } from "../../router";
+import { PENDING_KEY, SHOWTIME_GONE, leaveForSignIn, leaveNotice, pending, signInHref, takenMessage, type Pending } from "../auth/session";
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
 import { Hall3D } from "../hall3d/Hall3D";
 import { HoldCountdown } from "./Countdown";
 import { GIVE_UP, adding, closedBanner, failureOf, markTaken, primaryLabel, send, withoutLabels, type Hold } from "./hold";
 import {
-  HOLD_KEY, LEGEND, MAX_SEATS_PER_BOOKING, SELECTION_KEY, TREATMENT, bands, capNote, changedSeats, goneBanner, mapBanner,
+  HOLD_KEY, LEGEND, SELECTION_KEY, TREATMENT, bands, capNote, changedSeats, goneBanner, mapBanner,
   parseSeatMap, recheck, seatLabel, seatName, selectable, toggle, total, visualOf, type Seat, type SeatMap, type Visual,
 } from "./model";
 import { createPoller } from "./poller";
@@ -31,6 +32,29 @@ function readJson<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+
+// sessionStorage, or a stand-in that stores nothing when the browser refuses it (a private window).
+function storage(): Storage | { getItem: () => null; setItem: () => void; removeItem: () => void } {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+  }
+}
+
+/** The selection carried through sign-in for THIS showtime, if fresh (P-ACC-13). Another showtime's is cleared. */
+function arrival(showtimeId: number): Pending | null {
+  const p = pending(storage(), Date.now()); // the browser's clock, as stored_at was written
+  if (p && p.showtime_id !== showtimeId) {
+    try {
+      window.sessionStorage.removeItem(PENDING_KEY);
+    } catch {
+      // nothing to clear
+    }
+    return null;
+  }
+  return p;
 }
 
 function readSelection(showtimeId: number): number[] {
@@ -83,7 +107,10 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   const [map, setMap] = useState<SeatMap | null>(seed?.map ?? null);
   const [loadError, setLoadError] = useState<LoadError | null>(seed?.loadError ?? null);
   const [pollStrip, setPollStrip] = useState<string | null>(seed?.pollStrip ?? null);
-  const [selection, setSelection] = useState<number[]>(() => seed?.selection ?? readSelection(id));
+  // Read once, before the first fetch; restored only against the map that fetch returns (P-ACC-13 steps 5-8).
+  // ponytail: restored whenever present, so a guest who backs out of sign-in gets the same re-check; no auth wait.
+  const detour = useRef<Pending | null>(seed ? null : arrival(id));
+  const [selection, setSelection] = useState<number[]>(() => seed?.selection ?? (detour.current ? [] : readSelection(id)));
   const [gone, setGone] = useState<string | null>(seed?.gone ?? null);
   const [changed, setChanged] = useState<Set<number>>(new Set());
   const [signedIn, setSignedIn] = useState(seed?.signedIn ?? false);
@@ -129,6 +156,21 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
     last.current = next;
     setMap(next);
     setPollStrip(null);
+    const carried = detour.current;
+    if (carried) {
+      // Back from sign-in: re-select only what this fresh map still reports available, name what went, take no hold.
+      detour.current = null;
+      const { kept, gone: lost } = recheck(carried.seat_ids, next);
+      selectionRef.current = kept;
+      setSelection(kept);
+      writeSelection(next.showtime.id, kept);
+      try {
+        window.sessionStorage.removeItem(PENDING_KEY);
+      } catch {
+        // storage refused: there is nothing to remove
+      }
+      setGone(takenMessage(lost.map(seatLabel), kept.length));
+    }
     // Re-check the selection against the fresh map; a seat that has gone leaves it and is named once (P-SEA-03).
     const { kept, gone: lost } = recheck(selectionRef.current, next);
     if (lost.length > 0) {
@@ -156,6 +198,18 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
       fetchOnce: async () => {
         const r = await get<unknown>(`/api/showtimes/${id}/seatmap`);
         if (!r.ok) {
+          if (r.status === 404 && detour.current) {
+            // The showtime carried through sign-in no longer exists: back to the listing, which says so (P-ACC-13 row 6).
+            detour.current = null;
+            try {
+              window.sessionStorage.removeItem(PENDING_KEY);
+            } catch {
+              // nothing to remove
+            }
+            leaveNotice(storage(), SHOWTIME_GONE);
+            navigate("/");
+            return { ok: false };
+          }
           if (last.current === null) setLoadError(firstLoadError(r));
           setPollStrip(r.status === 429 ? "Too many requests. The seat map will update again shortly."
                                          : "The seat map is not updating. The seats shown may be out of date.");
@@ -233,7 +287,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
     if (!map || map.showtime.sales_closed || !seat.is_active) return;
     // From the ref, not the render's closure: two taps inside one frame must both count.
     const current = selectionRef.current;
-    const next = toggle(current, seat, visual, MAX_SEATS_PER_BOOKING);
+    const next = toggle(current, seat, visual, map.max_seats_per_booking);
     if (next.selection === current) return;
     selectionRef.current = next.selection;
     setSelection(next.selection);
@@ -326,7 +380,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
               {sum !== null && map ? <span className="fr-total">{formatPaise(sum)}</span> : null}
             </li>
           </ul>
-          <p className="fr-cap-note" aria-live="polite">{capNote(MAX_SEATS_PER_BOOKING)}</p>
+          <p className="fr-cap-note" aria-live="polite">{map ? capNote(map.max_seats_per_booking) : ""}</p>
           {signedIn ? (
             // A live hold with nothing further chosen: on to SCR-PAY-01, no request of its own (PRD SCR-SEA 'Success'), and
             // still allowed after sales close (P-HLD-06 row 2: a holder may still pay).
@@ -336,8 +390,12 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
               {primaryLabel(true, chosen.length, holding)}
             </button>
           ) : (
-            // The sign-in step and the selection's round trip through it are the account lane's (P-ACC-13, S-ACC-14).
-            <button type="button" className="fr-action" disabled={!map || sum === null}>{primaryLabel(false, chosen.length, false)}</button>
+            // A guest is stopped at the hold, never here: the press writes the selection and opens sign-in, and sends no
+            // request (S-SEA-10, P-ACC-13 step 3). The header's Sign in link does the same (Shell.tsx).
+            <button type="button" className="fr-action" disabled={!map || sum === null}
+                    onClick={() => { leaveForSignIn(`/showtimes/${id}`, storage(), Date.now()); navigate(signInHref(`/showtimes/${id}`)); }}>
+              {primaryLabel(false, chosen.length, false)}
+            </button>
           )}
           {holding ? (
             <button type="button" className="fr-action-secondary" disabled={busy} onClick={() => void giveBack(null)}>{GIVE_UP}</button>

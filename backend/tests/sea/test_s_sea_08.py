@@ -1,9 +1,8 @@
 """S-SEA-08 (P-HLD-03, EP-HLD-02, EP-PAY-01): whether a hold is alive is Redis's answer, never a clock comparison.
 
 Both liveness surfaces are asserted: the hold READ (GET /api/holds/{token}) and the CONFIRM (POST /api/bookings).
-Not here: a 43-character token carrying `/` (two path segments, so 404 - a contract gap), and the repository-wide
-wall-clock sweep, which finds other lanes' sleeping polls of external processes in tests/adm, tests/xct and
-tests/test_shutdown.py - this module's own sweep covers tests/sea.
+A 43-character token carrying `/` is two path segments and reaches no route; the application's not-found handler
+answers it with the same 400 (CR-002 B-13, Q-R3-05). The wall-clock sweep covers all of backend/tests (CR-002 A-5).
 """
 
 from __future__ import annotations
@@ -80,14 +79,14 @@ async def test_unmatched_foreign_and_malformed_tokens(world):
         r_call("SET", "lock:seat:77:402", "a-different-hold-token", "PX", "300000")
         foreign = await c.get(f"/api/holds/{hold['hold_token']}", cookies=cookies)
         malformed = []
-        # A 43-character token containing `/` is two path segments and reaches no route (404) - reported, not asserted.
-        for token in ("A" * 42, "A" * 44, "A" * 42 + "+", "A" * 42 + "="):
+        # 42, 44, and 43 carrying `+`, `/` or `=`. The `/` one is two path segments: the not-found handler (CR-002 B-13).
+        for token in ("A" * 42, "A" * 44, "A" * 42 + "+", "A" * 21 + "/" + "A" * 21, "A" * 42 + "="):
             c.redis_log.reset()
             r = await c.get(f"/api/holds/{token}", cookies=cookies)
             malformed.append((r.status_code, r.json()["error"]["code"], r.json()["error"]["message"], list(c.redis_log.commands)))
     assert (unmatched.status_code, unmatched.json()["error"]["code"], unmatched.json()["error"]["message"]) == (409, "HOLD_EXPIRED", ENDED)
     assert (foreign.status_code, foreign.json()["error"]["code"], foreign.json()["error"]["message"]) == (403, "HOLD_NOT_OWNED", ENDED)
-    assert malformed == [(400, "REQUEST_INVALID", BAD, [])] * 4
+    assert malformed == [(400, "REQUEST_INVALID", BAD, [])] * 5
 
 
 async def test_the_liveness_check_takes_no_clock_and_sends_one_get(world):

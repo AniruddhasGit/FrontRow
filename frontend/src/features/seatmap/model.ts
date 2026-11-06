@@ -32,12 +32,8 @@ export interface SeatMap {
   seats: Seat[];
   generated_at: string;
   poll_interval_seconds: number;
+  max_seats_per_booking: number; // the server's MAX_SEATS_PER_BOOKING (EP-BRW-06, CR-002 C-1); the client holds no copy
 }
-
-// [JUDGMENT CALL] The server's MAX_SEATS_PER_BOOKING (S7.9, ruled 10) reaches the client through no endpoint, so the
-// cap note needs its own copy of the number. The hold endpoint (Phase 4) is the enforcement point; this only stops
-// an eleventh tap. If the server's value changes, this one must change with it - reported as a contract gap.
-export const MAX_SEATS_PER_BOOKING = 10;
 
 // sessionStorage keys (P-SEA-03). fr.selection is the live selection, rewritten on every change and deleted when
 // it empties. fr.hold is the hold the Phase 4 hold path writes ({ hold_token, seats: [{ seat_id }] }); this screen
@@ -52,7 +48,7 @@ export const GLYPHS: Glyph[] = ["outline", "bar", "hatch", "check"];
 export const TREATMENT: Record<Visual, { fill: string; glyph: Glyph; ending: string }> = {
   available: { fill: "--fr-seat-available", glyph: "outline", ending: "available" },
   sold: { fill: "--fr-seat-sold", glyph: "hatch", ending: "sold" },
-  held_by_other: { fill: "--fr-seat-held-other", glyph: "bar", ending: "held by another customer" },
+  held_by_other: { fill: "--fr-seat-held-other", glyph: "bar", ending: "held by someone else" },
   held_by_me: { fill: "--fr-seat-mine", glyph: "check", ending: "held by you" },
 };
 
@@ -75,6 +71,7 @@ export function parseSeatMap(raw: unknown): SeatMap | null {
   const m = raw as SeatMap;
   if (!m || typeof m !== "object" || !m.showtime || !m.screen || !Array.isArray(m.seats) || !Array.isArray(m.categories)) return null;
   if (typeof m.showtime.sales_closed !== "boolean" || !isInt(m.poll_interval_seconds) || m.poll_interval_seconds < 1) return null;
+  if (!isInt(m.max_seats_per_booking) || m.max_seats_per_booking < 1) return null;
   if (!isInt(m.screen.rows) || !isInt(m.screen.cols)) return null;
   for (const c of m.categories) if (!isInt(c.id) || typeof c.name !== "string" || !isPaise(c.price_paise)) return null;
   for (const s of m.seats) {
@@ -107,8 +104,8 @@ export function selectable(seat: Seat, visual: Visual, salesClosed: boolean): bo
   return seat.is_active && !salesClosed && (visual === "available" || visual === "held_by_me");
 }
 
-/** A tap: add or remove, locally, sending nothing. The eleventh seat is refused and nothing changes. */
-export function toggle(selection: number[], seat: Seat, visual: Visual, max = MAX_SEATS_PER_BOOKING): { selection: number[]; refused: boolean } {
+/** A tap: add or remove, locally, sending nothing. The seat past the server's cap is refused and nothing changes. */
+export function toggle(selection: number[], seat: Seat, visual: Visual, max: number): { selection: number[]; refused: boolean } {
   if (selection.includes(seat.id)) return { selection: selection.filter((id) => id !== seat.id), refused: false };
   if (!selectable(seat, visual, false)) return { selection, refused: false };
   if (selection.length >= max) return { selection, refused: true };

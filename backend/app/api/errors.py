@@ -114,6 +114,12 @@ def install_error_handlers(app: FastAPI) -> None:
         # registry code for it; any other 4xx is a request the server could not read (REQUEST_INVALID),
         # and only a 5xx is INTERNAL_ERROR - the one code whose sentence quotes the request id.
         code = _HTTP_CODES.get(exc.status_code) or ("INTERNAL_ERROR" if exc.status_code >= 500 else "REQUEST_INVALID")
+        # A hold token carrying `/` is two path segments and reaches no route. It is still a malformed token, so it
+        # gets P-HLD-03's 400 and its sentence, with no Redis command (CR-002 B-13, Q-R3-05). Published routes unchanged.
+        rest = request.url.path.removeprefix("/api/holds/")
+        if exc.status_code == 404 and rest != request.url.path and "/" in rest and len(rest) >= 43:
+            from app.domain.holds import BAD_TOKEN
+            return _respond(400, "REQUEST_INVALID", message=BAD_TOKEN)
         return _respond(exc.status_code, code, headers=getattr(exc, "headers", None))
 
     @app.exception_handler(RequestValidationError)

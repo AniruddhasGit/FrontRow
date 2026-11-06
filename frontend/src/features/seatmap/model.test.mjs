@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  GLYPHS, LEGEND, MAX_SEATS_PER_BOOKING, TREATMENT, bands, capNote, changedSeats, goneBanner, mapBanner, parseSeatMap,
+  GLYPHS, LEGEND, TREATMENT, bands, capNote, changedSeats, goneBanner, mapBanner, parseSeatMap,
   recheck, seatLabel, seatName, selectable, toggle, total, visualOf,
 } from "./model.ts";
 import { formatPaise } from "../admin/money.ts";
@@ -15,7 +15,7 @@ const payload = (seats, over = {}) => ({
   showtime: { id: 77, starts_at: "2026-08-16T19:30:00+05:30", sales_close_at: "2026-08-16T19:45:00+05:30", sales_closed: false },
   screen: { id: 4, name: "Hall 4", rows: 12, cols: 22 },
   categories: [{ id: 2, name: "Premium", price_paise: 28125 }],
-  seats, generated_at: "2026-08-15T12:00:00+05:30", poll_interval_seconds: 3, ...over,
+  seats, generated_at: "2026-08-15T12:00:00+05:30", poll_interval_seconds: 3, max_seats_per_booking: 10, ...over,
 });
 
 test("three wire values against hold membership render exactly four (fill, glyph) pairs and four name endings", () => {
@@ -31,13 +31,13 @@ test("three wire values against hold membership render exactly four (fill, glyph
   assert.equal(pairs.size, 4);
   assert.deepEqual([...pairs].sort(), ["--fr-seat-available|outline", "--fr-seat-held-other|bar", "--fr-seat-mine|check", "--fr-seat-sold|hatch"]);
   const endings = new Set(renders.map((v) => TREATMENT[v].ending));
-  assert.deepEqual([...endings].sort(), ["available", "held by another customer", "held by you", "sold"]);
+  assert.deepEqual([...endings].sort(), ["available", "held by someone else", "held by you", "sold"]);
   assert.deepEqual(new Set(GLYPHS), new Set(["outline", "bar", "hatch", "check"]));
 });
 
 test("accessible names state identity, category and state; out of service in any state", () => {
   assert.equal(seatName(seat(), "Premium", "available"), "Row C seat 12, Premium, available");
-  assert.equal(seatName(seat(), "Premium", "held_by_other"), "Row C seat 12, Premium, held by another customer");
+  assert.equal(seatName(seat(), "Premium", "held_by_other"), "Row C seat 12, Premium, held by someone else");
   assert.equal(seatName(seat(), "Premium", "held_by_me"), "Row C seat 12, Premium, held by you");
   for (const state of ["available", "held", "sold"]) {
     const s = seat({ state, is_active: false });
@@ -62,23 +62,24 @@ test("a payload with a fourth state, a missing is_active, or a non-integer price
   assert.equal(parseSeatMap(payload([noActive])), null);
   for (const price of [-1, 2.5, "28125", null]) assert.equal(parseSeatMap(payload([seat({ price_paise: price })])), null, String(price));
   assert.equal(parseSeatMap(payload([seat()], { poll_interval_seconds: "3" })), null);
+  assert.equal(parseSeatMap(payload([seat()], { max_seats_per_booking: undefined })), null); // the cap is the server's (C-1)
+  assert.equal(parseSeatMap(payload([seat()], { max_seats_per_booking: "10" })), null);
   assert.equal(parseSeatMap({ error: {} }), null);
 });
 
 test("choosing toggles locally, refuses the eleventh seat, and the cap note interpolates the configured maximum", () => {
-  assert.equal(MAX_SEATS_PER_BOOKING, 10);
   // The note interpolates the cap (S-SEA-09): asserted at 6, so no "up to ten" literal ships anywhere in frontend/src.
   assert.equal(capNote(6), "Up to 6 seats.");
-  assert.equal(capNote(MAX_SEATS_PER_BOOKING), capNote(10));
   let chosen = [];
-  chosen = toggle(chosen, seat(), "available").selection;
+  chosen = toggle(chosen, seat(), "available", 10).selection;
   assert.deepEqual(chosen, [402]);
-  assert.deepEqual(toggle(chosen, seat(), "held_by_me").selection, []);
-  assert.deepEqual(toggle([], seat({ state: "sold" }), "sold").selection, []);
+  assert.deepEqual(toggle(chosen, seat(), "held_by_me", 10).selection, []);
+  assert.deepEqual(toggle([], seat({ state: "sold" }), "sold", 10).selection, []);
   const ten = Array.from({ length: 10 }, (_, i) => i + 1);
-  const eleventh = toggle(ten, seat({ id: 99 }), "available");
+  const eleventh = toggle(ten, seat({ id: 99 }), "available", 10);
   assert.deepEqual(eleventh.selection, ten);
   assert.equal(eleventh.refused, true);
+  assert.equal(toggle(ten.slice(0, 6), seat({ id: 99 }), "available", 6).refused, true); // at the server's 6, the seventh
 });
 
 test("the total sums integers only: 2 Premium then 3 Recliner render the five published figures", () => {
