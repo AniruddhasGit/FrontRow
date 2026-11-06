@@ -5,6 +5,7 @@
 //
 // FEATURE LANES: add routes in your own feature's routes.tsx, never here. This file only collects them.
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { adminRoutes } from "./features/admin/routes";
 import { authRoutes } from "./features/auth/routes";
 import { browseRoutes } from "./features/browse/routes";
@@ -20,7 +21,13 @@ const NAVIGATE_EVENT = "fr:navigate";
 
 export function navigate(to: string): void {
   window.history.pushState(null, "", to);
-  window.dispatchEvent(new Event(NAVIGATE_EVENT));
+  // The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
+  // one settles in (premium.css). flushSync makes React paint the new screen inside the transition callback.
+  // No API, or reduced motion: the plain instant swap, unchanged.
+  const swap = () => flushSync(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)));
+  const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (typeof document !== "undefined" && "startViewTransition" in document && !reduced) document.startViewTransition(swap);
+  else swap();
 }
 
 export function usePathname(): string {

@@ -464,3 +464,14 @@ a {
   text-transform: uppercase;
   font-size: var(--fr-text-xs);
 }
+
+/* Screen-to-screen transitions (View Transitions API, router.tsx navigate()). The header holds still while the page
+   under it fades and settles; reduced motion turns every animation off. */
+.fr-header { view-transition-name: fr-header; }
+::view-transition-old(root) { animation: fr-vt-out 240ms var(--fr-ease-out) both; }
+::view-transition-new(root) { animation: fr-vt-in 480ms var(--fr-ease-out) both; }
+@keyframes fr-vt-out { to { opacity: 0; transform: scale(0.985); filter: blur(4px); } }
+@keyframes fr-vt-in { from { opacity: 0; transform: scale(1.015); filter: blur(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
