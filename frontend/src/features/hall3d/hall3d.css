@@ -56,3 +56,25 @@
 .fr-hall3d-off {
   margin-bottom: var(--fr-space-4);
 }
+/* The hover label: presentation only, over the canvas, following the pointer (transform set in Hall3D.tsx). */
+.fr-hall3d-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: var(--fr-space-1) var(--fr-space-2);
+  border-radius: var(--fr-radius-md);
+  background: var(--fr-surface-base);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  color: var(--fr-ink-strong);
+  font-size: var(--fr-text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.fr-hall3d-tip[hidden] {
+  display: none;
+}
+.fr-hall3d-preview {
+  margin: 0;
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+}

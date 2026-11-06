@@ -5,15 +5,16 @@
 // load or throws, this renders nothing and the 2D map alone carries the page - nothing is lost. It renders nothing on
 // the first render too (the decision is an effect), so the server-side render harness sees the 2D page unchanged.
 // ponytail: the width is checked once on mount; resizing below it later keeps the scene. Upgrade: a matchMedia listener.
-import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
-import { seatName, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
-import type { Mode } from "./hall";
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { formatPaise } from "../admin/money";
+import { seatLabel, selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
+import { seatTip, stateWord, type Mode } from "./hall";
 import type { Film } from "./HallScene";
 import "./hall3d.css";
 
 const HallScene = lazy(() => import("./HallScene"));
 
-const MODES: [Mode, string][] = [["overview", "Hall overview"], ["seat", "View from my seat"], ["screen", "From the screen"]];
+const MODES: [Mode, string][] = [["all", "All seats"], ["seat", "From my seat"]];
 
 function canDraw(): boolean {
   if (!window.matchMedia("(min-width: 48rem)").matches) return false;
@@ -45,9 +46,17 @@ export function Hall3D({ map, film = null, mine, onTap }: {
 }) {
   const [able, setAble] = useState(false);
   const [on, setOn] = useState(true);
-  const [mode, setMode] = useState<Mode>("overview");
+  const [mode, setMode] = useState<Mode>("all");
+  const [picked, setPicked] = useState<number | null>(null); // the seat last clicked in 3D, whose view is shown
+  const [preview, setPreview] = useState<string | null>(null);
   const [hover, setHover] = useState<Seat | null>(null);
+  const [moving, setMoving] = useState(false);
+  const tip = useRef<HTMLDivElement>(null);
   useEffect(() => setAble(canDraw()), []);
+  const onMoving = useCallback((m: boolean) => {
+    setMoving(m);
+    if (m) setHover(null); // the seat under the pointer is about to change
+  }, []);
   if (!able || !map) return null;
 
   if (!on) {
@@ -58,32 +67,58 @@ export function Hall3D({ map, film = null, mine, onTap }: {
     );
   }
   const category = new Map(map.categories.map((c) => [c.id, c.name]));
-  const first = map.seats.find((s) => s.id === mine.values().next().value);
-  const caption = hover
-    ? seatName(hover, category.get(hover.cat) ?? "", visualOf(hover, mine))
-    : mode === "seat"
-      ? (first ? `Your view from row ${first.row}, seat ${first.num}.` : "Choose a seat to see the screen from it.")
-      : mode === "screen" ? "Looking back at the hall from the screen." : "Tap a seat here or on the map below. Both stay in step.";
+  const seatId = mode === "seat" ? picked ?? mine.values().next().value ?? null : null;
+  const at = map.seats.find((s) => s.id === seatId);
+  const caption = mode === "seat"
+    ? (at ? `The view from row ${at.row}, seat ${at.num}.` : "Choose a seat to see the screen from it.")
+    : "Click a seat to choose it and see the screen from it. The map below stays in step.";
+  const show = (m: Mode) => {
+    setMode(m);
+    setPicked(null);
+    setPreview(null);
+  };
+  // A click on any seat shows its view; a seat that cannot be chosen is only previewed (HallScene did not tap it).
+  const look = (seat: Seat) => {
+    const v = visualOf(seat, mine);
+    setMode("seat");
+    setPicked(seat.id);
+    setPreview(selectable(seat, v, map.showtime.sales_closed) ? null
+      : `Previewing ${seatLabel(seat)}: this seat is ${(stateWord(seat, v) ?? "not on sale").toLowerCase()}.`);
+  };
 
   return (
     <section className="fr-hall3d" aria-label="The hall in 3D">
       <div className="fr-hall3d-bar">
         <div role="group" aria-label="Camera" className="fr-hall3d-modes">
           {MODES.map(([m, label]) => (
-            <button key={m} type="button" className="fr-choice" aria-pressed={mode === m} onClick={() => setMode(m)}>{label}</button>
+            <button key={m} type="button" className="fr-choice" aria-pressed={mode === m} onClick={() => show(m)}>{label}</button>
           ))}
         </div>
         <button type="button" className="fr-action-secondary" onClick={() => setOn(false)}>Use the 2D map only</button>
       </div>
-      <div className="fr-hall3d-stage" aria-hidden="true">
+      <div className="fr-hall3d-stage" aria-hidden="true" onPointerMove={(e) => {
+        // The label follows the pointer by a style write, not a render: React re-renders only when the seat changes.
+        const box = e.currentTarget.getBoundingClientRect();
+        tip.current?.style.setProperty("transform", `translate(${e.clientX - box.left + 14}px, ${e.clientY - box.top + 18}px)`);
+      }}>
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
-            <HallScene map={map} film={film} mine={mine} mode={mode} onTap={onTap} onHover={setHover} />
+            <HallScene map={map} film={film} mine={mine} mode={mode} seatId={seatId} onTap={onTap} onLook={look}
+                       onHover={setHover} onMoving={onMoving} />
           </Suspense>
         </Guard>
+        <div ref={tip} className="fr-hall3d-tip" hidden={!hover || moving}>
+          {hover ? seatTip(hover, category.get(hover.cat) ?? "", visualOf(hover, mine), formatPaise(hover.price_paise)) : null}
+        </div>
         <p className="fr-hall3d-name">{map.screen.name} <span className="fr-mono">{map.seats.length}</span> seats</p>
         <p className="fr-hall3d-caption">{caption}</p>
       </div>
+      {mode === "seat" ? (
+        <div className="fr-hall3d-bar">
+          <p className="fr-hall3d-preview">{preview ?? ""}</p>
+          <button type="button" className="fr-action-secondary" onClick={() => show("all")}>Back to all seats</button>
+        </div>
+      ) : null}
     </section>
   );
 }
