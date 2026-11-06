@@ -694,7 +694,7 @@ depends on. **`used_at` is a third and separate thing**: it records the customer
    (`SRC-004 JC-R6-01a`). The response does not wait for the SES send.
 7. The server returns `202` with the same body as step 2.
 
-**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>`. `PUBLIC_BASE_URL` is a required
+**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>`. The token rides in the URL fragment, which the browser never sends to the server, so it is absent from every access log (`CR-002 B-1`, approved by `SRC-008 NIGHT-1`). `PUBLIC_BASE_URL` is a required
 variable with no default (`FR-ADR-053`). The email states that the link works once and expires in 30
 minutes, and it names the account address it was requested for.
 
@@ -1766,7 +1766,7 @@ a screen reader must be told the form was replaced rather than discover it by ex
 ---
 
 ### `SCR-ACC-03` · Choose a new password
-**Route.** `/account/reset/confirm?token=…` · **Who reaches it.** anyone following the emailed link
+**Route.** `/account/reset/confirm#token=…` (`CR-002 B-1`) · **Who reaches it.** anyone following the emailed link
 · **Component basis.** `COMPONENTS.md §11`
 
 **What the user arrives with / leaves with.** They arrive with a token in the query string. They leave
@@ -1998,7 +1998,7 @@ copy defect; it is a customer who cannot tell a genuine reset from a fraudulent 
 | Subject | none | names the product and the action, and **carries no token, no reference and no address** — a subject line is the part most likely to be shown on a lock screen | — |
 | Plain-text part | none | **the authoritative part.** Every sentence below appears in it | — |
 | HTML part | none | the same sentences in the same order, minimal markup | **no remote image, no web font, no tracking pixel, no external resource of any kind** |
-| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>` (`P-ACC-07`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
+| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>` (`P-ACC-07`, `CR-002 B-1`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
 | The expiry figure | none | **interpolated from `PASSWORD_RESET_TTL_SECONDS / 60`** as a whole number of minutes, into the one shared sentence — see below | a literal is a defect (`P-ACC-07`) |
 
 **The expiry is never typed, here or anywhere.** The sentence *"The link works once and expires in 30
@@ -2031,7 +2031,7 @@ Plain-text body, verbatim, with the bracketed values substituted:
 A password reset was requested for customer@example.invalid.
 
 Set a new password here:
-https://example.invalid/account/reset/confirm?token=<the token>
+https://example.invalid/account/reset/confirm#token=<the token>
 
 The link works once and expires in 30 minutes.
 

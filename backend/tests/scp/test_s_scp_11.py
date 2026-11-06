@@ -11,8 +11,26 @@ import pytest
 from tests.xct._support import rg
 
 
+POS = r"point[-_ ]?of[-_ ]?sale|\bpos[-_/]|[-_/]pos\b|\bpos(terminal|sale|_?id)\b|\btill\b|counter_?sale|terminal_?sale"
+
+
 def test_no_point_of_sale_vocabulary_in_the_application():
-    assert rg(r"\bpos\b|\btill\b|counter_?sale|terminal_?sale", "backend/app", "frontend/src", ignore_case=True) == []
+    """CR-002 A-7: a bare `pos` (a byte offset in domain/posters.py) no longer counts; every POS shape still does."""
+    import re
+
+    from tests.scp.test_s_scp_01 import EXCLUDED
+
+    assert rg(POS, "backend/app", "frontend/src", ignore_case=True) == []
+    rx = re.compile(POS, re.IGNORECASE)
+    assert all(rx.search(s) for s in ("Point of Sale", "pos_id", "/pos", "pos-sale", "possale", "posTerminal", "till"))
+    assert EXCLUDED.search("/api/pos/sales")  # S-SCP-01's mounted-path regex still refuses pos/
+
+
+def test_exactly_two_code_sites_write_booking_seat():
+    hits = rg(r"insert\(booking_seat\)|INSERT INTO booking_seat|COPY booking_seat", "backend/app", "scripts", ignore_case=True)
+    files = {h[0] for h in hits}
+    domain = [f for f in files if f.startswith("backend/app/domain/")]
+    assert len(domain) == 1 and files == {domain[0], "scripts/seed.py"}, files
 
 
 @pytest.mark.anyio

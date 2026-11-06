@@ -188,8 +188,9 @@ def test_resolved_configuration_is_logged_exactly_once_with_secrets_redacted():
         text=True,
     )
     try:
-        end = time.monotonic() + 20  # a startup deadline only; no assertion depends on the time
-        while _refused(port) and time.monotonic() < end and proc.poll() is None:
+        for _ in range(200):  # a startup bound by count (200 x 0.1 s), never by a clock reading (S-SEA-08)
+            if not _refused(port) or proc.poll() is not None:
+                break
             time.sleep(0.1)
         proc.send_signal(signal.SIGTERM)
         out, _ = proc.communicate(timeout=20)

@@ -6679,7 +6679,7 @@ per seat  = (24999 * (10000 + 1250) + 5000) // 10000
           =  28,124 paise                      exact quotient 28,123.875, so the +5000 rounds it up
 total     = 28124 + 28124 + 28124 = 84,372 paise    the sum of already-rounded per-seat prices,
                                                      never a total that is itself rounded
-rendered  = ₹843.72
+rendered  = $843.72                                  US dollars (SRC-006 CUR-1)
 ```
 
 The page renders the stored total; it never recomputes it (`FR-ADR-039`).
@@ -7132,8 +7132,8 @@ the account's email address (`FR-ADR-014`); it is never taken from a request.
    (`E5 P-ACC-10`) — `F7, F8, F9`, never the insertion order `F9, F7, F8`, which is what a seat added
    to a hall already in service produces (`E6 P-ADM-14`). The receipt and the door are the two places
    the order is read aloud.
-4. Render the total from the stored integer paise at the last possible moment, with Indian digit
-   grouping and the `₹` symbol (`FR-ADR-036`). **No tax line, no fee line, no discount line, and no
+4. Render the total from the stored integer paise at the last possible moment, with en-US digit
+   grouping and the `$` symbol (`FR-ADR-036`; US dollars by `SRC-006 CUR-1`). **No tax line, no fee line, no discount line, and no
    space left for one** (`FR-ADR-040`).
 5. Render the reference in the `FR-XXXX-XXXX` presentation form.
 6. Send both a plain-text part and a minimal HTML part with the same content. `SCR-TKT-02` holds the
@@ -7159,7 +7159,7 @@ in.
 **Worked example.** Booking `FR-ACDE-FHJD`, three Premium seats `F7`, `F8`, `F9` in `Hall 3`, showtime
 stored as `2026-08-21T13:45:00Z`, total `84372` paise — the seeded figures worked through in
 `P-TKT-03`. The receipt renders the time as
-**21 Aug 2026, 7:15 pm (Asia/Kolkata)** and the amount as **₹843.72**. That is `S7.19`'s
+**21 Aug 2026, 7:15 pm (Asia/Kolkata)** and the amount as **$843.72** (`SRC-006 CUR-1`). That is `S7.19`'s
 date-with-time form plus the zone suffix its rule 2 gives the emailed receipt and nothing else, on the
 grounds that a receipt is the one surface read outside the site and months later. The exact rendered
 strings are in `SCR-TKT-02`.
@@ -8409,7 +8409,7 @@ depends on. **`used_at` is a third and separate thing**: it records the customer
    (`SRC-004 JC-R6-01a`). The response does not wait for the SES send.
 7. The server returns `202` with the same body as step 2.
 
-**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>`. `PUBLIC_BASE_URL` is a required
+**The link.** `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>`. The token rides in the URL fragment, which the browser never sends to the server, so it is absent from every access log (`CR-002 B-1`, approved by `SRC-008 NIGHT-1`). `PUBLIC_BASE_URL` is a required
 variable with no default (`FR-ADR-053`). The email states that the link works once and expires in 30
 minutes, and it names the account address it was requested for.
 
@@ -17764,7 +17764,7 @@ Film      DEMO MOVIE 01
 Hall      Hall 3
 Showtime  21 Aug 2026, 7:15 pm (Asia/Kolkata)
 Seats     F7, F8, F9
-Paid      Rs 843.72
+Paid      $843.72
 
 Show this reference at the entrance. A person will check it.
 
@@ -17787,8 +17787,8 @@ full is not one of the five forms, and a 24-hour clock never reaches a customer.
 
 The HTML part carries the same lines in the same order. **The last line is a statement of the ruled
 position** (`SRC-003 OPEN-CANCEL-01`, `OPEN-CANCEL-02`, `FR-ADR-013`) and not a policy invented here.
-The amount is written `Rs 843.72` in the plain-text part because the `₹` symbol renders unreliably in
-plain-text mail clients; the HTML part uses `₹843.72`. There is no tax line, no fee line and no
+The amount is written `$843.72` in both parts (`SRC-006 CUR-1`, US dollars; amended 2026-11-07 under
+`SRC-008 NIGHT-1`). The plain-text part once used `Rs` only because `₹` is not ASCII; `$` is. There is no tax line, no fee line and no
 discount line, and no space is left for one (`FR-ADR-040`).
 
 **Accessibility.** The HTML part is a single-column document with real heading and list elements, no
@@ -17974,7 +17974,7 @@ a screen reader must be told the form was replaced rather than discover it by ex
 ---
 
 #### `SCR-ACC-03` · Choose a new password
-**Route.** `/account/reset/confirm?token=…` · **Who reaches it.** anyone following the emailed link
+**Route.** `/account/reset/confirm#token=…` (`CR-002 B-1`) · **Who reaches it.** anyone following the emailed link
 · **Component basis.** `COMPONENTS.md §11`
 
 **What the user arrives with / leaves with.** They arrive with a token in the query string. They leave
@@ -18206,7 +18206,7 @@ copy defect; it is a customer who cannot tell a genuine reset from a fraudulent 
 | Subject | none | names the product and the action, and **carries no token, no reference and no address** — a subject line is the part most likely to be shown on a lock screen | — |
 | Plain-text part | none | **the authoritative part.** Every sentence below appears in it | — |
 | HTML part | none | the same sentences in the same order, minimal markup | **no remote image, no web font, no tracking pixel, no external resource of any kind** |
-| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm?token=<token>` (`P-ACC-07`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
+| The link | none — the URL is rendered as text in the plain-text part and as one anchor in the HTML part | `{PUBLIC_BASE_URL}/account/reset/confirm#token=<token>` (`P-ACC-07`, `CR-002 B-1`) | `PUBLIC_BASE_URL` is required with no default (`FR-ADR-053`) |
 | The expiry figure | none | **interpolated from `PASSWORD_RESET_TTL_SECONDS / 60`** as a whole number of minutes, into the one shared sentence — see below | a literal is a defect (`P-ACC-07`) |
 
 **The expiry is never typed, here or anywhere.** The sentence *"The link works once and expires in 30
@@ -18239,7 +18239,7 @@ Plain-text body, verbatim, with the bracketed values substituted:
 A password reset was requested for customer@example.invalid.
 
 Set a new password here:
-https://example.invalid/account/reset/confirm?token=<the token>
+https://example.invalid/account/reset/confirm#token=<the token>
 
 The link works once and expires in 30 minutes.
 

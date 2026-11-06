@@ -65,7 +65,9 @@ async def test_an_unreachable_queue_leaves_the_row_pending_and_counts_the_attemp
 
 
 def test_the_relay_never_reads_the_database_clock():
-    rx = re.compile(r"now\(\)|CURRENT_TIMESTAMP|statement_timestamp")
+    # CR-002 A-4 (rg -niP): the lookbehind excludes a method call such as clock.now() and nothing else.
+    rx = re.compile(r"(?<![.\w])now\(\)|CURRENT_TIMESTAMP|statement_timestamp|clock_timestamp|transaction_timestamp|LOCALTIMESTAMP", re.IGNORECASE)
+    assert rx.search("SELECT NOW()") and rx.search("x = now()") and not rx.search("self.clock.now()")
     hits = [f"{p.name}:{i}" for p in (BACKEND / "app" / "workers").rglob("*.py")
             for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if rx.search(ln)]
     assert hits == []
@@ -84,11 +86,17 @@ def test_the_fast_path_bound_must_fit_a_tenth_of_the_drain(valid_env, timeout, b
 
 
 def test_nothing_schedules_anything():
-    # Assembled from fragments, so this file - which is inside backend/ - does not match its own scan.
-    words = ["ap" + "scheduler", "cel" + "ery", "Background" + "Scheduler", "cron" + "iter", "cron" + "tab", "schedule" + ".every", "add_job" + r"\("]
-    rx = re.compile("|".join(words), re.IGNORECASE)
-    files = [p for p in BACKEND.rglob("*") if p.is_file() and "__pycache__" not in p.parts]
+    # CR-002 A-3: the words are swept over the trees that ship or install a dependency, not backend/tests/ (whose
+    # guard tests quote them); a test may not IMPORT a scheduler; and no beat.py, scheduler.py or crontab exists.
+    rx = re.compile(r"apscheduler|celery|BackgroundScheduler|croniter|crontab|schedule.every|add_job\(", re.IGNORECASE)
+    shipped = [BACKEND / p for p in ("app", "migrations", "requirements.txt", "entrypoint.sh", "Dockerfile")]
+    assert all(p.exists() for p in shipped), [p for p in shipped if not p.exists()]
+    files = [f for p in shipped for f in ([p] if p.is_file() else p.rglob("*")) if f.is_file() and "__pycache__" not in f.parts]
     hits = [f"{p.relative_to(BACKEND)}:{i}" for p in files for i, ln in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1)
             if rx.search(ln)]
     assert hits == []
+    imports = re.compile(r"^\s*(import|from)\s+(apscheduler|celery|croniter)\b")
+    tests = [p for p in (BACKEND / "tests").rglob("*.py")]
+    assert [f"{p.name}:{i}" for p in tests for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if imports.search(ln)] == []
     assert [p for p in BACKEND.rglob("*") if p.name in ("beat.py", "scheduler.py", "cron" + "tab")] == []

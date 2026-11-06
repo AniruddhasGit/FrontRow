@@ -23,6 +23,18 @@ def test_nothing_in_the_application_resolves_a_conflict_quietly():
     assert rg("ON CONFLICT", "backend/app") == []
 
 
+def test_every_row_lock_is_on_the_allow_list_and_none_is_on_a_seat_occupancy_row():
+    """CR-002 A-2. The parser is proved too: a lock on booking_seat or showtime_seat, or off the list, is caught."""
+    from tests.xct._support import lock_violations, locked_table, row_locks
+
+    locks = row_locks()
+    assert len(locks) >= 11 and lock_violations(locks) == [], locks
+    assert locked_table("api/x.py", ["SELECT 1 FROM booking_seat bs WHERE bs.id = 1 FOR UPDATE"], 1) == {"booking_seat"}
+    assert locked_table("api/x.py", ["select(showtime_seat).with_for_update()"], 1) == {"showtime_seat"}
+    assert lock_violations([("domain/admin/halls.py", 1, {"showtime_seat"}), ("api/holds.py", 1, {"showtime"})]) \
+        == [("domain/admin/halls.py", 1, {"showtime_seat"}), ("api/holds.py", 1, {"showtime"})]
+
+
 # ---- the confirm path (EP-PAY-01) ------------------------------------------------------------------------
 
 import logging  # noqa: E402

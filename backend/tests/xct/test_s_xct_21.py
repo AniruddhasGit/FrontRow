@@ -135,8 +135,9 @@ def test_ready_503_in_under_2s_against_a_blackholed_postgres():
         stderr=subprocess.DEVNULL,
     )
     try:
-        end = time.monotonic() + 20  # a startup deadline only
-        while _refused(port) and time.monotonic() < end and proc.poll() is None:
+        for _ in range(200):  # a startup bound by count (200 x 0.1 s), never by a clock reading (S-SEA-08)
+            if not _refused(port) or proc.poll() is not None:
+                break
             time.sleep(0.1)
         started = time.monotonic()
         r = httpx.get(f"http://127.0.0.1:{port}/health/ready", timeout=10)

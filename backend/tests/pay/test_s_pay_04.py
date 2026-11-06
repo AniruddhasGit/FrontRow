@@ -79,7 +79,9 @@ def test_the_prefix_bounds(valid_env):
 
 
 def test_the_assumed_values_appear_only_in_the_settings_module():
-    pattern = re.compile(r"\b1500\b|FAIL_")
+    # The amended cell: FAIL_ counts only where it opens a quoted string literal, because the S7.9 variable name
+    # PAYMENT_SIMULATOR_FAIL_KEY_PREFIX itself contains FAIL_ and every module that reads the setting names it.
+    pattern = re.compile(r"\b1500\b|[\"']FAIL_")
     hits = [f"{p.relative_to(APP)}:{n}" for p in APP.rglob("*.py") if p.name not in ("config.py", "settings.py")
             for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1) if pattern.search(line)]
     assert hits == []
@@ -99,8 +101,9 @@ def test_a_successful_boot_prints_one_line_whose_payment_provider_field_reads_si
     proc = subprocess.Popen([sys.executable, "-m", "app", "api"], cwd=BACKEND_DIR, env=_boot_env(API_PORT=str(port)),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        end = time.monotonic() + 20  # a startup deadline only; no assertion depends on the time
-        while _refused(port) and time.monotonic() < end and proc.poll() is None:
+        for _ in range(200):  # a startup bound by count (200 x 0.1 s), never by a clock reading (S-SEA-08)
+            if not _refused(port) or proc.poll() is not None:
+                break
             time.sleep(0.1)
         proc.send_signal(signal.SIGTERM)
         out, _ = proc.communicate(timeout=20)

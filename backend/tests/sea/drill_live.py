@@ -46,10 +46,8 @@ PASSWORD = secrets.token_urlsafe(18)  # a throwaway, in memory only; never writt
 DB = "fr_drill_" + secrets.token_hex(4)
 FAILURES: list[str] = []
 # The drill waits on REAL containers in real time - a Redis restart, a process exit, a key's own TTL - which is the
-# point of it. It is not a test and asserts nothing against an application clock; every wait is this one helper.
-# (A plain sleep: the S-SEA-08 rg over backend/tests finds it, which is that AC's over-reach - see its doc defect.)
-def pause(seconds: float) -> None:
-    time.sleep(seconds)
+# point of it. It is not a test and asserts nothing against an application clock. Every wait is a time.sleep inside
+# a poll loop bounded by an iteration count, never by a clock reading (S-SEA-08 as amended by CR-002 A-5).
 
 
 def sh(*args: str, check: bool = True, input: str | None = None, env: dict | None = None) -> subprocess.CompletedProcess:
@@ -108,7 +106,7 @@ def wait_ready() -> None:
                 return
         except OSError:
             pass
-        pause(0.5)
+        time.sleep(0.5)
     raise RuntimeError("the drill api never became ready:\n" + sh("docker", "logs", API, check=False).stdout[-3000:])
 
 
@@ -124,14 +122,15 @@ def call(method: str, path: str, body: dict | None = None, cookie: str | None = 
 
 
 def login(n: int) -> str:
-    while True:
+    for _ in range(30):  # bounded: a rate-limited login is retried at most 30 times
         status, body, r, _ = call("POST", "/api/auth/login", {"email": f"customer-{n:02d}@demo.frontrow.invalid", "password": PASSWORD})
         if status == 429:
-            pause(int(r.getheader("Retry-After") or "1"))
+            time.sleep(int(r.getheader("Retry-After") or "1"))
             continue
         if status != 200:
             raise RuntimeError(f"login {n} answered {status}: {body}")
         return r.getheader("Set-Cookie").split(";", 1)[0]
+    raise RuntimeError(f"login {n} was still rate limited after 30 attempts")
 
 
 def remove(*names: str) -> None:
@@ -265,7 +264,7 @@ def redis_stop() -> None:
     for _ in range(60):
         if sh("docker", "exec", REDIS, "redis-cli", "PING", check=False).stdout.strip() == "PONG":
             break
-        pause(0.5)
+        time.sleep(0.5)
     before = rcli("KEYS", "lock:seat:77:*")
     check("the holds taken before the outage are gone, before the next request", before == "", repr(before))
     s, _, _, _ = call("POST", "/api/showtimes/77/holds", {"seat_ids": [404]}, cookie)
@@ -315,7 +314,7 @@ def sigkill() -> None:
     polls = 0
     while rcli("EXISTS", "lock:seat:77:415") == "1" and polls < 100:
         polls += 1
-        pause(0.1)
+        time.sleep(0.1)
     check("Redis alone removed it once its TTL passed", rcli("EXISTS", "lock:seat:77:415") == "0", f"after {polls} polls")
     remove(API)
     start_api()

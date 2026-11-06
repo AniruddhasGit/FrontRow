@@ -113,8 +113,41 @@ async def test_the_read_takes_no_client_instant(world):
     assert [p["in"] for p in op.get("parameters", [])] == ["path"]
 
 
+def _bounded(loop) -> bool:
+    """A for over range(...), or a while whose test compares a counter the body increments."""
+    import ast
+
+    if isinstance(loop, ast.For):
+        return isinstance(loop.iter, ast.Call) and getattr(loop.iter.func, "id", None) == "range"
+    counted = {n.target.id for n in ast.walk(loop) if isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name)}
+    return any(isinstance(c, ast.Compare) and isinstance(c.left, ast.Name) and c.left.id in counted
+               and all(isinstance(op, (ast.Lt, ast.LtE)) for op in c.ops) for c in ast.walk(loop.test))
+
+
 def test_no_test_in_this_lane_reads_the_wall_clock():
-    assert rg(r"time\.sleep\(|datetime\.now\(|datetime\.utcnow\(|time\.time\(", "backend/tests/sea") == []
+    """CR-002 A-5, over all of backend/tests."""
+    import ast
+
+    assert rg(r"datetime\.now\(|datetime\.utcnow\(|datetime\.today\(|date\.today\(|time\.time\(|time\.time_ns\(",
+              "backend/tests") == []
+    sleeps = rg(r"time\.sleep\(", "backend/tests")
+    assert sleeps, "no sleep found - a vacuous pass is not a pass"
+    unbounded = []
+    for path in sorted({h[0] for h in sleeps}):
+        tree = ast.parse((REPO / path).read_text(encoding="utf-8"))
+        parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "time.sleep":
+                loop = parents.get(node)
+                while loop is not None and not isinstance(loop, (ast.For, ast.While, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    loop = parents.get(loop)
+                if not isinstance(loop, (ast.For, ast.While)) or not _bounded(loop):
+                    unbounded.append(f"{path}:{node.lineno}")
+    assert unbounded == []
+    # The check itself: a clock-bounded loop and a bare sleep are both caught.
+    clocked = ast.parse("while time.monotonic() < end:\n    time.sleep(0.1)\n").body[0]
+    counted = ast.parse("while x and polls < 100:\n    polls += 1\n    time.sleep(0.1)\n").body[0]
+    assert not _bounded(clocked) and _bounded(counted) and _bounded(ast.parse("for _ in range(9):\n    pass\n").body[0])
 
 
 # ---- the confirm (EP-PAY-01) as the liveness surface ------------------------------------------------------
