@@ -190,7 +190,8 @@ def main(argv=None) -> int:
     api_url = api["serviceDetails"]["url"] if api else f"https://{API_NAME}.onrender.com"
     env = api_env(pw, redis_url, web_url, r.env(api["id"]) if api else {})
 
-    mode = "APPLY" if args.apply else "DRY RUN (nothing is changed; --apply to change)"
+    mode = ("APPLY" if args.apply else "DEPLOY ONLY (services unchanged; deploys are triggered)" if args.deploy
+            else "DRY RUN (nothing is changed; --apply to change)")
     print(f"render_deploy: {mode}")
     print(f"  workspace   {owner}  ({(kv.get('owner') or {}).get('name', '?')})")
     print(f"  redis       {REDIS_NAME}  {kv['id']}  region={kv.get('region')}  plan={kv.get('plan')}  url={mask('REDIS_URL', redis_url)}")
