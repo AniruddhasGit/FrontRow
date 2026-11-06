@@ -37,3 +37,9 @@ posters stored in Neon). The client chose R2 and is creating the R2 bucket and t
   the Render service environment, never in either repository.
 - **Free-tier limits** (Cloudflare's published R2 free tier, not measured): 10 GB stored, 1 million writes and
   10 million reads a month, no egress charge. The demo uses a few megabytes.
+
+---
+**ERRATUM (2026-11-07, build session):**
+- The bucket the client created is named **`frontrow`**, not `frontrow-posters`; `R2_BUCKET=frontrow` in `passwords.txt`.
+- The R2 S3 keys were derived from the client's Cloudflare API token, following Cloudflare's documented method: the key ID is the token ID, and the secret is the SHA-256 of the token.
+- As of this erratum the token can list buckets but **cannot write**: writes and deletes answered 403. The client must give it **Workers R2 Storage: Edit** before poster uploads work.
