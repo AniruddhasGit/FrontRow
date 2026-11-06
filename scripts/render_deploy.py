@@ -117,8 +117,13 @@ def api_env(pw: dict[str, str], redis_url: str, web_url: str, existing: dict[str
         # Check 15: the mail call must finish inside QUEUE_SEND_TIMEOUT_MS (2000, the default).
         "SES_SEND_TIMEOUT_MS": "1500",
         # Required by config.py. There is no bucket: poster upload and the admin poster read answer 503 (posters.py).
-        "S3_BUCKET_NAME": "no-bucket-on-render",
-        "AWS_REGION": "ap-southeast-1",
+        # SRC-007 STORE-1: posters in Cloudflare R2 when its values are in passwords.txt (DEPLOY_RENDER.md section 6),
+        # else the old no-bucket constants. No value is printed.
+        **({"S3_BUCKET_NAME": pw["R2_BUCKET"], "AWS_ENDPOINT_URL_S3": pw["R2_ENDPOINT"],
+            "AWS_ACCESS_KEY_ID": pw["R2_ACCESS_KEY_ID"], "AWS_SECRET_ACCESS_KEY": pw["R2_SECRET_ACCESS_KEY"],
+            "AWS_REGION": "auto"}
+           if all(pw.get(k) for k in ("R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"))
+           else {"S3_BUCKET_NAME": "no-bucket-on-render", "AWS_REGION": "ap-southeast-1"}),
         # Without it boto3's credential chain probes the EC2 metadata address before giving up; with it the
         # missing-credentials 503 is immediate.
         "AWS_EC2_METADATA_DISABLED": "true",

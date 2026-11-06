@@ -70,7 +70,10 @@ with a ruled default in `backend/app/core/config.py` is left to the code.
 | `SES_SENDER_ADDRESS` | constant `FrontRow <onboarding@resend.dev>`. Resend's shared sender, which until a domain is verified delivers only to the Resend account's sign-up address. |
 | `SES_SEND_TIMEOUT_MS` | constant `1500`. Check 15 requires it to be below `QUEUE_SEND_TIMEOUT_MS` (2000). |
 | `QUEUE_URL` | constant `http://no-queue.invalid/…`. `config.py` requires it, and nothing reads it when `MAIL_PROVIDER=resend`. |
-| `S3_BUCKET_NAME`, `AWS_REGION` | constants (`no-bucket-on-render`, `ap-southeast-1`). Both are required, and no bucket exists (section 6). |
+| `S3_BUCKET_NAME` | `R2_BUCKET` (`frontrow-posters`): the private Cloudflare R2 bucket (`SRC-007 STORE-1`; section 6) |
+| `AWS_ENDPOINT_URL_S3` | `R2_ENDPOINT` (`https://<account-id>.r2.cloudflarestorage.com`). boto3 reads it from the environment and sends every S3 call to R2, so the code is the AWS code. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`: the R2 token scoped to that one bucket, Object Read & Write. Nothing else on Render uses AWS credentials (mail is Resend, and there is no queue). |
+| `AWS_REGION` | constant `auto`, the region R2 signs with. Nothing else on Render calls AWS. |
 | `AWS_EC2_METADATA_DISABLED` | constant `true`. Without it, boto3 probes the EC2 metadata address before reporting that there are no credentials. |
 | `PUBLIC_BASE_URL` | the static site's URL (`serviceDetails.url`) |
 | `COOKIE_SECURE` | constant `true`. Both Render URLs are https. |
@@ -161,19 +164,22 @@ unset DATABASE_URL SEED_DEFAULT_PASSWORD
 
 ## 6. What the free copy does NOT have
 
-- **No poster storage.** There is no S3 bucket and no AWS credentials. Per the p6 lane's `[JUDGMENT CALL]` in
-  `backend/app/domain/posters.py`:
-  - Admin poster upload, and the admin poster read (`/api/admin/movies/{id}/poster`), answer
-    **503 `DEPENDENCY_UNAVAILABLE`** with "The system cannot reach its file storage right now. The poster was not
-    saved.…". It is never a bare 500.
-  - Every other film action works: create, edit, publish, showtimes.
-  - The customer poster route `GET /api/movies/{id}/poster` is not mounted. The image fails to load, and the client
-    draws the film's title in the poster frame (`Poster.tsx`).
-  - So **every film on the free copy shows a title card, never an image**, including the seeded films, whose key
-    `posters/seed/placeholder-poster.png` points at a bucket that does not exist.
-  - Upgrade path, no code change: an S3-compatible bucket, plus `AWS_ENDPOINT_URL_S3` and credentials in the env.
-  - (`posters.py` comes with Round 4 batch 1, which this clone receives on its next `git pull aws main`. Until then
-    the admin poster routes do not exist here.)
+- **Posters live in Cloudflare R2, not S3** (`SRC-007 STORE-1`, 2026-11-07). The AWS copy keeps its private S3 bucket.
+  - **Set up by the owner:**
+    - a private bucket `frontrow-posters`;
+    - an R2 API token for that bucket only, with Object Read & Write;
+    - its values in `passwords.txt` as `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` and `R2_BUCKET`.
+  - **Wired by environment only** (section 2): the same boto3 client and upload path as AWS.
+  - **The customer poster redirect** (`GET /api/movies/{id}/poster`, `S-BRW-18`) is not built yet in either copy.
+    Until it is, customers see the title card even with R2 configured. Only the admin upload and admin read use the bucket.
+  - **The seeded placeholder poster** (`posters/seed/placeholder-poster.png`, `scripts/assets/placeholder-poster.png`)
+    is uploaded to the bucket once, by hand, at the time of the seed. The seed itself never uploads (its
+    `[JUDGMENT CALL]`).
+  - **Until the R2 values are set on Render,** the earlier behaviour stands:
+    - admin poster upload answers **503 `DEPENDENCY_UNAVAILABLE`**, never a bare 500;
+    - customers see the film's title drawn in the poster frame (`Poster.tsx`).
+  - **R2's free tier** (published, not measured): 10 GB, 1 million writes and 10 million reads a month, no egress
+    fee. Nothing in the demo comes near it.
 - **No worker and no queue.**
   - The receipt and reset emails are sent inline by the API after commit, bounded by `QUEUE_SEND_TIMEOUT_MS`.
   - A failed send is not retried by anything. The outbox row stays pending or failed until the customer presses
