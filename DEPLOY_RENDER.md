@@ -70,7 +70,7 @@ with a ruled default in `backend/app/core/config.py` is left to the code.
 | `SES_SENDER_ADDRESS` | constant `FrontRow <onboarding@resend.dev>`. Resend's shared sender, which until a domain is verified delivers only to the Resend account's sign-up address. |
 | `SES_SEND_TIMEOUT_MS` | constant `1500`. Check 15 requires it to be below `QUEUE_SEND_TIMEOUT_MS` (2000). |
 | `QUEUE_URL` | constant `http://no-queue.invalid/…`. `config.py` requires it, and nothing reads it when `MAIL_PROVIDER=resend`. |
-| `S3_BUCKET_NAME` | `R2_BUCKET` (`frontrow-posters`): the private Cloudflare R2 bucket (`SRC-007 STORE-1`; section 6) |
+| `S3_BUCKET_NAME` | `R2_BUCKET` (`frontrow`): the private Cloudflare R2 bucket (`SRC-007 STORE-1`; section 6) |
 | `AWS_ENDPOINT_URL_S3` | `R2_ENDPOINT` (`https://<account-id>.r2.cloudflarestorage.com`). boto3 reads it from the environment and sends every S3 call to R2, so the code is the AWS code. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`: the R2 token scoped to that one bucket, Object Read & Write. Nothing else on Render uses AWS credentials (mail is Resend, and there is no queue). |
 | `AWS_REGION` | constant `auto`, the region R2 signs with. Nothing else on Render calls AWS. |
@@ -166,7 +166,7 @@ unset DATABASE_URL SEED_DEFAULT_PASSWORD
 
 - **Posters live in Cloudflare R2, not S3** (`SRC-007 STORE-1`, 2026-11-07). The AWS copy keeps its private S3 bucket.
   - **Set up by the owner:**
-    - a private bucket `frontrow-posters`;
+    - a private bucket `frontrow` (created by the owner, 2026-11-07);
     - an R2 API token for that bucket only, with Object Read & Write;
     - its values in `passwords.txt` as `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` and `R2_BUCKET`.
   - **Wired by environment only** (section 2): the same boto3 client and upload path as AWS.
