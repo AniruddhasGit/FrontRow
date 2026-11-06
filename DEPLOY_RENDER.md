@@ -12,6 +12,13 @@ it comes from `git pull aws main`.
 | Redis | The **existing** Render Key Value `frontrow-redis` (Singapore, free). The script reads its internal URL and never creates it. |
 | Mail | Resend, called from the API process (`MAIL_PROVIDER=resend`). There is no worker and no queue. |
 
+## Live (2026-11-06)
+
+- Website: https://frontrow-web-mdm5.onrender.com
+- API: https://frontrow-api-r2rr.onrender.com (health: `/health/live`)
+- Neon: migrated to 0002 and seeded once (6 halls, 960 seats, 4 films, 720 showtimes, 11,003 demo bookings, USD base 1299).
+- First deploy: both services built and went live on the first try; `/health/ready` reports postgres ok, redis ok.
+
 ## 1. Run the script
 
 ```sh
@@ -113,8 +120,8 @@ unset DATABASE_URL SEED_DEFAULT_PASSWORD
 ## 5. Post-deploy checks
 
 ```sh
-API=https://frontrow-api.onrender.com     # the URLs --apply printed
-WEB=https://frontrow-web.onrender.com
+API=https://frontrow-api-r2rr.onrender.com   # created 2026-11-06 (Render added the -r2rr suffix)
+WEB=https://frontrow-web-mdm5.onrender.com
 curl -s $API/health/live                  # {"status":"live"}            (wakes the instance)
 curl -s $API/health/ready                 # 200, checks db + redis ok    (one Neon query, on purpose, once)
 curl -s $WEB/api/movies | head -c 300     # the rewrite reaches the API
