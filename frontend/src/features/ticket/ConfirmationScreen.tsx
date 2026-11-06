@@ -7,7 +7,7 @@ import { get } from "../browse/api";
 import { dayLabel, timeLabel } from "../browse/logic";
 import "../booking/booking.css";
 import { takeHandOver } from "./arrival";
-import { ConfirmationPage, NOT_FOUND, UNAVAILABLE, failed, type Booking } from "./page";
+import { ConfirmationPage, NOT_FOUND, UNAVAILABLE, failed, type Booking, hallViewSrc } from "./page";
 
 export function ConfirmationScreen({ reference }: { reference: string }) {
   const [first] = useState(() => takeHandOver(reference));
@@ -42,6 +42,13 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
         <ConfirmationPage booking={booking} money={formatPaise} copied={copied} onCopy={copy}
           startsLabel={`${dayLabel(booking.showtime_starts_at.slice(0, 10))} · ${timeLabel(booking.showtime_starts_at)}`}
           receiptTo={first ? email : null} />
+      ) : null}
+      {booking && hallViewSrc(booking.hall_name) ? (
+        <figure className="fr-hall-view">
+          <img src={hallViewSrc(booking.hall_name)!} alt={`The screen as seen from the middle of ${booking.hall_name}`}
+               loading="lazy" width={1600} height={900} onError={(e) => ((e.currentTarget.parentElement as HTMLElement).hidden = true)} />
+          <figcaption>Your view on the night: {booking.hall_name}, from the middle of the hall.</figcaption>
+        </figure>
       ) : null}
     </div>
   );

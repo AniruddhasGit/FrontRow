@@ -48,3 +48,10 @@ test("the word is named exactly once in frontend/src: the policy line", () => {
   assert.equal(lines.length, 1);
   assert.ok(lines[0].includes(POLICY));
 });
+
+test("CR-001 B.2: the hall still is chosen from the hall's number, and none without one", async () => {
+  const { hallViewSrc } = await import("./page.ts");
+  assert.equal(hallViewSrc("SCREEN 6"), "/art/hall_6_view.jpg");
+  assert.equal(hallViewSrc("Screen 02"), "/art/hall_2_view.jpg");
+  assert.equal(hallViewSrc("Main hall"), null);
+});
