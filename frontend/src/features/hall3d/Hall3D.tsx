@@ -15,7 +15,7 @@ const HallScene = lazy(() => import("./HallScene"));
 
 const MODES: [Mode, string][] = [["all", "All seats"], ["seat", "From my seat"]];
 
-function canDraw(): boolean {
+export function canDraw(): boolean {
   try {
     const canvas = document.createElement("canvas");
     const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
@@ -26,7 +26,7 @@ function canDraw(): boolean {
   }
 }
 
-class Guard extends Component<{ children: ReactNode; onFail: () => void }, { failed: boolean }> {
+export class Guard extends Component<{ children: ReactNode; onFail: () => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };

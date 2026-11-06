@@ -10,10 +10,13 @@ import "@fontsource/jetbrains-mono/700.css";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import { App } from "./App";
+import { Wake } from "./features/wake/Wake";
 import "./styles/premium.css"; // after App, so it lands after every feature stylesheet
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Wake>
+      <App />
+    </Wake>
   </StrictMode>,
 );
