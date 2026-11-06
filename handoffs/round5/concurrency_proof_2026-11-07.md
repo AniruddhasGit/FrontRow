@@ -20,3 +20,8 @@
 uq_booking_seat__showtime_id_seat_id UNIQUE (showtime_id, seat_id)
 rows for showtime 720 seat 959: 1
 ```
+
+## Stage A again on the FINAL code (after every merge, a952500), 2026-11-07
+```json
+{"operator": "claude-night-run-2026-11-07-final", "run_at": "2026-11-06T22:42:57.146Z", "stage": "A", "base_url": "http://127.0.0.1:8000", "showtime_id": 409, "seat_id": 37, "n": 50, "winners": 1, "losers": 49, "loser_unavailable_seats": ["[\"D2\"]"], "other_statuses": [], "spread_ms": 13.7, "spread_limit_ms": 100, "distinct_users": 50, "warmup_elapsed_seconds": 601.2, "limiter_enabled": null, "winner_confirm_status": 201, "unique_constraint_violations": 0, "booking_seat_rows": 1, "problems": []}
+```
