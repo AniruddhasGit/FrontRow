@@ -106,7 +106,7 @@ SLOTS = [time(11, 0), time(14, 30), time(18, 0), time(21, 30)]  # ASSUMED local 
 # 400 x 600, no text. [JUDGMENT CALL] Phase 2 has no poster upload function (P-ADM-03 is Phase 6, and there
 # is no local S3), so the seed records this fixed key and uploads nothing. Phase 6 replaces this with the
 # admin upload path's own function; until then the poster redirect has no object behind this key.
-POSTER_FILE = Path(__file__).resolve().parent / "assets" / "placeholder-poster.png"
+POSTER_FILE = Path(__file__).resolve().parent / "assets" / "placeholder_poster.png"
 POSTER_OBJECT_KEY = "posters/seed/placeholder-poster.png"
 # The seed's own environment variables: read here and by nothing under backend/app (S7.9, S-XCT-48).
 # .env.example lists exactly app/core/config.py's Settings plus these (S-XCT-29).

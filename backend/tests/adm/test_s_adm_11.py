@@ -1,13 +1,14 @@
 """S-ADM-11 - edit a showtime, and list one hall's day (P-ADM-09).
 
-NOT covered: "a customer holding seats when the start moves still holds them, asserted by the hold
-token still resolving in Redis" - holds are Phase 4. The edit touches no Redis key at all (this lane
-writes no Redis code), which is reasoned here, not observed.
+Every clause is asserted here, including the Phase 4 one: a customer holding seats when the start moves 60 minutes
+earlier still holds them, the hold token still resolving in Redis after the 200 (the seat lane's world, Redis 12).
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
+import pytest
 
 from tests.adm.kit import audit_rows, client, count, make_movie, make_screen, make_seats, make_showtime, routes, sign_in  # noqa: F401
 from tests.dbkit import insert_booking, insert_user, owner_sql
@@ -125,3 +126,29 @@ def test_the_list_takes_exactly_three_query_parameters_and_validates_each(client
 def test_now_is_read_only_through_the_injected_clock():
     hits = rg(r"datetime[.]now[(][)]|datetime[.]utcnow|time[.]time[(][)]", "backend/app")
     assert [h for h in hits if h[0] != "backend/app/core/clock.py"] == []
+
+
+@pytest.mark.anyio
+async def test_a_hold_survives_the_start_moving_60_minutes_earlier(migrated_db):
+    from tests.sea.kit import T0, SetClock, api, r_call, r_keys, session, user, world77
+
+    w = world77(migrated_db)
+    owner_sql(migrated_db, "UPDATE showtime SET starts_at = starts_at + interval '2 days', ends_at = ends_at + interval '2 days' "
+                           "WHERE id = 88")  # 88 shares 77's hall and hour; moved off so only the start move is tested
+    clock = SetClock()
+    clock.set(T0)
+    customer, admin = user(w["db"]), user(w["db"], "admin")
+    async with api(w["db"], clock) as c:
+        mine = session(c, customer)
+        hold = (await c.post("/api/showtimes/77/holds", json={"seat_ids": [401, 402]}, cookies=mine)).json()
+        token = hold["hold_token"]
+        locks = r_keys("lock:seat:77:*")
+        r = await c.patch("/api/admin/showtimes/77", json={"version": 1, "starts_at": "2026-08-14 18:30"},
+                          cookies=session(c, admin, "admin"))  # 19:30 -> 18:30 local
+        assert r.status_code == 200, r.text
+        assert r.json()["starts_at"] == "2026-08-14T18:30:00"
+        assert r_call("EXISTS", f"hold:{token}") == 1
+        assert r_keys("lock:seat:77:*") == locks == ["lock:seat:77:401", "lock:seat:77:402"]
+        assert {r_call("GET", k) for k in locks} == {token}
+        still = await c.get(f"/api/holds/{token}", cookies=mine)
+        assert still.status_code == 200 and [s["seat_id"] for s in still.json()["seats"]] == [401, 402]

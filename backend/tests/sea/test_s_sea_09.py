@@ -1,7 +1,7 @@
 """S-SEA-09 (P-HLD-04): at most MAX_SEATS_PER_BOOKING seats held at once, per customer, per showtime.
 
-Not here: the BOUGHT-ten-then-ten-more case (needs the confirm, EP-PAY-01, lane PAY), and the client's
-`Up to 6 seats.` at MAX_SEATS_PER_BOOKING=6 - the cap reaches the client through no endpoint today.
+The BOUGHT-ten-then-ten-more case drives the real confirm (EP-PAY-01). Not here: the client's `Up to 6 seats.` at
+MAX_SEATS_PER_BOOKING=6 - the cap reaches the client through no endpoint today.
 """
 
 from __future__ import annotations
@@ -80,6 +80,31 @@ async def test_the_server_strings_render_the_configured_cap(world):
     assert _err(seven) == (422, "SEAT_LIMIT_EXCEEDED", "You can hold up to 6 seats for one showtime. You chose 7.")
     assert _err(three) == (422, "SEAT_LIMIT_EXCEEDED",
                            "You can hold up to 6 seats for one showtime. You are holding 4 and chose 3 more.")
+
+
+async def test_bought_seats_count_nothing_against_the_cap(migrated_db):
+    """Ten bought on 77, then ten more held at once on 77: 201, because the commit removed the spent token."""
+    from tests.sea.kit import confirm, owner_sql
+
+    world = world77(migrated_db, retire_412=False)  # 401..418 and 420 in 77's set: 19 seats
+    for n in (21, 22):  # one more in-service seat in 77's set, so twenty distinct seats exist
+        owner_sql(migrated_db, "INSERT INTO seat (id, screen_id, row_label, seat_number, grid_row, grid_col, seat_category_id) "
+                               "OVERRIDING SYSTEM VALUE VALUES (%s, 3, 'C', %s, 3, %s, %s)", (400 + n, n, n, world["standard"]))
+        owner_sql(migrated_db, "INSERT INTO showtime_seat (showtime_id, seat_id) VALUES (77, %s)", (400 + n,))
+    first, second = list(range(401, 411)), [411, 412, 413, 414, 415, 416, 417, 418, 420, 421]
+    customer = user(migrated_db)
+    async with api(migrated_db, _clock()) as c:
+        cookies = session(c, customer)
+        held = await c.post(URL, json={"seat_ids": first}, cookies=cookies)
+        assert held.status_code == 201, held.text
+        bought = await confirm(c, customer, held.json()["hold_token"])
+        assert bought.status_code == 201, bought.text
+        after_purchase = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+        again = await c.post(URL, json={"seat_ids": second}, cookies=cookies)
+        after_hold = r_call("SCARD", f"holds:user:{customer}:showtime:77")
+    assert after_purchase == 0
+    assert again.status_code == 201, again.text
+    assert len(again.json()["seats"]) == 10 and after_hold == 1
 
 
 def test_no_literal_ten_ships_in_a_cap_string():

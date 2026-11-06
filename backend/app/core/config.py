@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 # Regular expressions, for SECRET_NAME below: without it the boot log cannot tell which values to hide.
+import logging
 import re
 # NamedTuple gives each cross-field check a name the boot error can print; Callable types its rule.
 from collections.abc import Callable
@@ -487,3 +488,29 @@ def load_settings() -> Settings:
 def redacted(settings: Settings) -> dict[str, object]:
     # By NAME, so a new secret-named variable is redacted without anyone remembering to.
     return {k: REDACTED if SECRET_NAME.search(k) else v for k, v in settings.model_dump().items()}
+
+
+async def venue_zone_check(settings: Settings) -> None:
+    """P-ADM-26 / S-ADM-04: one read of the cinema rows at boot, and a WARNING when the venue is unseeded or a row's
+    zone differs from CINEMA_TIMEZONE (the row wins on every request; the variable only seeds). Reads only - it writes
+    nothing - and never stops boot: an unreachable database is the readiness probe's to report, not this check's."""
+    from sqlalchemy import text
+
+    from app.db import make_engine
+
+    log = logging.getLogger("app.lifecycle")
+    engine = make_engine(settings)
+    try:
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT id, timezone FROM cinema ORDER BY id"))).all()
+    except Exception:  # noqa: BLE001
+        log.warning("venue time zone not checked at boot: the cinema table could not be read", exc_info=True)
+        return
+    finally:
+        await engine.dispose()
+    if not rows:
+        log.warning("the venue has not been seeded: no cinema row exists, so no local time can be shown")
+    for cinema_id, zone in rows:
+        if zone != settings.CINEMA_TIMEZONE:
+            log.warning("the cinema row's time zone differs from CINEMA_TIMEZONE; the row's zone is used",
+                        extra={"cinema_id": cinema_id, "row_timezone": zone, "cinema_timezone_variable": settings.CINEMA_TIMEZONE})

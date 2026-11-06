@@ -103,4 +103,14 @@ def log_capture(clock: FakeClock):
 
 
 # Database fixtures for every lane (tests/dbkit.py). Imported here so pytest registers them.
-from .dbkit import anyio_backend, migrated_db  # noqa: E402,F401
+from .dbkit import anyio_backend, create_database, drop_database  # noqa: E402,F401
+
+
+@pytest.fixture(scope="module")
+def migrated_db():
+    """One throwaway migrated database per test module - the shared fixture every module whose database holds a
+    booking uses. Its teardown (drop_database) asserts S-SCP-14: no booking with a cancellation instant and no status
+    but 'confirmed', and a violation fails the module."""
+    db = create_database(migrate=True)
+    yield db
+    drop_database(db)

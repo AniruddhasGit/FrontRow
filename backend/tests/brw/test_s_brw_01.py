@@ -1,8 +1,8 @@
 """S-BRW-01 (P-BRW-01): every movie-addressed read is gated on publication AND the display window, in SQL.
 
-Not here (the row stays Blocked on it): GET /api/movies/{id}/poster returning 302 - the presigned redirect is
-S-BRW-18, which needs the S3 SDK (Phase 5/6); and the RENDERED copy 'That movie is not showing.' on screen,
-which needs a browser harness. The API's own message for that 404 is asserted here.
+The poster, the showtime and the seat map are the three ungated endpoints: each answers for the film at the exclusive
+bound. The API's message for the excluded film's 404 is asserted here; the rendered copy 'That movie is not showing.'
+is asserted in frontend/src/features/browse/render.test.mjs.
 """
 
 from __future__ import annotations
@@ -111,14 +111,16 @@ async def test_a_bad_movie_id_is_422_before_any_statement(world, bad):
     assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_FAILED"
 
 
-async def test_showtime_and_seatmap_are_ungated_at_the_exclusive_bound(world):
-    film = make_movie(world["db"])
+async def test_poster_showtime_and_seatmap_are_ungated_at_the_exclusive_bound(world):
+    film = make_movie(world["db"], poster_key="posters/1/" + "c" * 32)
     st = make_showtime(world["db"], film, world["screen"], "2026-08-20T19:30:00+05:30")
     clock = SetClock()
     clock.set("2026-08-21T00:00:00+05:30")
     async with api(world["db"], clock) as c:
+        poster = await c.get(f"/api/movies/{film}/poster")
         header = await c.get(f"/api/showtimes/{st}")
         seatmap = await c.get(f"/api/showtimes/{st}/seatmap")
         listing = await c.get("/api/showtimes", params={"movie_id": film, "date": "2026-08-20"})
+    assert poster.status_code == 302 and "X-Amz-Signature=" in poster.headers["location"]
     assert header.status_code == 200 and seatmap.status_code == 200
     assert listing.status_code == 404  # the showtime LIST is movie-addressed and gated
