@@ -205,6 +205,9 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
                                                                   {"version": state["film_version"]})),
         ("POST", "/api/admin/movies/{movie_id}/unpublish", lambda: (f"/api/admin/movies/{state['film']}/unpublish",
                                                                     {"version": state["film_version"]})),
+        # SRC-008 ROLE-1 / S-ADM-30: granting and removing admin access, each one audit row.
+        ("POST", "/api/admin/admin-grants", lambda: ("/api/admin/admin-grants", {"email": f"sweep-grant@{DOMAIN}"})),
+        ("DELETE", "/api/admin/admin-grants/{grant_id}", lambda: (f"/api/admin/admin-grants/{state['grant']}", None)),
     ]
     assert {(m, p) for m, p, _ in steps} == mounted
     for method, template, build in steps:
@@ -240,6 +243,8 @@ def test_zz_every_admin_write_route_writes_exactly_one_audit_row(admin_client):
             state["manager"] = data["user_id"]
         elif template == "/api/admin/lookups/{kind}":
             state["genre"] = data["id"]
+        elif template == "/api/admin/admin-grants":
+            state["grant"] = data["id"]
         elif template.startswith("/api/admin/movies"):
             state["film"], state["film_version"] = data["id"], data["version"]
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", day)
