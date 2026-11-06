@@ -519,3 +519,9 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 - Round 4 (Phases 6–8 + blocked fixes) stopped before any lane finished; relaunch kit in `handoffs/round4/`.
 - Render deploy blocked on the Render GitHub app's access to the FrontRow repo.
 - **Session closed 2026-10-19_0041 by ani87** → handoff: handoffs/HANDOFF_2026-10-19_0041_ani87.md
+
+## 2026-11-07 (night run, owner asleep, SRC-008 NIGHT-1)
+
+- All six halls baked and live (CR-003); Neon re-seeded once to the approved layouts; admin access by email (S-ADM-30); cold-start hall screen (WAIT-1); booking-flow 'Continue to payment' bug fixed; phone audit fixes; S-BRW-18 poster redirect; S-ACC-14/S-SEA-10/S-SEA-08/S-SEA-09 built; CR-002 approved + applied; USD wording; R2 for Render posters (SRC-007).
+- Gates: frontend 159/159; backend full suite: 1 known red (S-PAY-11 text clause, needs a ruling); concurrency proof green on final code, red-proofed and restored. Ledger 134 Done / 86 Blocked.
+- Open for the owner: roll the Cloudflare token with R2 Edit (keys were printed into the local log once); rule on S-PAY-11/S-XCT-42, S-ADM-29 vs S-XCT-44, S-SCP-15 vs CR-001 B.2, S-ADM-20; constitution ADR + version bump. See handoffs/HANDOFF_2026-11-07_0430_ani87.md.
