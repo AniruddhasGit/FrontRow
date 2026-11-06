@@ -29,7 +29,7 @@ API = "https://api.render.com/v1"
 REPO, BRANCH, REGION = "https://github.com/AniruddhasGit/FrontRow", "main", "singapore"
 REDIS_NAME, API_NAME, WEB_NAME = "frontrow-redis", "frontrow-api", "frontrow-web"
 # Masked in every printout. The URLs keep scheme, user and host (so a dry run shows direct vs pooled), never the password.
-SECRET_KEYS = {"DATABASE_URL", "REDIS_URL", "JWT_SECRET", "RESEND_SECRET"}
+SECRET_KEYS = {"DATABASE_URL", "REDIS_URL", "JWT_SECRET", "RESEND_SECRET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
 
 # /health/live: answers from the process alone. /health/ready queries Neon and Redis, so Render's probe would (a) spend
 # Neon compute hours on every probe while the instance is up and (b) fail during a Neon cold start and mark a healthy
