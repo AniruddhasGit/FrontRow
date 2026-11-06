@@ -114,6 +114,19 @@ The integers, the ratio of 100 and Asia/Kolkata are unchanged. The `*_paise` nam
 - Group D (S-SEA-18, S-BRW-18, the last clause of S-XCT-43, T-P1-08, T-P1-09): not defects. They wait for AWS.
 - Group E: stale ledger StatusNotes, not cells. The owning lanes update the notes.
 
+### Later on 2026-11-07: counts the admin grant changed (Source: SRC-008 ROLE-1 and its ADDENDUM, S-ADM-30)
+
+S-ADM-30 added EP-ADM-30..32 (GET/POST /api/admin/admin-grants, DELETE /api/admin/admin-grants/{grant_id}), the
+admin_grant table and the audit actions admin_grant.created / admin_grant.deleted. Each line matches the test named.
+
+- S-ADM-01: the admin routes are 32 (EP-ADM-01 to EP-ADM-32), not 29. Test: tests/adm/test_s_adm_01.py.
+- S-SCP-01: the contract holds 61 (method, path) pairs and endpoint_count reads 61, not 58. Test: tests/scp/test_s_scp_01.py.
+- S-XCT-09: three entities are removed, not two: an admin_grant row joins the seat and the manager_screen_assignment row. The mounted DELETE routes are four, adding /api/admin/admin-grants/{grant_id}. Test: tests/xct/test_s_xct_09.py.
+- S-ADM-19: two DELETE routes under /api/admin, not one (EP-ADM-21 and EP-ADM-32), and admin_grant joins the tables the `DELETE FROM` sweep may name. Test: tests/adm/test_s_adm_19.py. **Not changed here:** the test also allows movie_genre (a genre edit replaces a film's join rows, EP-ADM-04), a doc defect raised before this ruling that no higher source has decided. The Description's "exactly two deletions exist in the whole epic" is not an AcceptanceCriteria cell and is left as it is.
+- S-ACC-06: the route walk covers 61 endpoints. Five operations take an `email` body property, adding POST /api/admin/admin-grants, which inserts an admin_grant row and writes no users.email. The failure trigger is now a sixth member. Test: tests/acc/test_s_acc_06.py.
+- S-ACC-10: the route walk covers 61 endpoints, and the inventory's DELETE operations are four, adding EP-ADM-32. None carries {user_id}, and none deletes a users row. Test: tests/acc/test_s_acc_10.py.
+- Checked, not edited: no AcceptanceCriteria cell states the table count (22 to 23) or the audit-action count (39 to 41). S-ADM-02 says "exactly the actions P-ADM-19 lists", and P-ADM-19 already lists admin_grant.created / admin_grant.deleted.
+
 ## Raised, not amended (no higher source decides it, or the fix is product behaviour)
 
 These are open questions for the client or the merge owner. They are written here and not appended to
