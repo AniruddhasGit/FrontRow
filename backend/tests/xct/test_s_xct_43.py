@@ -50,7 +50,7 @@ def test_cookie_secure_true_without_an_https_base_url_exits_naming_both():
 
 def test_only_seeded_demonstration_data_is_loaded(seeded):
     db, _ = seeded
-    assert one(db, "SELECT count(*) FROM movie") == 8
+    assert one(db, "SELECT count(*) FROM movie") == 4  # CR-001 A.2
     assert one(db, "SELECT count(*) FROM movie WHERE title NOT LIKE 'DEMO %%'") == 0
     assert one(db, "SELECT count(*) FROM users WHERE email NOT LIKE '%%.invalid'") == 0
 
