@@ -24,6 +24,8 @@ const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
 const BAKED_SCALE: Record<ModelKind, [number, number, number]> = {
   standard: [1.045, 1.007, 1.007], premium: [1.041, 1.021, 1.021], recliner: [1.946, 1.677, 1.676],
 };
+// A baked hall's free seats are the tan leather the owner approved in the renders (CR-003), not the velvet.
+const LEATHER = new Color("#b8743a");
 const ROOM_GAIN = 2.2; // the bake is the dim-house render, display-referred; lifted so the room reads on a monitor
 
 // Colours come from the design tokens, read once from the page, so no colour is defined twice (FR-ADR-072).
@@ -444,10 +446,10 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
       const seat = live.get(stale.id) ?? stale;
       const v = visualOf(seat, mine);
       const base = !seat.is_active ? tone.sold.clone().multiplyScalar(0.5)
-        : v === "held_by_me" ? tone.mine.clone().multiplyScalar(1.6) : v === "held_by_other" ? tone.other.clone() : v === "sold" ? tone.sold.clone() : tone.free.clone();
+        : v === "held_by_me" ? tone.mine.clone().multiplyScalar(1.6) : v === "held_by_other" ? tone.other.clone() : v === "sold" ? tone.sold.clone() : baked ? LEATHER.clone() : tone.free.clone();
       return hover === seat.id && selectable(seat, v, closed) ? base.lerp(lit, 0.35) : base;
     };
-  }, [live, mine, hover, tone, closed]);
+  }, [live, mine, hover, tone, closed, baked]);
 
   const pick = (stale: Seat) => {
     const seat = live.get(stale.id) ?? stale;

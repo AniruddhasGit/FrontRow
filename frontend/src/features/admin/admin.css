@@ -37,3 +37,7 @@
 .admin-withdrawn { background: var(--fr-surface-inset); color: var(--fr-ink-muted); }
 [role="tab"][aria-selected="true"] { border-bottom: var(--fr-stroke-bold) solid var(--fr-surface-accent); }
 .admin textarea { font: inherit; min-height: 6rem; max-width: var(--fr-measure); }
+/* Phones: a grid child's default min-width is its content, so a wide control (the genre list) pushed the form past
+   375px. Let the form and its controls shrink to the column. */
+.admin-form, .admin-form > * { min-width: 0; }
+.admin-form input, .admin-form select, .admin-form textarea { max-width: 100%; box-sizing: border-box; }

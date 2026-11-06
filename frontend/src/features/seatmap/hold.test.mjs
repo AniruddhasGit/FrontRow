@@ -44,6 +44,8 @@ test("the primary action names what pressing it does", () => {
   assert.equal(primaryLabel(true, 2, false), "Hold these seats");
   assert.equal(primaryLabel(true, 1, true), "Hold 1 more seat");
   assert.equal(primaryLabel(true, 2, true), "Hold 2 more seats");
+  // SCR-SEA 'Success': a live hold with nothing further chosen leads on to payment (PRD line 17122 / 17138)
+  assert.equal(primaryLabel(true, 0, true), "Continue to payment");
   assert.deepEqual(adding([402, 403, 404], { seats: [{ seat_id: 402 }] }), [403, 404]);
 });
 

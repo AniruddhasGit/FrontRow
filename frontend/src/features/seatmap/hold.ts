@@ -54,7 +54,7 @@ export function countdownLine(c: Countdown, confirmInFlight: boolean): string | 
 /** The primary action's label (SCR-SEA-01): a guest, nothing chosen, a first hold, or more seats for a live one. */
 export function primaryLabel(signedIn: boolean, adding: number, holding: boolean): string {
   if (!signedIn) return "Sign in to hold these seats";
-  if (adding === 0) return "Choose seats";
+  if (adding === 0) return holding ? "Continue to payment" : "Choose seats";
   if (!holding) return "Hold these seats";
   return adding === 1 ? "Hold 1 more seat" : `Hold ${adding} more seats`;
 }

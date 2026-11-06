@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { formatPaise } from "../admin/money";
 import { forgetBooking } from "../booking/checkout";
+import { navigate } from "../../router";
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
 import { Hall3D } from "../hall3d/Hall3D";
@@ -327,8 +328,11 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
           </ul>
           <p className="fr-cap-note" aria-live="polite">{capNote(MAX_SEATS_PER_BOOKING)}</p>
           {signedIn ? (
-            <button type="button" className="fr-action" disabled={!map || busy || chosen.length === 0 || sum === null || map.showtime.sales_closed}
-                    onClick={() => void takeHold()}>
+            // A live hold with nothing further chosen: on to SCR-PAY-01, no request of its own (PRD SCR-SEA 'Success'), and
+            // still allowed after sales close (P-HLD-06 row 2: a holder may still pay).
+            <button type="button" className="fr-action"
+                    disabled={!map || busy || sum === null || (chosen.length === 0 ? !holding : map.showtime.sales_closed)}
+                    onClick={() => (chosen.length === 0 ? navigate(`/showtimes/${showtimeId}/checkout`) : void takeHold())}>
               {primaryLabel(true, chosen.length, holding)}
             </button>
           ) : (
