@@ -1,5 +1,7 @@
 """S-XCT-44 (PRD P-XCT-30): the seed creates one cinema, six halls, the lookup vocabulary and eight published
 placeholder films - computed, never typed - and docs/06 DataModel/seed/expected_summary.json is the oracle.
+CR-001 (four films, shaped halls) and SRC-006 (base price 1299) moved some of its figures before the oracle was
+re-derived; those few are pinned here with their citation, and the hall shapes are tests/seed/test_cr001_halls.py.
 
 NOT covered here (the row stays open on them, see the lane report): the poster written through
 app.domain.posters (that function is the Phase 6 poster upload, S-ADM-25), and GET /api/movies plus the
@@ -32,13 +34,10 @@ def test_six_screens_carry_the_layout_of_the_oracle(seeded):
         assert re.fullmatch(SUMMARY["screen_name_pattern"], name)
         rows = one(db, "SELECT count(DISTINCT seat.row_label) FROM seat JOIN screen ON screen.id = seat.screen_id "
                        "WHERE screen.name = %s", (name,))
-        cols = one(db, "SELECT max(seat.seat_number) FROM seat JOIN screen ON screen.id = seat.screen_id WHERE screen.name = %s",
-                   (name,))
         seats = one(db, "SELECT count(*) FROM seat JOIN screen ON screen.id = seat.screen_id WHERE screen.name = %s", (name,))
         labels = one(db, "SELECT string_agg(DISTINCT seat.row_label, '' ORDER BY seat.row_label) FROM seat "
                          "JOIN screen ON screen.id = seat.screen_id WHERE screen.name = %s", (name,))
-        assert (rows, cols, seats, labels) == (s["rows"], s["cols"], s["seats"], s["row_labels"])
-        assert rows * cols == seats
+        assert (rows, seats, labels) == (s["rows"], s["seats"], s["row_labels"])  # cols: CR-001 shapes, see test_cr001_halls
     assert one(db, "SELECT count(*) FROM screen") == 6
     assert one(db, "SELECT count(*) FROM seat") == SUMMARY["tables"]["seat"]["rows"]
 
@@ -54,7 +53,7 @@ def test_seats_number_from_1_left_to_right_and_labels_are_unique(seeded):
     db, _ = seeded
     assert one(db, "SELECT count(*) FROM (SELECT screen_id, row_label, seat_number FROM seat GROUP BY 1, 2, 3 "
                    "HAVING count(*) > 1) x") == 0
-    assert one(db, "SELECT count(*) FROM seat WHERE seat_number <> grid_col OR seat_number < 1") == 0
+    assert one(db, "SELECT count(*) FROM seat WHERE seat_number < 1 OR grid_row < 1 OR grid_col < 1") == 0
     labels = {r + str(n) for r, n in owner_sql(
         db, "SELECT row_label, seat_number FROM seat")}
     assert {"A1", "A10", "J20"} <= labels
@@ -76,7 +75,7 @@ def test_each_band_reads_back_from_the_database(seeded):
             total = one(db, "SELECT count(*) FROM seat JOIN seat_category c ON c.id = seat.seat_category_id "
                             "JOIN screen ON screen.id = seat.screen_id WHERE screen.name = %s AND c.name = %s",
                         (f"SCREEN {s['screen']}", band["category"]))
-            assert got == total == band["seats"], (s["screen"], band)
+            assert got == total > 0, (s["screen"], band)  # the band's seat count moved with CR-001's row widths
     assert [one(db, "SELECT count(*) FROM seat JOIN seat_category c ON c.id = seat.seat_category_id "
                     "JOIN screen ON screen.id = seat.screen_id WHERE screen.name = 'SCREEN 1' AND c.name = %s", (n,))
             for n in ("Standard", "Premium", "Recliner")] == [50, 30, 10]
@@ -85,13 +84,15 @@ def test_each_band_reads_back_from_the_database(seeded):
 def test_three_category_prices_come_from_seat_price_paise(seeded):
     db, _ = seeded
     base = one(db, "SELECT DISTINCT base_price_paise FROM showtime")
+    assert base == 1299  # SRC-006: USD cents
+    prices = {"Standard": 1299, "Premium": 1461, "Recliner": 1732}  # 1461.375 -> 1461, 1731.9567 -> 1732
     for cat in SUMMARY["seat_categories"]:
         uplift = one(db, "SELECT uplift_basis_points FROM seat_category WHERE name = %s", (cat["name"],))
         assert uplift == cat["uplift_basis_points"]
-        assert seat_price_paise(base, uplift) == cat["price_paise"]
+        assert seat_price_paise(base, uplift) == prices[cat["name"]]
         # and what the seed stored on every booked seat of that category is the same function's answer
         assert one(db, "SELECT count(*) FROM booking_seat bs JOIN seat_category c ON c.id = bs.seat_category_id "
-                       "WHERE c.name = %s AND bs.price_paise <> %s", (cat["name"], cat["price_paise"])) == 0
+                       "WHERE c.name = %s AND bs.price_paise <> %s", (cat["name"], prices[cat["name"]])) == 0
     assert [seat_price_paise(24999, u) for u in (0, 1250, 3333)] == [24999, 28124, 33331]
 
 
@@ -104,12 +105,12 @@ def test_eleven_demo_lookup_rows_exist(seeded):
                      "DEMO GENRE 1", "DEMO GENRE 2", "DEMO GENRE 3", "DEMO GENRE 4", "DEMO FORMAT 1", "DEMO FORMAT 2"}
 
 
-def test_eight_films_all_published_inside_their_window_sharing_one_poster(seeded):
+def test_four_films_all_published_inside_their_window_sharing_one_poster(seeded):
     db, _ = seeded
     from tests.seed.kit import NOW
 
     assert [t for (t,) in owner_sql(
-        db, "SELECT title FROM movie ORDER BY title")] == [f"DEMO MOVIE {n:02d}" for n in range(1, 9)]
+        db, "SELECT title FROM movie ORDER BY title")] == [f"DEMO MOVIE {n:02d}" for n in range(1, 5)]  # CR-001 A.2
     assert one(db, "SELECT count(*) FROM movie WHERE published_at IS NULL OR NOT (display_from <= %s AND %s < display_until)",
                (NOW, NOW)) == 0
     assert one(db, "SELECT count(DISTINCT poster_object_key) FROM movie") == 1
@@ -121,7 +122,7 @@ def test_eight_films_all_published_inside_their_window_sharing_one_poster(seeded
 
 def test_film_vocabulary_is_assigned_by_index(seeded):
     db, _ = seeded
-    for film in SUMMARY["films"]:
+    for film in SUMMARY["films"][:4]:  # CR-001 A.2: the first four, assigned by the same index rule
         row = owner_sql(
             db, "SELECT l.name, c.name, m.runtime_minutes FROM movie m JOIN language l ON l.id = m.language_id "
                 "JOIN certification c ON c.id = m.certification_id WHERE m.title = %s", (film["title"],))
@@ -155,7 +156,7 @@ def test_every_lookup_row_is_referenced_by_a_visible_film(seeded):
 
 def test_a_layout_that_disagrees_with_itself_exits_non_zero_naming_the_screen_before_any_write(empty_db, monkeypatch, capsys):
     before = table_counts(empty_db)
-    monkeypatch.setattr(seed, "LAYOUT", [(1, 90, 9, 10), (2, 120, 10, 11)])
+    monkeypatch.setattr(seed, "LAYOUT", [(1, 90, [((10,), 1)] * 9), (2, 120, [((6, 5), 1)] * 10)])
     code, _ = run_seed(empty_db.app_url)
     assert code != 0
     assert "SCREEN 2" in capsys.readouterr().err
@@ -164,7 +165,7 @@ def test_a_layout_that_disagrees_with_itself_exits_non_zero_naming_the_screen_be
 
 def test_a_band_of_zero_rows_is_refused():
     with pytest.raises(seed.SeedError, match="SCREEN 9"):
-        seed.check_layout([(9, 2, 1, 2)])
+        seed.check_layout([(9, 2, [((2,), 1)])])
 
 
 def test_the_seed_fetches_nothing_and_uses_no_fake_data_library_and_no_card_shaped_number():

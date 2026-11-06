@@ -1,5 +1,7 @@
 """S-XCT-45 (PRD P-XCT-30): 720 showtimes from the injected clock, deterministic occupancy, 11,003 bookings,
-idempotently. Every figure is read from docs/06 DataModel/seed/expected_summary.json, never copied here.
+idempotently. Every figure is read from docs/06 DataModel/seed/expected_summary.json, never copied here - except the
+few CR-001 (four films on fixed screens, +105-minute second screens) and SRC-006 (base price 1299) moved before that
+generated oracle was re-derived; each of those carries its citation.
 
 The queue clause ("the queue's message count being 0 after the run") is asserted through the outbox, the only
 route a receipt job has onto the queue (FR-ADR-031); there is no queue in Phase 2 to count (ElasticMQ arrives
@@ -24,7 +26,8 @@ def test_720_showtimes_at_the_four_local_starts(seeded):
     db, _ = seeded
     assert one(db, "SELECT count(*) FROM showtime") == SUMMARY["schedule"]["showtimes"] == 720
     starts = {t for (t,) in owner_sql(db, "SELECT DISTINCT to_char(starts_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') FROM showtime")}
-    assert starts == set(SUMMARY["schedule"]["local_starts"])
+    # the SLOTS, plus the second screen of a two-screen film 105 minutes later (CR-001 A.2)
+    assert starts == set(SUMMARY["schedule"]["local_starts"]) | {"12:45", "16:15", "19:45", "23:15"}
     assert one(db, "SELECT data_type FROM information_schema.columns WHERE table_name = 'showtime' "
                    "AND column_name = 'starts_at'") == "timestamp with time zone"
 
@@ -41,22 +44,23 @@ def test_360_before_today_and_360_from_today_against_the_injected_clock(seeded):
     assert first == NOW.astimezone(IST).date() - timedelta(days=15)
 
 
-def test_every_film_has_90_showtimes_and_the_runtimes_run_90_to_160(seeded):
-    db, _ = seeded
-    assert sorted(c for _, c in owner_sql(db, "SELECT movie_id, count(*) FROM showtime GROUP BY 1")) == [90] * 8
-    assert [r for (r,) in owner_sql(db, "SELECT runtime_minutes FROM movie ORDER BY title")] == list(range(90, 161, 10))
+def test_films_have_240_240_120_120_showtimes_and_the_runtimes_run_90_to_120(seeded):
+    db, _ = seeded  # CR-001 A.2: films 1 and 2 on two screens each, films 3 and 4 on one
+    assert [c for _, c in owner_sql(db, "SELECT m.title, count(*) FROM showtime s JOIN movie m ON m.id = s.movie_id "
+                                        "GROUP BY 1 ORDER BY 1")] == [240, 240, 120, 120]
+    assert [r for (r,) in owner_sql(db, "SELECT runtime_minutes FROM movie ORDER BY title")] == list(range(90, 121, 10))
 
 
 def test_ends_at_is_start_plus_runtime_plus_changeover_and_nothing_overlaps(seeded):
     db, _ = seeded
     assert one(db, "SELECT count(*) FROM showtime s JOIN movie m ON m.id = s.movie_id "
                    "WHERE s.ends_at <> s.starts_at + make_interval(mins => m.runtime_minutes + 20)") == 0
-    # the 21:30 slot with the 160-minute film ends 00:30 the next local day
+    # the 23:15 start of the 100-minute film (Screen 3, CR-001 A.2) ends 01:15 the next local day
     late = owner_sql(db, "SELECT DISTINCT to_char(s.ends_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') FROM showtime s "
-                         "JOIN movie m ON m.id = s.movie_id WHERE m.runtime_minutes = 160 "
-                         "AND to_char(s.starts_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') = '21:30'")
-    assert late == [("00:30",)]
-    assert one(db, "SELECT max(extract(epoch FROM ends_at - starts_at)) / 60 FROM showtime") == SUMMARY["schedule"]["longest_occupancy_minutes"]
+                         "JOIN movie m ON m.id = s.movie_id WHERE m.runtime_minutes = 100 "
+                         "AND to_char(s.starts_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') = '23:15'")
+    assert late == [("01:15",)]
+    assert one(db, "SELECT max(extract(epoch FROM ends_at - starts_at)) / 60 FROM showtime") == 120 + 20  # CR-001: longest film 120
     assert one(db, "SELECT count(*) FROM showtime a JOIN showtime b ON a.screen_id = b.screen_id AND a.id < b.id "
                    "AND a.starts_at < b.ends_at AND b.starts_at < a.ends_at") == 0
 
@@ -75,7 +79,7 @@ def test_the_worked_example_k231(seeded):
                         "to_char(s.ends_at AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') FROM showtime s "
                         "JOIN movie m ON m.id = s.movie_id JOIN screen sc ON sc.id = s.screen_id "
                         "WHERE sc.name = 'SCREEN 4' AND s.starts_at = %s", (starts,))
-    assert row == [("DEMO MOVIE 01", 126, "19:50")]
+    assert row == [("DEMO MOVIE 02", 126, "20:00")]  # CR-001 A.2: Screen 4 plays film 2 (100 minutes)
 
 
 def test_occupancy_never_reaches_0_or_100_and_is_taken_from_row_a_seat_1(seeded):
@@ -103,13 +107,15 @@ def test_the_inventory_figures(seeded):
     assert one(db, "SELECT count(*) FROM showtime_seat") == SUMMARY["tables"]["showtime_seat"]["rows"] == 115200
     assert round(58800 / 115200 * 100, 2) == float(next(c["derived"] for c in SUMMARY["published_figure_checks"]
                                                        if c["figure"] == "mean_occupancy_percent_2dp"))
-    assert one(db, "SELECT sum(total_paise) FROM booking") == b["takings_paise_total"]
+    # SRC-006 base 1299 over CR-001's row widths: 45,800 Standard x 1299 + 12,400 Premium x 1461 + 600 Recliner x 1732
+    assert one(db, "SELECT sum(total_paise) FROM booking") == 45800 * 1299 + 12400 * 1461 + 600 * 1732 == 78649800
 
 
 def test_every_table_count_the_oracle_states(seeded):
     db, _ = seeded
     counts = table_counts(db)
     stated = {t: v["rows"] for t, v in SUMMARY["tables"].items() if v["rows"] is not None}
+    stated.update(movie=4, movie_genre=8)  # CR-001 A.2: four films, two genres each
     assert {t: counts[t] for t in stated} == stated
 
 
@@ -159,9 +165,9 @@ def test_an_interrupted_run_is_completed_with_the_same_films(seeded, monkeypatch
     """The plan is a pure function of the anchor: rows missing from it are the only ones a run inserts."""
     db, _ = seeded
     first = one(db, "SELECT min(starts_at) FROM showtime").astimezone(IST).date()
-    films = [one(db, "SELECT id FROM movie WHERE title = %s", (f"DEMO MOVIE {i + 1:02d}",)) for i in range(8)]
+    films = [one(db, "SELECT id FROM movie WHERE title = %s", (f"DEMO MOVIE {i + 1:02d}",)) for i in range(4)]
     screens = [one(db, "SELECT id FROM screen WHERE name = %s", (f"SCREEN {n}",)) for n in range(1, 7)]
     formats = [one(db, "SELECT id FROM format WHERE name = %s", (f,)) for f in seed.FORMATS]
-    plan = list(seed.schedule(first, screens, films, [90 + i * 10 for i in range(8)], formats, 20))
+    plan = list(seed.schedule(first, screens, films, [90 + i * 10 for i in range(4)], formats, 20))
     stored = {(s, t): m for s, t, m in owner_sql(db, "SELECT screen_id, starts_at, movie_id FROM showtime")}
     assert {(p["screen_id"], p["starts_at"]): p["movie_id"] for p in plan} == stored
