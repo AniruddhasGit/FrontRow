@@ -302,7 +302,10 @@ a {
   font-size: var(--fr-text-md);
 }
 
-/* ---- the ticket (SCR-TKT-01): a stub, the perforation around the part you carry to the door ---- */
+/* ---- the ticket (SCR-TKT-01): the paper stub from the Ticket wireframe. The facts and the reference are one sheet of
+   bone paper with dark ink, torn along a dashed line above the part you say at the door. Scoped to .fr-ticket; the
+   stub is paper in both themes (COMPONENTS.md §9; 15.6:1 ink, 6.2:1 labels, 3.4:1 tear line, CONTRAST.md). The
+   facts are drawn above the reference with `order`; the DOM, and so the reading order, keeps the reference first. */
 .fr-ticket {
   max-width: 40rem;
   gap: var(--fr-space-4);
@@ -310,33 +313,100 @@ a {
 .fr-ticket h1 {
   font-size: clamp(var(--fr-text-xl), 4vw, var(--fr-text-2xl));
 }
-.fr-ref-block {
-  background: var(--fr-surface-raised);
-  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  border-top: var(--fr-stroke-bold) dashed var(--fr-rule);
-  border-bottom: var(--fr-stroke-bold) dashed var(--fr-rule);
-  border-radius: var(--fr-radius-lg);
-  padding: var(--fr-space-6) var(--fr-space-5);
-  text-align: center;
-  box-shadow: var(--fr-shadow-sheet);
+.fr-ticket > .fr-ticket-facts {
+  order: 1;
 }
-.fr-ref {
+.fr-ticket > .fr-ref-block {
+  order: 2;
+  margin-top: calc(-1 * var(--fr-space-4));
+}
+.fr-ticket > p {
+  order: 3;
+}
+.fr-ticket-facts,
+.fr-ref-block {
+  background: var(--fr-surface-ticket);
+  color: var(--fr-ink-on-ticket);
+}
+.fr-ticket-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fr-space-4) var(--fr-space-5);
+  margin: 0;
+  padding: var(--fr-space-6) var(--fr-space-6) var(--fr-space-5);
+  border-radius: var(--fr-radius-lg) var(--fr-radius-lg) 0 0;
+  /* the two half-moon notches where the stub tears */
+  -webkit-mask: radial-gradient(circle 11px at 0 100%, transparent 10px, black 11px) left / 51% 100% no-repeat,
+    radial-gradient(circle 11px at 100% 100%, transparent 10px, black 11px) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 11px at 0 100%, transparent 10px, black 11px) left / 51% 100% no-repeat,
+    radial-gradient(circle 11px at 100% 100%, transparent 10px, black 11px) right / 51% 100% no-repeat;
+}
+.fr-ticket .fr-ticket-facts div {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+.fr-ticket-facts div:first-child {
+  grid-column: 1 / -1;
+}
+.fr-ticket .fr-ticket-facts dt {
+  font-size: var(--fr-text-xs);
+  letter-spacing: var(--fr-track-caps);
+  color: var(--fr-ink-on-ticket-muted);
+}
+.fr-ticket .fr-ticket-facts dd {
+  margin-top: var(--fr-space-1);
+  font-size: var(--fr-text-md);
+  color: var(--fr-ink-on-ticket);
+}
+.fr-ticket .fr-ticket-facts div:first-child dd {
+  font-family: var(--fr-font-display);
+  font-size: var(--fr-text-xl);
+  font-weight: var(--fr-weight-black);
+  letter-spacing: var(--fr-track-tight);
+}
+.fr-ref-block {
+  position: relative;
+  border: 0;
+  border-radius: 0 0 var(--fr-radius-lg) var(--fr-radius-lg);
+  padding: var(--fr-space-6) var(--fr-space-5) var(--fr-space-5);
+  text-align: center;
+  -webkit-mask: radial-gradient(circle 11px at 0 0, transparent 10px, black 11px) left / 51% 100% no-repeat,
+    radial-gradient(circle 11px at 100% 0, transparent 10px, black 11px) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 11px at 0 0, transparent 10px, black 11px) left / 51% 100% no-repeat,
+    radial-gradient(circle 11px at 100% 0, transparent 10px, black 11px) right / 51% 100% no-repeat;
+}
+/* the tear line, inset from the notches */
+.fr-ref-block::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--fr-space-5);
+  right: var(--fr-space-5);
+  border-top: var(--fr-stroke-bold) dashed var(--fr-rule-ticket);
+}
+.fr-ticket .fr-ref-label {
+  color: var(--fr-ink-on-ticket-muted);
+}
+.fr-ticket .fr-ref {
   font-size: clamp(var(--fr-text-xl), 6vw, var(--fr-text-2xl));
+  color: var(--fr-ink-on-ticket);
+}
+.fr-ticket .fr-link-action {
+  color: var(--fr-ink-on-ticket);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.fr-ticket .fr-ref-block :focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-ink-on-ticket);
+  outline-offset: 2px;
 }
 .fr-ref-copied {
   margin: 0;
   min-height: 1lh;
   font-size: var(--fr-text-sm);
-  color: var(--fr-screen-ink);
-}
-.fr-ticket-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  column-gap: var(--fr-space-5);
-}
-.fr-ticket-facts dd {
-  font-size: var(--fr-text-md);
-  color: var(--fr-ink-strong);
+  color: var(--fr-ink-on-ticket-muted);
 }
 .fr-ticket-policy,
 .fr-ticket-entry,

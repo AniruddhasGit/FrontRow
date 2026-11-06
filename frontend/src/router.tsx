@@ -4,7 +4,7 @@
 // such as /admin/movies loads the app and this table picks the screen.
 //
 // FEATURE LANES: add routes in your own feature's routes.tsx, never here. This file only collects them.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { adminRoutes } from "./features/admin/routes";
 import { authRoutes } from "./features/auth/routes";
@@ -21,23 +21,36 @@ const NAVIGATE_EVENT = "fr:navigate";
 
 export function navigate(to: string): void {
   window.history.pushState(null, "", to);
-  // The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
-  // one settles in (premium.css). flushSync makes React paint the new screen inside the transition callback.
-  // No API, or reduced motion: the plain instant swap, unchanged.
-  const swap = () => flushSync(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)));
+  transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)));
+}
+
+// The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
+// one settles in (premium.css). flushSync makes React paint the new screen inside the transition callback.
+// No API, or reduced motion: the plain instant swap, unchanged.
+function transition(change: () => void): void {
+  const swap = () => flushSync(change);
   const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (typeof document !== "undefined" && "startViewTransition" in document && !reduced) document.startViewTransition(swap);
+  // A quicker next step skips this transition and rejects its `ready`; that is expected, not an error.
+  if (typeof document !== "undefined" && "startViewTransition" in document && !reduced) document.startViewTransition(swap).ready.catch(() => null);
   else swap();
 }
 
 export function usePathname(): string {
   const [pathname, setPathname] = useState(window.location.pathname);
+  const shown = useRef(pathname);
   useEffect(() => {
-    const update = () => setPathname(window.location.pathname);
-    window.addEventListener("popstate", update);
+    const update = () => setPathname((shown.current = window.location.pathname));
+    // Back and forward get navigate()'s transition, once: not for a step that keeps the path (a #hash), and not when
+    // the browser already animates the step itself (a swipe-back gesture sets hasUAVisualTransition).
+    const back = (e: PopStateEvent) => {
+      const same = window.location.pathname === shown.current;
+      if (same || (e as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition) update();
+      else transition(update);
+    };
+    window.addEventListener("popstate", back);
     window.addEventListener(NAVIGATE_EVENT, update);
     return () => {
-      window.removeEventListener("popstate", update);
+      window.removeEventListener("popstate", back);
       window.removeEventListener(NAVIGATE_EVENT, update);
     };
   }, []);

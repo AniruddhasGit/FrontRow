@@ -20,7 +20,7 @@ import {
 import { createPoller } from "./poller";
 import "./seatmap.css";
 
-type Header = { id: number; movie: { title: string }; screen: { name: string }; starts_at: string };
+type Header = { id: number; movie: { id: number; title: string }; screen: { name: string }; starts_at: string };
 type LoadError = { message: string; requestId: string | null };
 
 function readJson<T>(key: string): T | null {
@@ -283,7 +283,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
         ) : null}
         <div aria-live="polite">{banner ? <div className="fr-banner"><p>{banner}</p></div> : null}</div>
       </div>
-      <Hall3D map={map} mine={mine} onTap={tap} />
+      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
       <div className="fr-seatmap-body">
         <div className="fr-field">
           <p className="fr-poll-strip" aria-live="polite">{pollStrip ?? ""}</p>

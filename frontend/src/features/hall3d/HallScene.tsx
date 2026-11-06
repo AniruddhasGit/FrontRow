@@ -1,20 +1,22 @@
 // The 3D hall itself - the lazily loaded chunk (FR-ADR-074 5). It draws the seat-map payload it is handed and holds
 // no booking state: a click calls the 2D map's own tap handler, after the 2D map's own selectable() check, so every
 // hold, release and refusal goes through the one path the 2D map uses. It makes no request of its own except the
-// static seat models.
+// static seat models and the screen's still, /art/screen_<movieId>.jpg.
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, Vector3, type BufferGeometry,
-  type PerspectiveCamera,
+  CanvasTexture, Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, SRGBColorSpace,
+  TextureLoader, Vector3, type BufferGeometry, type PerspectiveCamera, type Texture,
 } from "three";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, computeHall, modelKind, views, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
 
 const GLIDE_MS = 900; // --fr-motion-change (CR-001 B.5)
+const FLY_MS = 1200; // the first look at the hall: down from high over the back rows to the overview
+const FLY_FROM = new Vector3(0, 14, -6);
 const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
 
 // Colours come from the design tokens, read once from the page, so no colour is defined twice (FR-ADR-072).
@@ -29,6 +31,7 @@ function tones() {
     // The velvet itself, not a UI state token: deep ink-blue (DESIGN-SYSTEM "half-light"; CR-001 B). Free seats only.
     free: new Color("#14214a"), other: t("--fr-seat-held-other"), sold: t("--fr-seat-sold").multiplyScalar(0.4),
     mine: t("--fr-seat-mine"), screen: t("--fr-screen-bar"), house: t("--fr-surface-accent"), glow: t("--fr-countdown-fill"),
+    haze: t("--fr-screen-glow"), ink: t("--fr-ink-strong"), cyan: t("--fr-screen-ink"),
   };
 }
 type Tones = ReturnType<typeof tones>;
@@ -41,25 +44,35 @@ function Rig({ view, orbit }: { view: View; orbit: boolean }) {
   const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
   const invalidate = useThree((s) => s.invalidate);
   const look = useRef(new Vector3(...view.look));
-  const glide = useRef<{ at0: Vector3; look0: Vector3; t0: number } | null>(null);
-  const first = useRef(true);
+  // t0 is stamped on the first frame drawn, so a slow first frame (shader compile) does not eat the move.
+  const glide = useRef<{ at0: Vector3; look0: Vector3; t0: number | null; ms: number } | null>(null);
+  const shown = useRef<View | null>(null);
   useEffect(() => {
-    if (first.current || reducedMotion()) {
-      first.current = false;
-      camera.position.set(...view.at); // under reduced motion the view cuts (CR-001 B.5)
+    if (shown.current === view) { // the controls arriving re-runs this; the camera already has its orders
+      if (!glide.current) controls?.target.copy(look.current);
+      return;
+    }
+    const first = shown.current === null;
+    shown.current = view;
+    if (first || reducedMotion()) {
+      const fly = first && !reducedMotion(); // under reduced motion the view cuts (CR-001 B.5)
+      camera.position.set(...view.at);
+      if (fly) camera.position.add(FLY_FROM);
       look.current.set(...view.look);
       camera.lookAt(look.current);
       controls?.target.copy(look.current);
+      if (fly) glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: FLY_MS };
       invalidate();
       return;
     }
-    glide.current = { at0: camera.position.clone(), look0: (controls?.target ?? look.current).clone(), t0: performance.now() };
+    glide.current = { at0: camera.position.clone(), look0: (controls?.target ?? look.current).clone(), t0: null, ms: GLIDE_MS };
     invalidate();
   }, [view, camera, controls, invalidate]);
   useFrame(() => {
     const g = glide.current;
     if (!g) return;
-    const k = Math.min(1, (performance.now() - g.t0) / GLIDE_MS);
+    g.t0 ??= performance.now();
+    const k = Math.min(1, (performance.now() - g.t0) / g.ms);
     const e = ease(k);
     camera.position.lerpVectors(g.at0, new Vector3(...view.at), e);
     look.current.lerpVectors(g.look0, new Vector3(...view.look), e);
@@ -162,9 +175,86 @@ function Halos({ hall, mine, tone }: { hall: Hall; mine: ReadonlySet<number>; to
   return <instancedMesh ref={ref} args={[geometry, material, Math.max(1, hall.placed.length)]} raycast={() => null} />;
 }
 
+export type Film = { id: number; title: string };
+
+/** The title card: the film's name in the display face over a dark cinematic gradient, at the screen's 2.39:1. */
+function titleCard(title: string, tone: Tones): Texture {
+  const c = document.createElement("canvas");
+  c.width = 2048;
+  c.height = Math.round(2048 / 2.39);
+  const g = c.getContext("2d")!;
+  const { width: w, height: h } = c;
+  const bg = g.createRadialGradient(w / 2, h * 0.45, h * 0.05, w / 2, h / 2, w * 0.6);
+  bg.addColorStop(0, tone.haze.getStyle());
+  bg.addColorStop(1, tone.field.getStyle());
+  g.fillStyle = bg;
+  g.fillRect(0, 0, w, h);
+  const flare = g.createLinearGradient(0, 0, w, 0); // one anamorphic streak behind the title
+  flare.addColorStop(0, "transparent");
+  flare.addColorStop(0.5, tone.cyan.getStyle());
+  flare.addColorStop(1, "transparent");
+  g.globalAlpha = 0.35;
+  g.fillStyle = flare;
+  g.fillRect(0, h * 0.535, w, 3);
+  g.globalAlpha = 1;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  if (title) {
+    let size = h * 0.22;
+    do g.font = `800 ${size}px "Inter Tight", system-ui, sans-serif`;
+    while (g.measureText(title).width > w * 0.84 && (size *= 0.92) > h * 0.07);
+    g.fillStyle = tone.ink.getStyle();
+    g.shadowColor = tone.cyan.getStyle();
+    g.shadowBlur = 40;
+    g.fillText(title, w / 2, h * 0.5);
+    g.shadowBlur = 0;
+    g.font = `400 ${h * 0.045}px "JetBrains Mono", monospace`;
+    g.fillStyle = tone.cyan.getStyle();
+    g.fillText("N O W   S H O W I N G", w / 2, h * 0.29);
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** What the screen shows: /art/screen_<movieId>.jpg when that still is deployed, else the title card. */
+function useScreenArt(film: Film | null, tone: Tones): Texture | null {
+  const invalidate = useThree((s) => s.invalidate);
+  const [art, setArt] = useState<Texture | null>(null);
+  useEffect(() => {
+    let live = true;
+    let still = false; // a still that loaded wins over the title card, whichever lands first
+    const made: Texture[] = [];
+    const show = (t: Texture, isStill: boolean) => {
+      if (!live) return t.dispose();
+      made.push(t);
+      if (still && !isStill) return;
+      still ||= isStill;
+      setArt(t);
+      invalidate();
+    };
+    const title = film?.title ?? "";
+    void Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
+      .catch(() => null).then(() => show(titleCard(title, tone), false));
+    if (film) {
+      new TextureLoader().load(`/art/screen_${film.id}.jpg`, (t) => {
+        t.colorSpace = SRGBColorSpace;
+        show(t, true);
+      }, undefined, () => null); // no still deployed: the title card stays
+    }
+    return () => {
+      live = false;
+      made.forEach((t) => t.dispose());
+    };
+  }, [film?.id, film?.title, tone, invalidate]);
+  return art;
+}
+
 /** Floor tiers on the rake, the stage floor, dark walls, the glowing screen, brass step lights in every aisle. */
-function Room({ hall, tone }: { hall: Hall; tone: Tones }) {
+function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null }) {
   const ref = useRef<InstancedMesh>(null);
+  const art = useScreenArt(film, tone);
   const w = hall.halfWidth + 1.8;
   const { screen, depth, top } = hall;
   const height = screen.y + screen.height / 2 + 2.5;
@@ -217,7 +307,10 @@ function Room({ hall, tone }: { hall: Hall; tone: Tones }) {
       </mesh>
       <mesh position={[0, screen.y, screen.z]} raycast={() => null}>
         <planeGeometry args={[screen.width, screen.height]} />
-        <meshBasicMaterial color={tone.screen.clone().multiplyScalar(1.1)} toneMapped={false} />
+        {/* Keyed on the picture: a map arriving changes the shader, which a live material would not recompile. A
+            little over 1, so the title's brightest strokes catch the bloom. */}
+        <meshBasicMaterial key={art?.uuid ?? "bare"} map={art} color={art ? [1.2, 1.2, 1.2] : tone.screen.clone().multiplyScalar(1.1)}
+                           toneMapped={false} />
       </mesh>
       <instancedMesh ref={ref} args={[undefined, undefined, lights.length]} raycast={() => null}>
         <boxGeometry args={[0.4, 0.05, 0.08]} />
@@ -225,14 +318,21 @@ function Room({ hall, tone }: { hall: Hall; tone: Tones }) {
       </instancedMesh>
       <pointLight position={[0, screen.y, screen.z + 2]} color={tone.screen} intensity={55} distance={depth + 30} decay={1.4} />
       <pointLight position={[0, top + 4, back - 1]} color={tone.house} intensity={18} distance={30} decay={1.6} />
+      {/* House lights at half: brass from over the back wall, so the overview (behind the seats) sees lit seat backs
+          and steps, not black shapes. Its target is the default, the front row's centre. */}
+      <directionalLight position={[0, top + 6, back + 4]} color={tone.house} intensity={4} />
+      {[-1, 1].map((side) => (
+        <pointLight key={side} position={[side * (w - 0.4), top + 2.6, depth * 0.55]} color={tone.house} intensity={10} distance={16} decay={1.5} />
+      ))}
       <ambientLight intensity={0.45} />
       <hemisphereLight args={[tone.glow, tone.wall, 0.35]} />
     </group>
   );
 }
 
-export default function HallScene({ map, mine, mode, onTap, onHover }: {
-  map: SeatMap; mine: ReadonlySet<number>; mode: Mode; onTap: (seat: Seat, visual: Visual) => void; onHover: (seat: Seat | null) => void;
+export default function HallScene({ map, film, mine, mode, onTap, onHover }: {
+  map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; onTap: (seat: Seat, visual: Visual) => void;
+  onHover: (seat: Seat | null) => void;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
@@ -282,7 +382,7 @@ export default function HallScene({ map, mine, mode, onTap, onHover }: {
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[tone.field]} />
       <fog attach="fog" args={[tone.field, 22, 70]} />
-      <Room hall={hall} tone={tone} />
+      <Room hall={hall} tone={tone} film={film} />
       {KINDS.map((k) => (byKind[k].length ? (
         <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} />
       ) : null))}

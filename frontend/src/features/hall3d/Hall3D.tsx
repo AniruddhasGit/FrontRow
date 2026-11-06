@@ -8,6 +8,7 @@
 import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { seatName, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import type { Mode } from "./hall";
+import type { Film } from "./HallScene";
 import "./hall3d.css";
 
 const HallScene = lazy(() => import("./HallScene"));
@@ -39,8 +40,8 @@ class Guard extends Component<{ children: ReactNode; onFail: () => void }, { fai
   }
 }
 
-export function Hall3D({ map, mine, onTap }: {
-  map: SeatMap | null; mine: ReadonlySet<number>; onTap: (seat: Seat, visual: Visual) => void;
+export function Hall3D({ map, film = null, mine, onTap }: {
+  map: SeatMap | null; film?: Film | null; mine: ReadonlySet<number>; onTap: (seat: Seat, visual: Visual) => void;
 }) {
   const [able, setAble] = useState(false);
   const [on, setOn] = useState(true);
@@ -77,7 +78,7 @@ export function Hall3D({ map, mine, onTap }: {
       <div className="fr-hall3d-stage" aria-hidden="true">
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
-            <HallScene map={map} mine={mine} mode={mode} onTap={onTap} onHover={setHover} />
+            <HallScene map={map} film={film} mine={mine} mode={mode} onTap={onTap} onHover={setHover} />
           </Suspense>
         </Guard>
         <p className="fr-hall3d-name">{map.screen.name} <span className="fr-mono">{map.seats.length}</span> seats</p>

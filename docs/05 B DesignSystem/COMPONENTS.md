@@ -552,6 +552,12 @@ aloud and typed by hand at a door, by a human, from a phone screen at arm's leng
 | Container | `--fr-surface-inset`, `--fr-radius-md`, padding `--fr-space-4` |
 | Copy control | `--fr-accent-ink`, `--fr-text-sm` |
 
+**On the confirmation page the facts and the reference are one paper ticket stub** (the Ticket wireframe,
+`FR-ADR-074`): `--fr-surface-ticket` paper, `--fr-ink-on-ticket` ink, labels and the copied note in
+`--fr-ink-on-ticket-muted`, the tear line between the facts and the reference a dashed `--fr-rule-ticket`. The
+copy control and the focus ring on the stub use `--fr-ink-on-ticket`, since the accent and the screen-light inks are
+made for the room, not for paper. Like the payment notice (§8.1) the stub is the same colour in both themes.
+
 Format is `FR-XXXX-XXXX` (`FR-ADR-015`). The prefix and hyphens are presentation;
 the eight characters are the value. The alphabet already excludes `0`/`O` and
 `1`/`I`/`l`, and `--fr-track-ref` is the wide tracking that makes the remaining
@@ -664,14 +670,14 @@ what makes the coverage check meaningful in the direction that is easy to forget
 | Layout | `--fr-tap-min` `--fr-page-max` `--fr-measure` | §0.1, §4, §5, §8, §11 |
 | Poster | `--fr-poster-ratio` | §3, §11 |
 | Motion | `--fr-motion-fast` `--fr-motion-base` `--fr-motion-change` `--fr-ease-out` | §0.5, §1.7, §6 |
-| Grounds | `--fr-surface-base` `--fr-surface-raised` `--fr-surface-inset` `--fr-surface-accent` `--fr-surface-danger` `--fr-surface-notice` | §0.1, §1.2, §2, §3, §4, §5, §6, §8, §9, §10, §11 |
+| Grounds | `--fr-surface-base` `--fr-surface-raised` `--fr-surface-inset` `--fr-surface-accent` `--fr-surface-danger` `--fr-surface-notice` `--fr-surface-ticket` | §0.1, §1.2, §2, §3, §4, §5, §6, §8, §9, §10, §11 |
 | Seat fills | `--fr-seat-available` `--fr-seat-sold` `--fr-seat-held-other` `--fr-seat-mine` | §1.4 |
 | Seat edges | `--fr-seat-edge-available` `--fr-seat-edge-mine` | §1.4 |
 | Seat ink | `--fr-seat-ink` `--fr-seat-ink-mine` | §1.4 |
 | Ink | `--fr-ink-strong` `--fr-ink` `--fr-ink-muted` | §0.1, §1.2, §3, §5, §9, §10, §11 |
-| Ink on a fill | `--fr-ink-on-accent` `--fr-ink-on-danger` `--fr-ink-on-notice` | §4, §5, §6, §8, §10 |
+| Ink on a fill | `--fr-ink-on-accent` `--fr-ink-on-danger` `--fr-ink-on-notice` `--fr-ink-on-ticket` `--fr-ink-on-ticket-muted` | §4, §5, §6, §8, §9, §10 |
 | Accent and status ink | `--fr-accent-ink` `--fr-danger-ink` `--fr-screen-ink` | §5, §6, §9, §11 |
-| Boundaries | `--fr-focus-ring` `--fr-rule` `--fr-control-edge` | §0.2, §1.2, §1.7, §3, §4, §5, §6, §9, §10, §11 |
+| Boundaries | `--fr-focus-ring` `--fr-rule` `--fr-control-edge` `--fr-rule-ticket` | §0.2, §1.2, §1.7, §3, §4, §5, §6, §9, §10, §11 |
 | Seat-map graphics | `--fr-screen-bar` | §1.2 |
 | Countdown | `--fr-countdown-fill` `--fr-countdown-urgent` | §7, §10 |
 | Exempt | `--fr-screen-glow` `--fr-rule-quiet` `--fr-poster-empty-mark` | §1.2, §2, §3, §10 |
