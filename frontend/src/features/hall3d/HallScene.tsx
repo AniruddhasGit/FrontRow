@@ -15,8 +15,8 @@ import { PITCH_Z, computeHall, modelKind, views, type Hall, type Mode, type Mode
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
 
 const GLIDE_MS = 900; // --fr-motion-change (CR-001 B.5)
-const FLY_MS = 1200; // the first look at the hall: down from high over the back rows to the overview
-const FLY_FROM = new Vector3(0, 14, -6);
+const FLY_MS = 1200; // the first look at the hall: from high over the seats down to the screen-side view of them all
+const FLY_FROM = new Vector3(0, 10, 12);
 const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
 
 // Colours come from the design tokens, read once from the page, so no colour is defined twice (FR-ADR-072).
@@ -39,8 +39,10 @@ type Tones = ReturnType<typeof tones>;
 const ease = (t: number) => 1 - (1 - t) ** 4; // one ease, close to --fr-ease-out
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function Rig({ view, orbit }: { view: View; orbit: boolean }) {
+function Rig({ hall, mode, seatId, onMoving }: { hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void }) {
   const camera = useThree((s) => s.camera as PerspectiveCamera);
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  const view = useMemo(() => views(hall, seatId, aspect)[mode], [hall, seatId, aspect, mode]);
   const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
   const invalidate = useThree((s) => s.invalidate);
   const look = useRef(new Vector3(...view.look));
@@ -61,13 +63,17 @@ function Rig({ view, orbit }: { view: View; orbit: boolean }) {
       look.current.set(...view.look);
       camera.lookAt(look.current);
       controls?.target.copy(look.current);
-      if (fly) glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: FLY_MS };
+      if (fly) {
+        glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: FLY_MS };
+        onMoving(true);
+      }
       invalidate();
       return;
     }
     glide.current = { at0: camera.position.clone(), look0: (controls?.target ?? look.current).clone(), t0: null, ms: GLIDE_MS };
+    onMoving(true);
     invalidate();
-  }, [view, camera, controls, invalidate]);
+  }, [view, camera, controls, invalidate, onMoving]);
   useFrame(() => {
     const g = glide.current;
     if (!g) return;
@@ -79,10 +85,14 @@ function Rig({ view, orbit }: { view: View; orbit: boolean }) {
     camera.lookAt(look.current);
     controls?.target.copy(look.current);
     if (k < 1) invalidate();
-    else glide.current = null;
+    else {
+      glide.current = null;
+      onMoving(false);
+    }
   });
-  return <OrbitControls makeDefault enabled={orbit} enablePan={false} enableDamping={false} maxPolarAngle={Math.PI * 0.49}
-                        minDistance={4} maxDistance={60} />;
+  // Looking around is the all-seats view's; a seat's view stays put at that seat's eyes.
+  return <OrbitControls makeDefault enabled={mode === "all"} enablePan={false} enableDamping={false} maxPolarAngle={Math.PI * 0.49}
+                        minDistance={4} maxDistance={60} onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
 }
 
 function SeatKind({ kind, items, colourOf, onPick, onHover }: {
@@ -330,17 +340,16 @@ function Room({ hall, tone, film }: { hall: Hall; tone: Tones; film: Film | null
   );
 }
 
-export default function HallScene({ map, film, mine, mode, onTap, onHover }: {
-  map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; onTap: (seat: Seat, visual: Visual) => void;
-  onHover: (seat: Seat | null) => void;
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving }: {
+  map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
+  onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  onMoving: (moving: boolean) => void;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
   // The room's shape changes only when the seats themselves move, not on every poll.
   const shape = map.seats.map((s) => `${s.id}:${s.gr}:${s.gc}`).join();
   const hall = useMemo(() => computeHall(map.seats), [shape]);
-  const first = mine.values().next().value ?? null; // the first held seat, else the first chosen one
-  const cams = useMemo(() => views(hall, first), [hall, first]);
   const byKind = useMemo(() => {
     const name = new Map(map.categories.map((c) => [c.id, c.name]));
     const out: Record<ModelKind, Placed[]> = { standard: [], premium: [], recliner: [] };
@@ -366,19 +375,20 @@ export default function HallScene({ map, film, mine, mode, onTap, onHover }: {
     const seat = live.get(stale.id) ?? stale;
     const v = visualOf(seat, mine);
     if (selectable(seat, v, closed)) onTap(seat, v); // the 2D map's own guard, then its own handler
+    onLook(seat); // any seat, choosable or not, can be previewed from
   };
   const hoverSeat = (s: Seat | null) => {
     const seat = s ? live.get(s.id) ?? s : null;
     setHover(seat?.id ?? null);
     onHover(seat);
-    document.body.style.cursor = seat && selectable(seat, visualOf(seat, mine), closed) ? "pointer" : "";
+    document.body.style.cursor = seat ? "pointer" : ""; // every seat can be looked from
   };
   useEffect(() => () => {
     document.body.style.cursor = "";
   }, []);
 
   return (
-    <Canvas frameloop="demand" dpr={[1, 1.75]} camera={{ fov: 50, near: 0.1, far: 200, position: cams[mode].at }}
+    <Canvas frameloop="demand" dpr={[1, 1.75]} camera={{ fov: 50, near: 0.1, far: 200 }}
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[tone.field]} />
       <fog attach="fog" args={[tone.field, 22, 70]} />
@@ -387,7 +397,7 @@ export default function HallScene({ map, film, mine, mode, onTap, onHover }: {
         <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} />
       ) : null))}
       <Halos hall={hall} mine={mine} tone={tone} />
-      <Rig view={cams[mode]} orbit={mode === "overview"} />
+      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} />
       <EffectComposer multisampling={4}>
         <Bloom mipmapBlur luminanceThreshold={1} intensity={0.9} />
         <Vignette offset={0.3} darkness={0.55} />

@@ -33,10 +33,10 @@ test("grid to positions: aisles are empty columns, walkways empty rows, rows cen
   assert.ok(two.placed.every((p) => p.span === 1));
 
   // The seat camera sits at the chosen seat's eye height and looks at the screen; with none it still has a view.
-  const v = views(hall, seats[5].id);
+  const v = views(hall, seats[5].id, 2);
   assert.deepEqual(v.seat.at.map((n) => Math.round(n * 100)), [0, Math.round((2 * RISE + 1.15) * 100), Math.round(2 * PITCH_Z * 100)]);
   assert.equal(v.seat.look[2], hall.screen.z);
-  assert.ok(views(hall, null).seat.at.every(Number.isFinite));
+  assert.ok(views(hall, null, 2).seat.at.every(Number.isFinite));
   assert.deepEqual(computeHall([]).placed, []);
 });
 

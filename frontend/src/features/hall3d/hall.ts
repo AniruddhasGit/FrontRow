@@ -1,7 +1,7 @@
 // The 3D hall's geometry, from the seat-map payload alone (FR-ADR-074, CR-001 Part B). Pure: no three.js, no DOM,
 // no runtime import, so node --test loads it directly. Nothing here knows the six halls: an aisle is an empty grid
 // column, a walkway an empty grid row, a row may be any length, and a seat may span two columns.
-import type { Seat } from "../seatmap/model";
+import type { Seat, Visual } from "../seatmap/model";
 
 export const PITCH_X = 0.62; // metres per grid column
 export const PITCH_Z = 1.05; // metres per grid row
@@ -81,20 +81,55 @@ export function computeHall(seats: Seat[]): Hall {
   };
 }
 
-export type Mode = "overview" | "seat" | "screen";
+export type Mode = "all" | "seat";
 export interface View { at: [number, number, number]; look: [number, number, number] }
 
-/** The three cameras. `seat` sits at the given seat's real position and eye height and looks at the screen; with no
- *  seat chosen it takes the centre of the middle row. */
-export function views(hall: Hall, seatId: number | null): Record<Mode, View> {
+/** The screen-side camera that frames every seat: it looks at the middle of the seat block from in front of it,
+ *  as low as it can while every corner of the block fits the frustum (fov in degrees, aspect = width / height) and
+ *  the camera stays in front of the screen. A wide hall therefore sits higher and farther back than a narrow one. */
+export function allSeats(hall: Hall, aspect: number, fov = 50): View {
+  const { halfWidth, depth, top, screen } = hall;
+  const look: [number, number, number] = [0, top / 2 + 0.5, depth / 2];
+  const ty = Math.tan((fov * Math.PI) / 360) * 0.9; // 10% breathing room at the frame's edge
+  const tx = ty * aspect;
+  const corners = [-1, 1].flatMap((sx) => [0, top + 1.3].flatMap((y) => [-0.6, depth + 0.6].map((z) => [sx * (halfWidth + 0.3), y - look[1], z - look[2]])));
+  let at: [number, number, number] = [0, 0, 0];
+  for (let deg = 20; deg <= 80; deg += 5) {
+    const s = Math.sin((deg * Math.PI) / 180);
+    const c = Math.cos((deg * Math.PI) / 180);
+    // Camera space: right is -x, up (0, c, s), forward (0, -s, c); a corner fits when its offset / its depth <= tan.
+    const dist = Math.max(...corners.map(([x, y, z]) => {
+      const fwd = -s * y + c * z;
+      return Math.max(Math.abs(x) / tx, Math.abs(c * y + s * z) / ty) - fwd;
+    }));
+    at = [0, look[1] + dist * s, look[2] - dist * c];
+    if (at[2] >= screen.z + 0.6) break;
+  }
+  return { at, look };
+}
+
+/** The two cameras. `all` is allSeats(); `seat` sits at the given seat's real position and eye height and looks at
+ *  the screen's centre, and with no seat given it takes the centre of the middle row. */
+export function views(hall: Hall, seatId: number | null, aspect: number): Record<Mode, View> {
   const { screen, depth, top } = hall;
   const chosen = hall.placed.find((p) => p.seat.id === seatId);
   const sit = chosen ?? { x: 0, y: top / 2, z: depth / 2 };
   return {
-    overview: { at: [0, top + 6, depth + 7], look: [0, 1.4, depth * 0.3 - 1] },
+    all: allSeats(hall, aspect),
     seat: { at: [sit.x, sit.y + EYE, sit.z], look: [0, screen.y, screen.z] },
-    screen: { at: [0, screen.y - 0.4, screen.z + 1], look: [0, top * 0.6, depth * 0.7] },
   };
+}
+
+/** Why a seat cannot be chosen, in the hall's words, or null when it is free. Its state, never a price. */
+export function stateWord(seat: Seat, visual: Visual): string | null {
+  if (!seat.is_active) return "Not available";
+  return visual === "sold" ? "Taken" : visual === "held_by_other" ? "Being held" : visual === "held_by_me" ? "Yours" : null;
+}
+
+/** The hover label: `Row F · Seat 7 · Premium · $14.61`, the price replaced by the state when the seat is not free.
+ *  `price` comes formatted (formatPaise), so this file stays free of runtime imports. */
+export function seatTip(seat: Seat, category: string, visual: Visual, price: string): string {
+  return `Row ${seat.row} · Seat ${seat.num} · ${category} · ${stateWord(seat, visual) ?? price}`;
 }
 
 export type ModelKind = "standard" | "premium" | "recliner";
