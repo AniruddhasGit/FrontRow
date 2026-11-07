@@ -207,7 +207,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
               // nothing to remove
             }
             leaveNotice(storage(), SHOWTIME_GONE);
-            navigate("/");
+            navigate("/browse");
             return { ok: false };
           }
           if (last.current === null) setLoadError(firstLoadError(r));
@@ -319,7 +319,10 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   const holding = Boolean(hold && hold.seats.length > 0);
 
   return (
-    <section className="fr-seatmap">
+    <section className="fr-seatmap fr-immersive">
+      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
+      {/* CR-004: the hall fills the screen; the heading, the 2D map and the summary ride in this panel on its right */}
+      <div className="fr-seatmap-panel">
       <SeatMapHeading header={header} />
       <div className="fr-banners">
         {notice ? (
@@ -338,7 +341,6 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
         ) : null}
         <div aria-live="polite">{banner ? <div className="fr-banner"><p>{banner}</p></div> : null}</div>
       </div>
-      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
       <div className="fr-seatmap-body">
         <div className="fr-field">
           <p className="fr-poll-strip" aria-live="polite">{pollStrip ?? ""}</p>
@@ -401,6 +403,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
             <button type="button" className="fr-action-secondary" disabled={busy} onClick={() => void giveBack(null)}>{GIVE_UP}</button>
           ) : null}
         </aside>
+      </div>
       </div>
     </section>
   );

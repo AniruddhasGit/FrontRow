@@ -1,0 +1,425 @@
+/* CR-004: edge to edge. Every page uses the full width (no centred box); the hall pages (.fr-immersive: the landing,
+   Browse and the seat page) fill the whole window, the header floats over the hall and the demonstration line sits
+   on its bottom edge. Loaded after premium.css. Every value is a design token or derived from one; no hex code. */
+
+/* ---- every page: the full width, a gutter that grows with the window ---- */
+.fr-header-inner,
+.fr-main,
+.fr-footer p,
+.admin,
+.rpt-panel {
+  max-width: none;
+}
+.fr-main,
+.fr-header {
+  padding-inline: clamp(var(--fr-space-4), 3vw, var(--fr-space-7));
+}
+
+/* ---- the hall pages ---- */
+.fr-app:has(.fr-immersive) {
+  --fr-head: 5rem; /* the floating header's height: what the panels keep clear of */
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+}
+.fr-app:has(.fr-immersive) .fr-header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 5;
+  padding-block: var(--fr-space-4);
+  background: linear-gradient(color-mix(in srgb, var(--fr-surface-base) 85%, transparent), transparent);
+  pointer-events: none;
+}
+.fr-app:has(.fr-immersive) .fr-header-inner > * {
+  pointer-events: auto;
+}
+.fr-app:has(.fr-immersive) .fr-main {
+  padding: 0;
+  min-height: 0;
+}
+.fr-app:has(.fr-immersive) .fr-footer {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 4;
+  padding: var(--fr-space-1) var(--fr-space-4);
+  background: transparent;
+  border: 0;
+  text-align: center;
+  pointer-events: none;
+  font-size: 0.6875rem;
+  opacity: 0.7;
+}
+.fr-immersive {
+  height: 100%;
+  position: relative;
+}
+
+/* ---- the stage (HallStage.tsx): a hall filling its box ---- */
+.fr-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(ellipse 70% 55% at 50% 30%, var(--fr-screen-glow), var(--fr-surface-inset) 75%);
+}
+.fr-stage-canvas {
+  position: absolute;
+  inset: 0;
+}
+.fr-stage-foot {
+  position: absolute;
+  right: var(--fr-space-5);
+  bottom: var(--fr-space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--fr-space-3);
+}
+.fr-stage-foot .fr-hall3d-caption {
+  position: static;
+  max-width: none;
+}
+.fr-stage-foot .fr-action-secondary {
+  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+/* ---- the landing ---- */
+.fr-landing-copy {
+  position: absolute;
+  left: clamp(var(--fr-space-4), 4vw, var(--fr-space-8, 4rem));
+  bottom: clamp(var(--fr-space-6), 9vh, 6rem);
+  max-width: 36rem;
+  padding: var(--fr-space-5);
+  border-radius: var(--fr-radius-lg);
+  background: linear-gradient(color-mix(in srgb, var(--fr-surface-base) 72%, transparent), color-mix(in srgb, var(--fr-surface-base) 86%, transparent));
+  backdrop-filter: blur(8px);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  display: grid;
+  gap: var(--fr-space-3);
+}
+.fr-landing-copy h1 {
+  margin: 0;
+}
+.fr-landing-lede {
+  margin: 0;
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-md);
+  line-height: var(--fr-leading-body);
+}
+.fr-hero-eyebrow {
+  margin: 0;
+  font-family: var(--fr-font-mono);
+  font-size: var(--fr-text-xs);
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+  color: var(--fr-screen-ink);
+}
+.fr-landing-actions .fr-action {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 0 var(--fr-space-6);
+  text-decoration: none;
+}
+.fr-landing-halls {
+  flex-wrap: wrap;
+}
+.fr-landing-glow {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---- Browse: the rail on the left, the hall on the right ---- */
+.fr-browse {
+  display: grid;
+  grid-template-columns: clamp(19rem, 24vw, 26rem) minmax(0, 1fr);
+}
+.fr-browse-rail {
+  overflow-y: auto;
+  padding: calc(var(--fr-head) + var(--fr-space-2)) var(--fr-space-4) var(--fr-space-7);
+  background: color-mix(in srgb, var(--fr-surface-base) 94%, transparent);
+  border-right: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  scrollbar-width: thin;
+  scrollbar-color: var(--fr-control-edge) transparent;
+}
+.fr-browse-rail h1 {
+  font-size: var(--fr-text-xl);
+  margin: 0 0 var(--fr-space-4);
+}
+.fr-browse-films {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--fr-space-2);
+}
+.fr-browse-film {
+  border-radius: var(--fr-radius-md);
+  border: var(--fr-stroke-hair) solid transparent;
+}
+.fr-browse-film[data-open] {
+  background: var(--fr-surface-raised);
+  border-color: var(--fr-rule-quiet);
+}
+.fr-browse-pick {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: var(--fr-space-3);
+  align-items: center;
+  padding: var(--fr-space-2);
+  border-radius: var(--fr-radius-md);
+  cursor: pointer;
+}
+.fr-browse-pick:hover {
+  background: color-mix(in srgb, var(--fr-surface-raised) 70%, transparent);
+}
+.fr-browse-pick:focus-visible {
+  outline: 2px solid var(--fr-focus-ring, var(--fr-screen-ink));
+  outline-offset: 2px;
+}
+.fr-browse-pick .fr-poster-title {
+  font-size: 0.5rem;
+}
+.fr-browse-title {
+  display: block;
+  font-family: var(--fr-font-display);
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-ink-strong);
+  margin-bottom: var(--fr-space-1);
+}
+.fr-browse-pick .fr-meta {
+  font-size: var(--fr-text-xs);
+  flex-wrap: wrap;
+}
+.fr-browse-times {
+  padding: 0 var(--fr-space-3) var(--fr-space-3);
+  display: grid;
+  gap: var(--fr-space-2);
+}
+.fr-browse-note {
+  margin: 0;
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+.fr-browse-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2);
+}
+.fr-browse-slots .fr-choice {
+  font-size: var(--fr-text-sm);
+}
+.fr-browse-all {
+  display: inline-flex;
+  margin-top: var(--fr-space-5);
+  font-size: var(--fr-text-sm);
+  color: var(--fr-accent-ink);
+}
+.fr-browse-stage {
+  position: relative;
+  min-width: 0;
+}
+.fr-browse-bar {
+  position: absolute;
+  left: var(--fr-space-5);
+  bottom: var(--fr-space-6);
+  display: flex;
+  align-items: center;
+  gap: var(--fr-space-4);
+  padding: var(--fr-space-3) var(--fr-space-3) var(--fr-space-3) var(--fr-space-5);
+  border-radius: var(--fr-radius-lg);
+  background: color-mix(in srgb, var(--fr-surface-base) 82%, transparent);
+  backdrop-filter: blur(8px);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+.fr-browse-bar p {
+  margin: 0;
+  display: grid;
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-sm);
+}
+.fr-browse-now {
+  font-family: var(--fr-font-display);
+  font-weight: var(--fr-weight-black);
+  font-size: var(--fr-text-lg);
+  color: var(--fr-ink-strong);
+}
+.fr-browse-bar .fr-action {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 0 var(--fr-space-5);
+  text-decoration: none;
+}
+/* the stage's own foot sits above the show bar on Browse */
+.fr-browse .fr-stage-foot {
+  top: calc(var(--fr-head) + var(--fr-space-2));
+  bottom: auto;
+}
+
+/* ---- the seat page: the hall on the left, the panel (heading, 2D map, summary) on the right ---- */
+.fr-seatmap.fr-immersive {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 30vw, 30rem);
+}
+.fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-seatmap-panel {
+  padding-inline: clamp(var(--fr-space-4), 4vw, var(--fr-space-7));
+}
+.fr-seatmap-panel {
+  overflow-y: auto;
+  min-width: 0;
+  padding: calc(var(--fr-head) + var(--fr-space-2)) var(--fr-space-5) var(--fr-space-7);
+  background: color-mix(in srgb, var(--fr-surface-base) 94%, transparent);
+  border-left: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  scrollbar-width: thin;
+  scrollbar-color: var(--fr-control-edge) transparent;
+}
+.fr-seatmap-panel .fr-seatmap-head h1 {
+  font-size: var(--fr-text-2xl);
+}
+/* with the hall beside it, the panel is one column: the 2D map above the summary */
+.fr-seatmap:has(.fr-hall3d) .fr-seatmap-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+.fr-seatmap:has(.fr-hall3d) .fr-summary {
+  grid-column: auto;
+  grid-row: auto;
+  position: static;
+}
+.fr-seatmap:has(.fr-hall3d) .fr-legend {
+  grid-column: auto;
+}
+.fr-seatmap.fr-immersive .fr-hall3d {
+  position: relative;
+  margin: 0;
+  display: block;
+  min-width: 0;
+}
+.fr-seatmap.fr-immersive .fr-hall3d-stage {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  border-radius: 0;
+  border: 0;
+}
+.fr-seatmap.fr-immersive .fr-hall3d-bar {
+  position: absolute;
+  z-index: 2;
+  left: var(--fr-space-5);
+  right: var(--fr-space-5);
+  top: calc(var(--fr-head) + var(--fr-space-2));
+}
+.fr-seatmap.fr-immersive .fr-hall3d-bar + .fr-hall3d-stage + .fr-hall3d-bar,
+.fr-seatmap.fr-immersive .fr-hall3d-stage + .fr-hall3d-bar {
+  top: auto;
+  bottom: var(--fr-space-6);
+}
+.fr-seatmap.fr-immersive .fr-hall3d-bar .fr-choice,
+.fr-seatmap.fr-immersive .fr-hall3d-bar .fr-action-secondary {
+  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
+  backdrop-filter: blur(6px);
+}
+.fr-seatmap.fr-immersive .fr-hall3d-name {
+  top: auto;
+  bottom: var(--fr-space-6);
+  right: var(--fr-space-5);
+}
+.fr-seatmap.fr-immersive .fr-hall3d-caption {
+  bottom: var(--fr-space-6);
+  left: var(--fr-space-5);
+}
+.fr-seatmap.fr-immersive:has(.fr-hall3d-preview) .fr-hall3d-caption,
+.fr-seatmap.fr-immersive:has(.fr-hall3d-preview) .fr-hall3d-name {
+  bottom: calc(var(--fr-space-6) + 3.5rem);
+}
+.fr-seatmap.fr-immersive .fr-hall3d-off {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--fr-head) + var(--fr-space-2));
+  right: var(--fr-space-5);
+  margin: 0;
+}
+
+/* ---- phones and narrow windows: the hall on top, the rail or panel below it, the page scrolls ---- */
+@media (max-width: 56rem) {
+  .fr-app:has(.fr-immersive) {
+    --fr-head: 4.25rem;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .fr-app:has(.fr-immersive) .fr-footer {
+    position: static;
+    text-align: left;
+  }
+  .fr-landing {
+    height: 100dvh;
+  }
+  .fr-landing-copy {
+    left: var(--fr-space-3);
+    right: var(--fr-space-3);
+    bottom: var(--fr-space-5);
+    padding: var(--fr-space-4);
+  }
+  .fr-landing .fr-stage-foot {
+    top: calc(var(--fr-head) + var(--fr-space-2));
+    bottom: auto;
+    right: var(--fr-space-3);
+  }
+  .fr-landing .fr-stage-foot .fr-hall3d-caption {
+    display: none;
+  }
+  .fr-browse,
+  .fr-seatmap.fr-immersive {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .fr-browse-stage,
+  .fr-seatmap.fr-immersive .fr-hall3d {
+    order: -1;
+    height: 62dvh;
+  }
+  .fr-browse-rail,
+  .fr-seatmap-panel {
+    padding: var(--fr-space-5) var(--fr-space-4) var(--fr-space-6);
+    border: 0;
+    overflow: visible;
+  }
+  .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-seatmap-panel {
+    padding-top: calc(var(--fr-head) + var(--fr-space-2));
+  }
+  .fr-browse-bar {
+    left: var(--fr-space-3);
+    right: var(--fr-space-3);
+    bottom: var(--fr-space-3);
+    justify-content: space-between;
+    padding: var(--fr-space-2) var(--fr-space-2) var(--fr-space-2) var(--fr-space-4);
+  }
+  .fr-browse .fr-stage-foot .fr-hall3d-caption,
+  .fr-seatmap.fr-immersive .fr-hall3d-caption,
+  .fr-seatmap.fr-immersive .fr-hall3d-name {
+    display: none;
+  }
+  .fr-seatmap.fr-immersive .fr-hall3d-bar {
+    left: var(--fr-space-3);
+    right: var(--fr-space-3);
+  }
+}
+
+/* With the hall beside it and a mouse in hand, the 2D map shrinks to fit the panel (it scrolls if it still does not);
+   on touch screens it keeps the full tap size. */
+@media (min-width: 56.01rem) and (pointer: fine) {
+  .fr-seatmap:has(.fr-hall3d) .fr-grid {
+    zoom: 0.72;
+  }
+}
+
+/* 2D only: the map centred in the full width */
+.fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-grid {
+  margin-inline: auto;
+}

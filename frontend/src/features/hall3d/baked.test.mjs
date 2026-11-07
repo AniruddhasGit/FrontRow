@@ -2,7 +2,7 @@
 // its label, and uses that file's cameras; any mismatch means the procedural hall is drawn instead. Run with the rest.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bakedHall, screenNumber } from "./hall.ts";
+import { bakedHall, screenFirst, screenNumber } from "./hall.ts";
 
 const meta = {
   hall: 1, allseats: { eye: [0, 3, -1], look: [0, 1.4, -10.5] }, screen: { w: 6.9, h: 2.9, zc: 2.85, z: -0.29 },
@@ -32,4 +32,12 @@ test("the screen number comes from the screen's name, and nothing else", () => {
   assert.equal(screenNumber("SCREEN 4"), 4);
   assert.equal(screenNumber("Screen 12"), 12);
   assert.equal(screenNumber("IMAX"), null);
+});
+
+test("CR-004: the seat page arrives seated facing the screen, turns by the side wall, and lands on the all-seats view", () => {
+  const r = screenFirst(meta);
+  assert.deepEqual(r[0], { eye: [2.4, 1.81, -5.15], look: [0, 2.5, -0.29] }); // the front level's middle seat, at the film
+  assert.deepEqual(r.at(-1), meta.allseats);
+  // the turn looks at the side wall, well clear of the eye, so the look point never crosses the camera
+  assert.ok(Math.abs(r[1].look[0] - r[1].eye[0]) > 3 && r[1].look[2] === r[1].eye[2]);
 });

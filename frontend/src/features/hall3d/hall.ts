@@ -140,6 +140,16 @@ export interface BakedMeta {
   /** The arrival route, ENTRY door to the all-seats view (hall_path.py); the live camera flies it, no video. */
   intro?: { eye: number[]; look: number[] }[];
 }
+/** CR-004: the seat page's arrival. Seated in the middle of the front level, facing the film on the screen; then up and
+ *  round by the side wall (so the look point never passes through the eye) onto the all-seats view. */
+export function screenFirst(meta: BakedMeta): { eye: number[]; look: number[] }[] {
+  const front = meta.seats.filter((s) => s.level === meta.seats[0].level);
+  const sit = front[Math.floor(front.length / 2)].eye;
+  const { eye: ae, look: al } = meta.allseats;
+  const wall = Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2;
+  const mid = [(sit[0] + ae[0]) / 2, Math.max(sit[1], ae[1]) + 0.3, (sit[2] + ae[2]) / 2];
+  return [{ eye: sit, look: [0, meta.screen.zc - 0.35, meta.screen.z] }, { eye: mid, look: [wall, mid[1], mid[2]] }, { eye: ae, look: al }];
+}
 export interface Baked { placed: Placed[]; meta: BakedMeta; views: (seatId: number | null) => Record<Mode, View> }
 
 const v3 = (a: number[]) => [a[0], a[1], a[2]] as [number, number, number];
