@@ -17,8 +17,8 @@
 | | |
 |---|---|
 | Source of record | `tokens.css` |
-| `tokens.css` SHA-256 | `4b1507c8a2a103dc3aaabc223d2010398c71afcfc7831a85f8408c7ce2455f0f` |
-| Colour tokens | 36 |
+| `tokens.css` SHA-256 | `7b6267f3ef9a984471654d44fae3e8aaa13e2802ca8dcfdfecf6f9c9efc6de5a` |
+| Colour tokens | 40 |
 | Foreground/background pairs checked | **76** (38 light, 38 dark) |
 | Lowest ratio measured | **3.39:1** |
 | Greyscale steps checked | 6 |
@@ -50,18 +50,18 @@ the exit code at 1 exactly as a FAIL does.
 
 | Check | What it proves | Subjects | Result |
 |---|---|---|---|
-| `PARSE` | tokens.css parses and every block marker is present | 165 declarations | PASS |
-| `ONE-PER-LINE` | every custom property is declared on its own line | 161 lines | PASS |
-| `ANNOTATED` | every colour-valued token carries a role annotation | 36 colour tokens | PASS |
-| `DECOR-WHY` | every @decor token states why it is exempt | 3 exemptions | PASS |
+| `PARSE` | tokens.css parses and every block marker is present | 177 declarations | PASS |
+| `ONE-PER-LINE` | every custom property is declared on its own line | 173 lines | PASS |
+| `ANNOTATED` | every colour-valued token carries a role annotation | 40 colour tokens | PASS |
+| `DECOR-WHY` | every @decor token states why it is exempt | 7 exemptions | PASS |
 | `ON-RESOLVES` | every on: target names a real @ground token | 22 foreground tokens | PASS |
-| `THEME-PARITY` | light and dark define exactly the same palette tokens | 39 palette tokens | PASS |
-| `DARK-IDENTICAL` | the two dark blocks are value-for-value identical | 39 tokens | PASS |
+| `THEME-PARITY` | light and dark define exactly the same palette tokens | 43 palette tokens | PASS |
+| `DARK-IDENTICAL` | the two dark blocks are value-for-value identical | 43 tokens | PASS |
 | `CONTRAST` | every derived pair meets its WCAG floor in both themes | 76 pairs | PASS |
 | `GREYSCALE` | seat states separate by >=12 L* with no colour | 6 steps | PASS |
 | `GLYPH` | every seat state carries a distinct non-colour mark | 4 states | PASS |
 | `SEAT-FIELD` | every seat fill separates from the seat-map field | 8 fill x themes | PASS |
-| `TOKEN-COVERAGE` | tokens.css and COMPONENTS.md name the same token set | 83 tokens | PASS |
+| `TOKEN-COVERAGE` | tokens.css and COMPONENTS.md name the same token set | 87 tokens | PASS |
 | `GENERATED` | CONTRAST.md on disk is exactly what tokens.css produces | 1 file | PASS |
 
 ## Token coverage
@@ -72,8 +72,8 @@ failure waiting for the first person who tries it.
 
 | Direction | Count |
 |---|---|
-| Tokens declared in `tokens.css` | 83 |
-| Distinct tokens named in `COMPONENTS.md` | 83 |
+| Tokens declared in `tokens.css` | 87 |
+| Distinct tokens named in `COMPONENTS.md` | 87 |
 | Declared but used by no component spec | **0** |
 | Named by a component spec but not declared | **0** |
 
@@ -235,6 +235,10 @@ quietly grow.
 |---|---|
 | `--fr-screen-glow` | the projector falloff under the SCREEN bar. It is a gradient stop on the seat-map field, carries no state, and nothing is ever read on top of it. |
 | `--fr-rule-quiet` | the cosmetic divider between list rows. Removing it loses no information — the meaning-bearing rule is --fr-rule, which is held to 3:1. |
+| `--fr-velvet-deep` | the stage curtain's pleat shadow (CR-005). A transition piece: it covers the hall for under two seconds, carries no state, and nothing is read on it. |
+| `--fr-velvet` | the stage curtain's velvet body (CR-005), as above. |
+| `--fr-velvet-lit` | the lit crown of each curtain pleat (CR-005), as above. |
+| `--fr-velvet-gold` | the curtain valance's trim line (CR-005), as above. |
 | `--fr-poster-empty-mark` | the perforation motif drawn in the missing-poster box. The words in that box use --fr-ink-muted on --fr-surface-inset, which is measured. |
 
 ---

@@ -65,198 +65,179 @@
   position: absolute;
   inset: 0;
 }
-.fr-stage-foot {
-  position: absolute;
-  right: var(--fr-space-5);
-  bottom: var(--fr-space-6);
+
+/* ---- the landing (CR-005): the films rail on the left, your locked seat in the hall on the right ---- */
+.fr-landing {
+  --fr-rail-w: clamp(18rem, 22vw, 24rem);
+  --fr-fold: 900ms cubic-bezier(0.65, 0, 0.35, 1);
+  display: grid;
+  grid-template-columns: var(--fr-rail-w) minmax(0, 1fr);
+  transition: grid-template-columns 700ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+/* Book tickets: the rail folds away and the hall takes the window while the camera turns */
+.fr-landing[data-leaving="book"] {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+.fr-rail {
   display: flex;
-  align-items: center;
-  gap: var(--fr-space-3);
-}
-.fr-stage-foot .fr-hall3d-caption {
-  position: static;
-  max-width: none;
-}
-.fr-stage-foot .fr-action-secondary {
-  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
-  backdrop-filter: blur(6px);
-}
-
-/* ---- the landing ---- */
-.fr-landing-copy {
-  position: absolute;
-  left: clamp(var(--fr-space-4), 4vw, var(--fr-space-8, 4rem));
-  bottom: clamp(var(--fr-space-6), 9vh, 6rem);
-  max-width: 36rem;
-  padding: var(--fr-space-5);
-  border-radius: var(--fr-radius-lg);
-  background: linear-gradient(color-mix(in srgb, var(--fr-surface-base) 72%, transparent), color-mix(in srgb, var(--fr-surface-base) 86%, transparent));
-  backdrop-filter: blur(8px);
-  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  display: grid;
-  gap: var(--fr-space-3);
-}
-.fr-landing-copy h1 {
-  margin: 0;
-}
-.fr-landing-lede {
-  margin: 0;
-  color: var(--fr-ink-muted);
-  font-size: var(--fr-text-md);
-  line-height: var(--fr-leading-body);
-}
-.fr-hero-eyebrow {
-  margin: 0;
-  font-family: var(--fr-font-mono);
-  font-size: var(--fr-text-xs);
-  letter-spacing: var(--fr-track-caps);
-  text-transform: uppercase;
-  color: var(--fr-screen-ink);
-}
-.fr-landing-actions .fr-action {
-  display: inline-flex;
-  align-items: center;
-  width: auto;
-  padding: 0 var(--fr-space-6);
-  text-decoration: none;
-}
-.fr-landing-halls {
-  flex-wrap: wrap;
-}
-.fr-landing-glow {
-  position: absolute;
-  inset: 0;
-}
-
-/* ---- Browse: the rail on the left, the hall on the right ---- */
-.fr-browse {
-  display: grid;
-  grid-template-columns: clamp(19rem, 24vw, 26rem) minmax(0, 1fr);
-}
-.fr-browse-rail {
-  overflow-y: auto;
-  padding: calc(var(--fr-head) + var(--fr-space-2)) var(--fr-space-4) var(--fr-space-7);
-  background: color-mix(in srgb, var(--fr-surface-base) 94%, transparent);
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: calc(var(--fr-head) + var(--fr-space-2));
+  background: var(--fr-surface-base);
   border-right: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  scrollbar-width: thin;
-  scrollbar-color: var(--fr-control-edge) transparent;
+  transition: opacity 400ms ease;
 }
-.fr-browse-rail h1 {
+.fr-landing[data-leaving="book"] .fr-rail {
+  opacity: 0;
+}
+.fr-rail h1 {
   font-size: var(--fr-text-xl);
-  margin: 0 0 var(--fr-space-4);
+  margin: 0;
+  padding: 0 var(--fr-space-5) var(--fr-space-3);
 }
-.fr-browse-films {
+.fr-rail .fr-banner,
+.fr-rail .fr-state {
+  margin: 0 var(--fr-space-5) var(--fr-space-3);
+}
+/* The list scrolls and snaps: whichever film sits in the middle is the one on the screen. The padding lets the
+   first and the last reach the middle too. */
+.fr-rail-films {
+  flex: 1;
+  min-height: 0;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 30vh var(--fr-space-4);
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
   display: grid;
-  gap: var(--fr-space-2);
+  align-content: start;
+  gap: var(--fr-space-3);
+  scrollbar-width: none;
+  mask-image: linear-gradient(transparent, black 22%, black 78%, transparent);
 }
-.fr-browse-film {
-  border-radius: var(--fr-radius-md);
-  border: var(--fr-stroke-hair) solid transparent;
+.fr-rail-films > li {
+  scroll-snap-align: center;
 }
-.fr-browse-film[data-open] {
-  background: var(--fr-surface-raised);
-  border-color: var(--fr-rule-quiet);
-}
-.fr-browse-pick {
+.fr-rail-film {
   all: unset;
   box-sizing: border-box;
   width: 100%;
   display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
-  gap: var(--fr-space-3);
-  align-items: center;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  column-gap: var(--fr-space-3);
+  row-gap: var(--fr-space-1);
+  align-items: start;
   padding: var(--fr-space-2);
-  border-radius: var(--fr-radius-md);
+  border-radius: var(--fr-radius-lg);
+  border: var(--fr-stroke-hair) solid transparent;
   cursor: pointer;
+  opacity: 0.55;
+  transform: scale(0.96);
+  transition: opacity 300ms ease, transform 300ms ease, background-color 300ms ease, border-color 300ms ease;
 }
-.fr-browse-pick:hover {
-  background: color-mix(in srgb, var(--fr-surface-raised) 70%, transparent);
+.fr-rail-film .fr-poster {
+  grid-row: 1 / span 2;
 }
-.fr-browse-pick:focus-visible {
-  outline: 2px solid var(--fr-focus-ring, var(--fr-screen-ink));
+.fr-rail-film .fr-poster-title {
+  font-size: 0.55rem;
+}
+.fr-rail-film[aria-pressed="true"] {
+  opacity: 1;
+  transform: none;
+  background: var(--fr-surface-raised);
+  border-color: var(--fr-surface-accent);
+}
+.fr-rail-film:hover {
+  opacity: 0.9;
+}
+.fr-rail-film:focus-visible {
+  outline: 2px solid var(--fr-focus-ring);
   outline-offset: 2px;
 }
-.fr-browse-pick .fr-poster-title {
-  font-size: 0.5rem;
-}
-.fr-browse-title {
-  display: block;
+.fr-rail-title {
   font-family: var(--fr-font-display);
   font-weight: var(--fr-weight-bold);
   color: var(--fr-ink-strong);
-  margin-bottom: var(--fr-space-1);
+  padding-top: var(--fr-space-1);
 }
-.fr-browse-pick .fr-meta {
+.fr-rail-film .fr-meta {
   font-size: var(--fr-text-xs);
   flex-wrap: wrap;
+  margin: 0;
 }
-.fr-browse-times {
-  padding: 0 var(--fr-space-3) var(--fr-space-3);
-  display: grid;
+.fr-rail-all {
+  margin: var(--fr-space-3) var(--fr-space-5) var(--fr-space-6);
+}
+.fr-landing-stage {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+/* The film, its times and Book tickets, over the bottom of the hall */
+.fr-landing-bar {
+  position: absolute;
+  left: var(--fr-space-5);
+  right: var(--fr-space-5);
+  bottom: var(--fr-space-6);
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fr-space-3) var(--fr-space-4);
+  padding: var(--fr-space-3) var(--fr-space-3) var(--fr-space-3) var(--fr-space-5);
+  border-radius: var(--fr-radius-lg);
+  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
+  backdrop-filter: blur(10px);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+.fr-landing[data-leaving] .fr-landing-bar {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+.fr-landing-now {
+  margin: 0;
+  font-family: var(--fr-font-display);
+  font-weight: var(--fr-weight-black);
+  font-size: var(--fr-text-xl);
+  color: var(--fr-ink-strong);
+  letter-spacing: -0.02em;
+}
+.fr-landing-times {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--fr-space-2);
+  flex: 1;
+}
+.fr-landing-bar .fr-action {
+  width: auto;
+  padding: 0 var(--fr-space-6);
+  margin-left: auto;
 }
 .fr-browse-note {
   margin: 0;
-  font-size: var(--fr-text-xs);
+  font-size: var(--fr-text-sm);
   color: var(--fr-ink-muted);
+  flex: 1;
 }
-.fr-browse-slots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--fr-space-2);
-}
-.fr-browse-slots .fr-choice {
-  font-size: var(--fr-text-sm);
-}
-.fr-browse-all {
-  display: inline-flex;
-  margin-top: var(--fr-space-5);
-  font-size: var(--fr-text-sm);
-  color: var(--fr-accent-ink);
-}
-.fr-browse-stage {
-  position: relative;
-  min-width: 0;
-}
-.fr-browse-bar {
+/* All films: the rail's ground follows the gathering curtain across from the right, until it is the whole page */
+.fr-landing-fill {
   position: absolute;
-  left: var(--fr-space-5);
-  bottom: var(--fr-space-6);
-  display: flex;
-  align-items: center;
-  gap: var(--fr-space-4);
-  padding: var(--fr-space-3) var(--fr-space-3) var(--fr-space-3) var(--fr-space-5);
-  border-radius: var(--fr-radius-lg);
-  background: color-mix(in srgb, var(--fr-surface-base) 82%, transparent);
-  backdrop-filter: blur(8px);
-  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  inset: 0 0 0 auto;
+  z-index: 5;
+  width: 0;
+  background: var(--fr-surface-base);
+  transition: width var(--fr-fold);
 }
-.fr-browse-bar p {
-  margin: 0;
-  display: grid;
-  color: var(--fr-ink-muted);
-  font-size: var(--fr-text-sm);
+.fr-landing[data-leaving="drawn"] .fr-landing-fill {
+  width: 100%;
 }
-.fr-browse-now {
-  font-family: var(--fr-font-display);
-  font-weight: var(--fr-weight-black);
-  font-size: var(--fr-text-lg);
-  color: var(--fr-ink-strong);
-}
-.fr-browse-bar .fr-action {
-  display: inline-flex;
-  align-items: center;
-  width: auto;
-  padding: 0 var(--fr-space-5);
-  text-decoration: none;
-}
-/* the stage's own foot sits above the show bar on Browse */
-.fr-browse .fr-stage-foot {
-  top: calc(var(--fr-head) + var(--fr-space-2));
-  bottom: auto;
+.fr-landing[data-leaving="drawn"] .fr-rail {
+  border-right-color: transparent;
 }
 
 /* ---- the seat page: the hall on the left, the panel (heading, 2D map, summary) on the right ---- */
@@ -357,50 +338,77 @@
     position: static;
     text-align: left;
   }
-  .fr-landing {
-    height: 100dvh;
-  }
-  .fr-landing-copy {
-    left: var(--fr-space-3);
-    right: var(--fr-space-3);
-    bottom: var(--fr-space-5);
-    padding: var(--fr-space-4);
-  }
-  .fr-landing .fr-stage-foot {
-    top: calc(var(--fr-head) + var(--fr-space-2));
-    bottom: auto;
-    right: var(--fr-space-3);
-  }
-  .fr-landing .fr-stage-foot .fr-hall3d-caption {
-    display: none;
-  }
-  .fr-browse,
+  .fr-landing,
+  .fr-landing[data-leaving="book"],
   .fr-seatmap.fr-immersive {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
   }
-  .fr-browse-stage,
+  .fr-landing-stage,
   .fr-seatmap.fr-immersive .fr-hall3d {
     order: -1;
     height: 62dvh;
   }
-  .fr-browse-rail,
   .fr-seatmap-panel {
     padding: var(--fr-space-5) var(--fr-space-4) var(--fr-space-6);
     border: 0;
     overflow: visible;
   }
-  .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-seatmap-panel {
-    padding-top: calc(var(--fr-head) + var(--fr-space-2));
+  /* phones: the films run sideways under the hall, the middle one is on the screen */
+  .fr-rail {
+    padding-top: var(--fr-space-4);
+    border: 0;
   }
-  .fr-browse-bar {
+  .fr-rail h1 {
+    padding-inline: var(--fr-space-4);
+  }
+  .fr-rail-films {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    padding: var(--fr-space-2) calc(50% - 5rem);
+    mask-image: linear-gradient(90deg, transparent, black 18%, black 82%, transparent);
+  }
+  .fr-rail-films > li {
+    flex: 0 0 10rem;
+  }
+  .fr-rail-film {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fr-rail-film .fr-poster {
+    grid-row: auto;
+  }
+  .fr-rail-all {
+    margin-inline: var(--fr-space-4);
+  }
+  .fr-landing-bar {
     left: var(--fr-space-3);
     right: var(--fr-space-3);
     bottom: var(--fr-space-3);
-    justify-content: space-between;
-    padding: var(--fr-space-2) var(--fr-space-2) var(--fr-space-2) var(--fr-space-4);
+    padding: var(--fr-space-3);
   }
-  .fr-browse .fr-stage-foot .fr-hall3d-caption,
+  .fr-landing-now {
+    font-size: var(--fr-text-lg);
+    flex: 1 0 100%;
+  }
+  /* the times scroll sideways in one row; Book tickets takes the full width under them */
+  .fr-landing-times {
+    flex: 1 0 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .fr-landing-times .fr-choice {
+    flex: none;
+  }
+  .fr-landing-bar .fr-action {
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+  .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-seatmap-panel {
+    padding-top: calc(var(--fr-head) + var(--fr-space-2));
+  }
   .fr-seatmap.fr-immersive .fr-hall3d-caption,
   .fr-seatmap.fr-immersive .fr-hall3d-name {
     display: none;
@@ -422,4 +430,53 @@
 /* 2D only: the map centred in the full width */
 .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) .fr-grid {
   margin-inline: auto;
+}
+
+/* ---- /films (CR-005): the poster wall the curtain opens onto - posters, the title under each, cards popping in ---- */
+.fr-listing .fr-cards {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.5rem), 1fr));
+  gap: var(--fr-space-6) var(--fr-space-5);
+}
+.fr-listing .fr-card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  animation: fr-pop 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+.fr-listing .fr-card:hover {
+  transform: none;
+}
+.fr-listing .fr-card .fr-poster {
+  border-radius: var(--fr-radius-lg);
+  transition: transform 300ms var(--fr-ease-out), box-shadow 300ms var(--fr-ease-out);
+}
+.fr-listing .fr-card:hover .fr-poster {
+  transform: translateY(-4px) scale(1.015);
+}
+.fr-listing .fr-card-link {
+  gap: var(--fr-space-2);
+}
+.fr-listing .fr-card-title {
+  font-size: var(--fr-text-md);
+  margin-top: var(--fr-space-2);
+}
+.fr-listing .fr-card-synopsis {
+  display: none;
+}
+.fr-listing .fr-card .fr-meta {
+  font-size: var(--fr-text-xs);
+  color: var(--fr-ink-muted);
+}
+@keyframes fr-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-listing .fr-card {
+    animation: none;
+  }
 }

@@ -651,6 +651,21 @@ the file is chosen, not after it is rejected (`FR-ADR-061`), and the upload box 
 
 ---
 
+## 11b. The stage curtain (CR-005)
+
+A transition piece that covers a hall view for under two seconds. It carries no state and never takes a click.
+
+| Part | Tokens |
+|---|---|
+| Velvet pleats | a repeating gradient from `--fr-velvet-deep` through `--fr-velvet` to `--fr-velvet-lit` and back |
+| Valance trim | 3px `--fr-velvet-gold` under the pelmet |
+
+| Situation | What renders |
+|---|---|
+| **Reduced motion** | Every move is instant. |
+
+---
+
 ## 12. Token index
 
 Every token in `tokens.css`, and where in this document it is used. This table is
@@ -680,7 +695,7 @@ what makes the coverage check meaningful in the direction that is easy to forget
 | Boundaries | `--fr-focus-ring` `--fr-rule` `--fr-control-edge` `--fr-rule-ticket` | §0.2, §1.2, §1.7, §3, §4, §5, §6, §9, §10, §11 |
 | Seat-map graphics | `--fr-screen-bar` | §1.2 |
 | Countdown | `--fr-countdown-fill` `--fr-countdown-urgent` | §7, §10 |
-| Exempt | `--fr-screen-glow` `--fr-rule-quiet` `--fr-poster-empty-mark` | §1.2, §2, §3, §10 |
+| Exempt | `--fr-screen-glow` `--fr-rule-quiet` `--fr-poster-empty-mark` `--fr-velvet-deep` `--fr-velvet` `--fr-velvet-lit` `--fr-velvet-gold` | §1.2, §2, §3, §10, §11b |
 | Elevation | `--fr-shadow-card` `--fr-shadow-sheet` `--fr-scrim` | §0.6, §3, §5, §8, §10 |
 
 ---
