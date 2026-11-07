@@ -4,8 +4,9 @@
 //   signed out - to sign-in, which returns to the seat page (its own arrival: the screen, then the seats);
 //   signed in  - one flow: the rail folds away, the camera turns from your seat onto the seats, and the seat page takes
 //                over on that same picture (fr.flown; the router holds the frame until its hall has drawn).
-// "All films": the curtain drops on the hall, then gathers to the left as the rail's ground follows it across, and
-// the poster grid (/films) takes the whole page.
+// "All films": the curtain drops on the hall, then opens from left to right, pulling the rail's edge across with it until
+// the rail is the whole page; the films already in the rail glide to their places in the /films grid (a View Transition,
+// matched by name) and everything else fades in.
 // Reads only the public read path, once per choice; nothing polls.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatPaise } from "../admin/money";
@@ -145,7 +146,8 @@ export function Landing() {
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}
         <ul ref={rail} className="fr-rail-films">
           {films?.map((f) => (
-            <li key={f.id} data-film={f.id}>
+            // the same view-transition name as its /films card: the browser glides each film to its place in the grid
+            <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}` }}>
               <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => centre(f.id)}>
                 <Poster src={f.poster_url} title={f.title} />
                 <span className="fr-rail-title">{f.title}</span>
