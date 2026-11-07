@@ -54,7 +54,6 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   // null = none (the procedural hall). The scene waits for the answer so it mounts once, in the right mode.
   const hallNo = map ? screenNumber(map.screen.name) : null;
   const [meta, setMeta] = useState<BakedMeta | null | undefined>(undefined);
-  const [intro, setIntro] = useState(true);
   useEffect(() => setAble(canDraw()), []);
   useEffect(() => {
     if (!hallNo) return setMeta(null);
@@ -118,17 +117,11 @@ export function Hall3D({ map, film = null, mine, onTap }: {
                        onHover={setHover} onMoving={onMoving} meta={meta} hallNo={hallNo} />
           </Suspense>
         </Guard>
-        {meta && intro && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? (
-          // the walk in: it ends on the exact camera the live scene starts at, then fades off it
-          <video className="fr-hall3d-intro" src={`/halls/hall${hallNo}_intro.mp4`} autoPlay muted playsInline
-                 onEnded={() => setIntro(false)} onError={() => setIntro(false)} />
-        ) : null}
         <div ref={tip} className="fr-hall3d-tip" hidden={!hover || moving}>
           {hover ? seatTip(hover, category.get(hover.cat) ?? "", visualOf(hover, mine), formatPaise(hover.price_paise)) : null}
         </div>
         <p className="fr-hall3d-name">{map.screen.name} <span className="fr-mono">{map.seats.length}</span> seats</p>
         <p className="fr-hall3d-caption">{caption}</p>
-        {meta && intro ? <button type="button" className="fr-action-secondary fr-hall3d-skip" onClick={() => setIntro(false)}>Skip intro</button> : null}
       </div>
       {mode === "seat" ? (
         <div className="fr-hall3d-bar">

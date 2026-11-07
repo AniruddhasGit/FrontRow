@@ -137,6 +137,8 @@ export function seatTip(seat: Seat, category: string, visual: Visual, price: str
 export interface BakedMeta {
   hall: number; allseats: { eye: number[]; look: number[] }; screen: { w: number; h: number; zc: number; z: number };
   seats: { id: string; row: string; num: number; cat: string; level: string; pos: number[]; eye: number[] }[];
+  /** The arrival route, ENTRY door to the all-seats view (hall_path.py); the live camera flies it, no video. */
+  intro?: { eye: number[]; look: number[] }[];
 }
 export interface Baked { placed: Placed[]; meta: BakedMeta; views: (seatId: number | null) => Record<Mode, View> }
 

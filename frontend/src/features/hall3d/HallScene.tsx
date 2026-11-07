@@ -11,6 +11,7 @@ import {
   SRGBColorSpace, TextureLoader, Vector3, type BufferGeometry, type Group, type Mesh, type PerspectiveCamera, type Texture,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { CatmullRomCurve3 } from "three";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
@@ -49,8 +50,25 @@ const ease = (t: number) => 1 - (1 - t) ** 4; // one ease, close to --fr-ease-ou
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 type BakedViews = ((seatId: number | null) => Record<Mode, View>) | null;
-function Rig({ hall, mode, seatId, onMoving, bakedViews }: {
+type Orbit = { target: Vector3; minAzimuthAngle: number; maxAzimuthAngle: number; minPolarAngle: number; maxPolarAngle: number; update: () => void };
+const ARRIVE_MS = 6500; // the baked hall's arrival, flown live along its own route
+const TURN = 0.95, UP = 0.4, DOWN = 0.55; // a baked hall: look around ~55 deg either side, 23 deg up, 31 deg down
+
+/** A baked hall's camera never moves when you drag: the orbit pivot sits 1 cm ahead of the eye, so dragging turns the
+ *  view on the spot (it cannot pass through a wall or see outside the room), capped around the view's own direction. */
+function pin(controls: Orbit | null, camera: PerspectiveCamera, look: Vector3) {
+  if (!controls) return;
+  const dir = look.clone().sub(camera.position).normalize();
+  controls.target.copy(camera.position).addScaledVector(dir, 0.01);
+  const theta = Math.atan2(-dir.x, -dir.z), phi = Math.acos(Math.max(-1, Math.min(1, -dir.y)));
+  controls.minAzimuthAngle = theta - TURN; controls.maxAzimuthAngle = theta + TURN;
+  controls.minPolarAngle = Math.max(0.05, phi - DOWN); controls.maxPolarAngle = Math.min(Math.PI - 0.05, phi + UP);
+  controls.update();
+}
+
+function Rig({ hall, mode, seatId, onMoving, bakedViews, intro }: {
   hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void; bakedViews: BakedViews;
+  intro: { eye: number[]; look: number[] }[] | null;
 }) {
   const camera = useThree((s) => s.camera as PerspectiveCamera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
@@ -63,56 +81,88 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews }: {
     camera.fov = aspect >= 16 / 9 ? deg : aspect >= 1 ? 58.72 : Math.min(95, deg);
     camera.updateProjectionMatrix();
   }, [bakedViews, aspect, camera]);
-  const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
+  const controls = useThree((s) => s.controls) as unknown as Orbit | null;
+  const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   const look = useRef(new Vector3(...view.look));
+  // where the orbit pivot goes: the look point itself, or (a baked hall) 1 cm ahead of the eye
+  const settle = () => (bakedViews ? pin(controls, camera, look.current) : controls?.target.copy(look.current));
   // t0 is stamped on the first frame drawn, so a slow first frame (shader compile) does not eat the move.
-  const glide = useRef<{ at0: Vector3; look0: Vector3; t0: number | null; ms: number } | null>(null);
+  const glide = useRef<{ at0: Vector3; look0: Vector3; t0: number | null; ms: number; route?: [CatmullRomCurve3, CatmullRomCurve3] } | null>(null);
   const shown = useRef<View | null>(null);
   useEffect(() => {
     if (shown.current === view) { // the controls arriving re-runs this; the camera already has its orders
-      if (!glide.current) controls?.target.copy(look.current);
+      if (!glide.current) settle();
       return;
     }
     const first = shown.current === null;
     shown.current = view;
     if (first || reducedMotion()) {
-      const fly = first && !reducedMotion() && !bakedViews; // reduced motion cuts (CR-001 B.5); a baked hall arrives by its clip
-      camera.position.set(...view.at);
+      const fly = first && !reducedMotion() && !bakedViews; // reduced motion cuts (CR-001 B.5)
+      // a baked hall arrives along its own route, ENTRY door to here, flown live in this scene (no video)
+      const arrive = !!(first && !reducedMotion() && bakedViews && intro && intro.length > 1);
+      camera.position.set(...((arrive ? intro![0].eye : view.at) as [number, number, number]));
       if (fly) camera.position.add(FLY_FROM);
-      look.current.set(...view.look);
+      look.current.set(...((arrive ? intro![0].look : view.look) as [number, number, number]));
       camera.lookAt(look.current);
-      controls?.target.copy(look.current);
+      settle();
       if (fly) {
         glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: FLY_MS };
+        onMoving(true);
+      }
+      if (arrive) {
+        const curve = (k: "eye" | "look") => new CatmullRomCurve3(intro!.map((w) => new Vector3(w[k][0], w[k][1], w[k][2])), false, "centripetal");
+        glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: ARRIVE_MS, route: [curve("eye"), curve("look")] };
         onMoving(true);
       }
       invalidate();
       return;
     }
-    glide.current = { at0: camera.position.clone(), look0: (controls?.target ?? look.current).clone(), t0: null, ms: GLIDE_MS };
+    // a glide starts from where the visitor looks now (a baked hall's pivot is 1 cm away, so read the camera instead)
+    const from = bakedViews ? camera.position.clone().add(camera.getWorldDirection(new Vector3()).multiplyScalar(10))
+      : (controls?.target ?? look.current).clone();
+    glide.current = { at0: camera.position.clone(), look0: from, t0: null, ms: GLIDE_MS };
     onMoving(true);
     invalidate();
   }, [view, camera, controls, invalidate, onMoving]);
+  // any tap or drag during the arrival skips it to the all-seats view
+  useEffect(() => {
+    const skip = () => {
+      if (glide.current?.route) glide.current.t0 = -1e9;
+      invalidate();
+    };
+    gl.domElement.addEventListener("pointerdown", skip);
+    return () => gl.domElement.removeEventListener("pointerdown", skip);
+  }, [gl, invalidate]);
   useFrame(() => {
     const g = glide.current;
     if (!g) return;
     g.t0 ??= performance.now();
     const k = Math.min(1, (performance.now() - g.t0) / g.ms);
     const e = ease(k);
-    camera.position.lerpVectors(g.at0, new Vector3(...view.at), e);
-    look.current.lerpVectors(g.look0, new Vector3(...view.look), e);
+    if (g.route && k < 1) {
+      camera.position.copy(g.route[0].getPointAt(e));
+      look.current.copy(g.route[1].getPointAt(e));
+    } else if (g.route) {
+      camera.position.set(...view.at);
+      look.current.set(...view.look);
+    } else {
+      camera.position.lerpVectors(g.at0, new Vector3(...view.at), e);
+      look.current.lerpVectors(g.look0, new Vector3(...view.look), e);
+    }
     camera.lookAt(look.current);
-    controls?.target.copy(look.current);
+    settle();
     if (k < 1) invalidate();
     else {
       glide.current = null;
       onMoving(false);
     }
   });
-  // Looking around is the all-seats view's; a seat's view stays put at that seat's eyes.
-  return <OrbitControls makeDefault enabled={mode === "all"} enablePan={false} enableDamping={false} maxPolarAngle={Math.PI * 0.49}
-                        enableZoom={!bakedViews} minDistance={bakedViews ? 0 : 4} maxDistance={60} onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
+  // Procedural hall: orbit the all-seats view only. Baked hall: turn on the spot (pin) in every view, from your seat too.
+  return <OrbitControls makeDefault enabled={!!bakedViews || mode === "all"} enablePan={false} enableDamping={false}
+                        maxPolarAngle={bakedViews ? undefined : Math.PI * 0.49} rotateSpeed={bakedViews ? -0.35 : 1}
+                        enableZoom={!bakedViews} minDistance={bakedViews ? 0 : 4} maxDistance={60}
+                        onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
 }
 
 function SeatKind({ kind, items, colourOf, onPick, onHover, baked }: {
@@ -509,7 +559,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
         <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={pick} onHover={hoverSeat} baked={!!baked} />
       ) : null))}
       <Halos placed={placed} mine={mine} tone={tone} />
-      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} />
+      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={baked?.meta.intro ?? null} />
       <EffectComposer multisampling={4}>
         <Bloom mipmapBlur luminanceThreshold={1} intensity={baked ? 0.6 : 0.9} />
         <Vignette offset={0.3} darkness={0.55} />
