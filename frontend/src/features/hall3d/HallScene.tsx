@@ -392,9 +392,11 @@ function Haze({ meta }: { meta: BakedMeta }) {
     beam.setAttribute("position", new Float32BufferAttribute(pos, 3));
     beam.setAttribute("color", new Float32BufferAttribute(col, 3));
     beam.computeVertexNormals();
-    const seeds = Array.from({ length: N_DUST }, () => {
-      const target = new Vector3((Math.random() - 0.5) * w, bottom + Math.random() * h, z);
-      return { base: port.clone().lerp(target, 0.08 + Math.random() * 0.85), ph: Math.random() * 6.28, sp: 0.15 + Math.random() * 0.35 };
+    // a fixed scatter: the booking key is the only randomness allowed in frontend/src (S-PAY-12, checkout.test)
+    const r = (n: number) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+    const seeds = Array.from({ length: N_DUST }, (_, i) => {
+      const target = new Vector3((r(5 * i) - 0.5) * w, bottom + r(5 * i + 1) * h, z);
+      return { base: port.clone().lerp(target, 0.08 + r(5 * i + 2) * 0.85), ph: r(5 * i + 3) * 6.28, sp: 0.15 + r(5 * i + 4) * 0.35 };
     });
     const dust = new Geometry();
     dust.setAttribute("position", new Float32BufferAttribute(seeds.flatMap((s) => s.base.toArray()), 3));
