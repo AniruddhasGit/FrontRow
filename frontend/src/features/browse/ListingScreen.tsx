@@ -117,17 +117,17 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
         <p className="fr-state">{anyFilter ? "Nothing is showing for the chosen filters." : "Nothing is showing right now."}</p>
       ) : (
         <ul className="fr-cards">
-          {films.map((m) => <Card key={m.id} film={m} />)}
+          {films.map((m, i) => <Card key={m.id} film={m} index={i} />)}
         </ul>
       )}
     </section>
   );
 }
 
-function Card({ film }: { film: Film }) {
+function Card({ film, index }: { film: Film; index: number }) {
   const name = `${film.title}, ${runtimeName(film.runtime_minutes)}, ${film.certification.name}, ${film.language.name}`;
   return (
-    <li className="fr-card">
+    <li className="fr-card" style={{ ["--i" as string]: index }}>
       <a href={`/movies/${film.id}`} className="fr-card-link" aria-label={name} onClick={(e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();

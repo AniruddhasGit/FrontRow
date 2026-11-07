@@ -194,6 +194,10 @@
      this list cannot quietly grow. */
   --fr-screen-glow: #C9E4EC;             /* @decor why:"the projector falloff under the SCREEN bar. It is a gradient stop on the seat-map field, carries no state, and nothing is ever read on top of it." */
   --fr-rule-quiet: #DCD3C4;              /* @decor why:"the cosmetic divider between list rows. Removing it loses no information — the meaning-bearing rule is --fr-rule, which is held to 3:1." */
+  --fr-velvet-deep: #4A0508;             /* @decor why:"the stage curtain's pleat shadow (CR-005). A transition piece: it covers the hall for under two seconds, carries no state, and nothing is read on it." */
+  --fr-velvet: #8E0C12;                  /* @decor why:"the stage curtain's velvet body (CR-005), as above." */
+  --fr-velvet-lit: #C41A20;              /* @decor why:"the lit crown of each curtain pleat (CR-005), as above." */
+  --fr-velvet-gold: #C9A24A;             /* @decor why:"the curtain valance's trim line (CR-005), as above." */
   --fr-poster-empty-mark: #D8CEBE;       /* @decor why:"the perforation motif drawn in the missing-poster box. The words in that box use --fr-ink-muted on --fr-surface-inset, which is measured." */
 
   /* Elevation and scrim. Not hex, so not contrast-measured — an alpha shadow
@@ -253,6 +257,10 @@
 
     --fr-screen-glow: #123543;
     --fr-rule-quiet: #232C36;
+    --fr-velvet-deep: #4A0508;
+    --fr-velvet: #8E0C12;
+    --fr-velvet-lit: #C41A20;
+    --fr-velvet-gold: #C9A24A;
     --fr-poster-empty-mark: #1B232C;
 
     --fr-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.40);
@@ -306,6 +314,10 @@
 
   --fr-screen-glow: #123543;
   --fr-rule-quiet: #232C36;
+  --fr-velvet-deep: #4A0508;
+  --fr-velvet: #8E0C12;
+  --fr-velvet-lit: #C41A20;
+  --fr-velvet-gold: #C9A24A;
   --fr-poster-empty-mark: #1B232C;
 
   --fr-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.40);

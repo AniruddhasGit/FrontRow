@@ -21,16 +21,21 @@ export interface AppRoute {
 
 const NAVIGATE_EVENT = "fr:navigate";
 
-export function navigate(to: string): void {
+/** `hold`, when given, keeps the old page's last frame on screen until it settles (CR-005: the landing's hall stays
+ *  up until the seat page's hall has drawn), capped by the promise itself. */
+export function navigate(to: string, hold?: Promise<void>): void {
   window.history.pushState(null, "", to);
-  transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)));
+  transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)), hold);
 }
 
 // The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
 // one settles in (premium.css). flushSync makes React paint the new screen inside the transition callback.
 // No API, or reduced motion: the plain instant swap, unchanged.
-function transition(change: () => void): void {
-  const swap = () => flushSync(change);
+function transition(change: () => void, hold?: Promise<void>): void {
+  const swap = () => {
+    flushSync(change);
+    return hold;
+  };
   const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   // A quicker next step skips this transition and rejects its `ready`; that is expected, not an error.
   if (typeof document !== "undefined" && "startViewTransition" in document && !reduced) document.startViewTransition(swap).ready.catch(() => null);

@@ -143,7 +143,7 @@ export interface BakedMeta {
   port?: number[];
 }
 /** CR-004: the seat page's arrival. Seated in the default seat, facing the film on the screen; then up and
- *  round by the side wall (so the look point never passes through the eye) onto the all-seats view. */
+ *  round by the far side wall (so the look point never passes through the eye, nor stares into the near wall) onto the all-seats view. */
 /** The default seat (owner, 2026-11-07: "put me in the left corner top seat"; their example is Hall 1, row H, seat 1):
  *  the farthest row from the screen - the top of the rake, the balcony's in Hall 6 - and its seat 1. Rows run to -z. */
 export function defaultSeat(meta: BakedMeta): BakedMeta["seats"][number] {
@@ -156,7 +156,7 @@ export function screenFirst(meta: BakedMeta): { eye: number[]; look: number[] }[
   const { eye: ae, look: al } = meta.allseats;
   const wall = Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2;
   const mid = [(sit[0] + ae[0]) / 2, Math.max(sit[1], ae[1]) + 0.3, (sit[2] + ae[2]) / 2];
-  return [{ eye: sit, look: [0, meta.screen.zc - 0.35, meta.screen.z] }, { eye: mid, look: [wall, mid[1], mid[2]] }, { eye: ae, look: al }];
+  return [{ eye: sit, look: [0, meta.screen.zc - 0.35, meta.screen.z] }, { eye: mid, look: [-Math.sign(sit[0] || 1) * wall, mid[1], mid[2]] }, { eye: ae, look: al }];
 }
 export interface Baked { placed: Placed[]; meta: BakedMeta; views: (seatId: number | null) => Record<Mode, View> }
 

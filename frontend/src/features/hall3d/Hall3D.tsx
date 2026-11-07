@@ -14,6 +14,8 @@ import "./hall3d.css";
 const HallScene = lazy(() => import("./HallScene"));
 
 const MODES: [Mode, string][] = [["all", "All seats"], ["seat", "From my seat"]];
+/** Set by the landing just before it hands over to this page (CR-005). */
+export const FLOWN = "fr.flown";
 
 export function canDraw(): boolean {
   try {
@@ -64,7 +66,19 @@ export function Hall3D({ map, film = null, mine, onTap }: {
     };
   }, [hallNo]);
   // CR-004: the visitor arrives seated, facing their film on the screen, then the camera turns onto the seats.
-  const arrival = useMemo(() => (meta?.seats?.length ? { ...meta, intro: screenFirst(meta) } : meta), [meta]);
+  // CR-005: coming from the landing's pan (it leaves fr.flown = this showtime), the camera is already over the seats.
+  const [flown] = useState(() => {
+    try {
+      const v = window.sessionStorage.getItem(FLOWN);
+      window.sessionStorage.removeItem(FLOWN);
+      return v;
+    } catch {
+      return null;
+    }
+  });
+  const showtimeId = map?.showtime.id;
+  const arrival = useMemo(() => (meta?.seats?.length
+    ? { ...meta, intro: flown !== null && String(showtimeId) === flown ? undefined : screenFirst(meta) } : meta), [meta, flown, showtimeId]);
   const onMoving = useCallback((m: boolean) => {
     setMoving(m);
     if (m) setHover(null); // the seat under the pointer is about to change
