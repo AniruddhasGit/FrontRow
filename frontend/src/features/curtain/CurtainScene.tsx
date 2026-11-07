@@ -3,7 +3,7 @@
 // so the cloth falls into deep vertical pleats on its own. Velvet: MeshPhysicalMaterial with sheen (three's velvet
 // model) and a woven-fabric normal map (ambientCG Fabric084, CC0), lit by a raking key so every fold reads.
 //   down  - the rail falls from above the box like a dropped fly; when it stops, the hem swings on and settles
-//   drawn - the pins run along the rail to the box's left edge; the cloth bunches into folds as it goes
+//   drawn - the pins run along the rail to the box's right edge; the cloth bunches into folds as it goes
 // Loaded lazily (Curtain.tsx); three.js is already in the page wherever a hall is.
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
@@ -18,7 +18,10 @@ const PLEAT = 5; // particles per pleat: a smooth fold needs several, or the sha
 const DEPTH = 0.55; // pleat depth, as a share of the pleat's width
 const H = 4; // world units for the box's height
 const G = 10; // gravity, world units / s^2 (the box is 4 units tall)
-const DAMP = 0.988, ITER = 10, STEP = 1 / 120;
+// heavy, sturdy velvet (owner: "minimal wavyness"): strong damping and a stiff solve, so it swings once and stops
+const DAMP = 0.965, ITER = 12, STEP = 1 / 120;
+const CARRY = 0.9; // share of the rail's own drop the whole sheet is carried by: the rest is left to the physics
+const FOLLOW = 0.02; // per step, each particle eases toward the spot under its pin: the weighted hem of a real drape
 const DRAW_MS = 900;
 const BRAKE = 0.7 * G; // the fly falls freely, then brakes gently to its trim (harder, and the hem piles up)
 const SETTLE_MS = 450; // after the rail stops: the hem's swing, before the move counts as done
@@ -29,6 +32,7 @@ const token = (name: string) => new Color(getComputedStyle(document.documentElem
 function Cloth({ phase, onDone }: { phase: CurtainPhase; onDone: () => void }) {
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
+  const gl = useThree((s) => s.gl);
   const W = (H * size.width) / Math.max(1, size.height);
   const top = H / 2 + 0.06, left = -W / 2;
   const sim = useMemo(() => {
@@ -126,6 +130,9 @@ function Cloth({ phase, onDone }: { phase: CurtainPhase; onDone: () => void }) {
   }, [phase, invalidate, sim]);
 
   useFrame((_, delta) => {
+    // Parked (up): nothing moves and nothing is redrawn. It was drawn once, so the velvet's shaders are compiled
+    // before the first drop - the drop starts on the click, without a first-frame stall.
+    if (shown.current === "up") return;
     // Everything runs on the simulation's own clock: a slow device plays the same motion, slower, never torn.
     const el = sim.t * 1000;
     // the move is done when the cloth has done it - timed from its own first frame, so a slow load never cuts it short
@@ -140,7 +147,15 @@ function Cloth({ phase, onDone }: { phase: CurtainPhase; onDone: () => void }) {
       sim.acc -= STEP;
       sim.t += STEP;
       drawK = shown.current === "drawn" ? easeInOut(Math.min(1, (sim.t * 1000) / DRAW_MS)) : 0;
+      const was = rail.current;
       rail.current = shown.current === "down" ? sim.railAt(sim.t) : 0;
+      // The sheet rides down with its rail (moved, not pushed: no speed is added), so when the rail brakes nothing piles
+      // up under the valance; the small remainder lags and settles, which is all the swing a heavy drape has.
+      const carry = (rail.current - was) * CARRY;
+      if (carry) for (let p = NX; p < NX * NY; p++) {
+        pos[3 * p + 1] += carry;
+        prev[3 * p + 1] += carry;
+      }
       for (let p = NX; p < NX * NY; p++) { // Verlet: gravity, damped
         const k = 3 * p;
         for (let c = 0; c < 3; c++) {
@@ -149,18 +164,24 @@ function Cloth({ phase, onDone }: { phase: CurtainPhase; onDone: () => void }) {
           pos[k + c] += v + (c === 1 ? -G * STEP * STEP : 0);
         }
       }
-      for (let i = 0; i < NX; i++) { // the pins: along the rail, gathered toward the left edge when drawn
+      // Weighted drape: every column eases sideways toward the x of its own pin, so the cloth follows the rail as one
+      // sturdy sheet instead of billowing out behind it (the owner: "minimal wavyness").
+      for (let p = NX; p < NX * NY; p++) pos[3 * p] += (pos[3 * (p % NX)] - pos[3 * p]) * FOLLOW;
+      for (let i = 0; i < NX; i++) { // the pins: along the rail, gathered toward the right edge when drawn
         const k = 3 * i;
-        pos[k] = prev[k] = left + (pinX[i] - left) * (1 - 0.965 * drawK);
+        // opened from left to right: the pins run to the box's RIGHT edge (owner, 2026-11-07)
+        pos[k] = prev[k] = -left - (-left - pinX[i]) * (1 - 0.965 * drawK);
         pos[k + 1] = prev[k + 1] = top + rail.current;
-        pos[k + 2] = prev[k + 2] = zig(i) * (1 + 2.5 * drawK);
+        pos[k + 2] = prev[k + 2] = zig(i) * (1 + 1.2 * drawK); // bunching deepens the folds a little, not enough to cross
       }
       for (let it = 0; it < ITER; it++) {
         for (let c = 0; c < cons.length; c += 4) {
           const a = 3 * cons[c], b = 3 * cons[c + 1], r = cons[c + 2];
           const ex = pos[b] - pos[a], ey = pos[b + 1] - pos[a + 1], ez = pos[b + 2] - pos[a + 2];
           const d = Math.hypot(ex, ey, ez) || 1e-6;
-          if (cons[c + 3] && d < r) continue; // the bend links only resist stretching, so folds can form
+          // the bend links let the pleats bunch only while the curtain is being drawn; hanging, they hold their shape both
+          // ways, so no two folds ever cross (crossed folds render as dark slits)
+          if (cons[c + 3] && d < r && shown.current === "drawn") continue;
           const f = ((d - r) / d) * 0.5;
           const pa = cons[c] >= NX, pb = cons[c + 1] >= NX; // free (not pinned): the top row never moves here
           const wa = pa && pb ? f : pa ? 2 * f : 0, wb = pa && pb ? f : pb ? 2 * f : 0;
@@ -169,6 +190,7 @@ function Cloth({ phase, onDone }: { phase: CurtainPhase; onDone: () => void }) {
         }
       }
     }
+    gl.domElement.closest(".fr-curtain")?.parentElement?.style.setProperty("--fr-curtain-open", String(shown.current === "drawn" ? 0.965 * easeInOut(Math.min(1, (sim.t * 1000) / DRAW_MS)) : 0));
     geo.attributes.position.needsUpdate = true;
     geo.computeVertexNormals();
     if (valY.current) valY.current.y = top + rail.current + (shown.current === "drawn" ? H * 0.4 * easeInOut(Math.max(0, Math.min(1, (el - 300) / 700))) : 0);

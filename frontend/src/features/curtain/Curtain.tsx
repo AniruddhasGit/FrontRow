@@ -3,7 +3,7 @@
 // It fills its positioned parent and never takes a click.
 //   up     - flown out, above the box (nothing shows, nothing runs)
 //   down   - dropped over the box; the hem swings on and settles
-//   drawn  - gathered to the box's LEFT edge, folding up as it goes, revealing what is behind
+//   drawn  - opened from left to right: gathered to the box's RIGHT edge, folding up as it goes, revealing what is behind
 // `onDone` fires when the current move has finished (settle included). With reduced motion every move is instant.
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Guard, canDraw } from "../hall3d/Hall3D";
@@ -32,7 +32,8 @@ export function Curtain({ phase, onDone }: { phase: CurtainPhase; onDone?: () =>
     const t = setTimeout(() => done.current?.(), reduced ? 0 : DONE_MS[phase]);
     return () => clearTimeout(t);
   }, [phase, reduced, live]);
-  if (phase === "up") return null;
+  // The cloth is mounted while parked too (above the box, drawn once), so its first drop starts without a stall.
+  if (phase === "up" && !live) return null;
   return (
     <div className="fr-curtain" data-phase={phase} aria-hidden="true">
       {live ? (

@@ -224,17 +224,21 @@
   color: var(--fr-ink-muted);
   flex: 1;
 }
-/* All films: the rail's ground follows the gathering curtain across from the right, until it is the whole page */
+/* All films: the curtain opens left to right and pulls the rail's edge with it - the rail's ground, with the rail's
+   border on its leading edge, grows across the hall until it is the whole page */
 .fr-landing-fill {
   position: absolute;
-  inset: 0 0 0 auto;
+  inset: 0 auto 0 0;
+  border-right: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
   z-index: 5;
   width: 0;
   background: var(--fr-surface-base);
   transition: width var(--fr-fold);
 }
+/* the cloth publishes how far it has opened (--fr-curtain-open, on its own clock), and the fill's edge rides it */
 .fr-landing[data-leaving="drawn"] .fr-landing-fill {
-  width: 100%;
+  width: calc(var(--fr-curtain-open, 1) * 100%);
+  transition: none;
 }
 .fr-landing[data-leaving="drawn"] .fr-rail {
   border-right-color: transparent;
@@ -442,8 +446,6 @@
   border: 0;
   box-shadow: none;
   padding: 0;
-  animation: fr-pop 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(var(--i, 0) * 70ms);
 }
 .fr-listing .fr-card:hover {
   transform: none;
@@ -469,14 +471,9 @@
   font-size: var(--fr-text-xs);
   color: var(--fr-ink-muted);
 }
-@keyframes fr-pop {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.94);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fr-listing .fr-card {
-    animation: none;
-  }
+/* Arriving from the landing's curtain, each film glides from its place in the rail to its card (matched by its
+   view-transition name, film-<id>); the rest of the page fades in under the root transition. */
+::view-transition-group(*) {
+  animation-duration: 650ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
