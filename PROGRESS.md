@@ -525,3 +525,10 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 - All six halls baked and live (CR-003); Neon re-seeded once to the approved layouts; admin access by email (S-ADM-30); cold-start hall screen (WAIT-1); booking-flow 'Continue to payment' bug fixed; phone audit fixes; S-BRW-18 poster redirect; S-ACC-14/S-SEA-10/S-SEA-08/S-SEA-09 built; CR-002 approved + applied; USD wording; R2 for Render posters (SRC-007).
 - Gates: frontend 159/159; backend full suite: 1 known red (S-PAY-11 text clause, needs a ruling); concurrency proof green on final code, red-proofed and restored. Ledger 134 Done / 86 Blocked.
 - Open for the owner: roll the Cloudflare token with R2 Edit (keys were printed into the local log once); rule on S-PAY-11/S-XCT-42, S-ADM-29 vs S-XCT-44, S-SCP-15 vs CR-001 B.2, S-ADM-20; constitution ADR + version bump. See handoffs/HANDOFF_2026-11-07_0430_ani87.md.
+
+## 2026-11-07 (day session, owner present)
+
+- 3D halls: live fly-in (no video), capped look-around, projector beam + dust everywhere, default seat = top row seat 1. CR-004 full-screen pages; CR-005 locked-seat landing with the films rail, one-flow booking, and the stage curtain (Verlet velvet cloth, v3 accepted).
+- PRD real-browser verification: new e2e/ kit (73 tests, 66 pass, 6 = documented AC conflicts, 1 todo); 6 defects fixed; 23 stories to Done. Ledger 157 Done / 63 Blocked, --check PASS. Frontend 160/160.
+- Open for the owner: S-SCP-15, S-XCT-39, S-BRW-17, S-RPT-20 (axe-core dep), resend wording, plus the night run's list.
+- **Session closed 2026-11-07_1816 by ani87** → handoff: handoffs/HANDOFF_2026-11-07_1816_ani87.md
