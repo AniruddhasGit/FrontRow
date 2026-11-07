@@ -139,6 +139,8 @@ export interface BakedMeta {
   seats: { id: string; row: string; num: number; cat: string; level: string; pos: number[]; eye: number[] }[];
   /** The arrival route, ENTRY door to the all-seats view (hall_path.py); the live camera flies it, no video. */
   intro?: { eye: number[]; look: number[] }[];
+  /** The projector port (three.js metres): where the beam and its dust start. */
+  port?: number[];
 }
 /** CR-004: the seat page's arrival. Seated in the middle of the front level, facing the film on the screen; then up and
  *  round by the side wall (so the look point never passes through the eye) onto the all-seats view. */

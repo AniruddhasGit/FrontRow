@@ -11,7 +11,7 @@ import {
   SRGBColorSpace, TextureLoader, Vector3, type BufferGeometry, type Group, type Mesh, type PerspectiveCamera, type Texture,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CatmullRomCurve3 } from "three";
+import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
@@ -365,6 +365,70 @@ function usePainted(paint: Paint | null, aspect: number): Texture | null {
 /** CR-003: the Blender-baked room, /halls/hallN.glb. bake_* meshes carry their light in the texture and draw unlit;
  *  emit_* (LED strips, step lights, signs) are flat colour above 1 for the bloom; the screen shows the same picture as
  *  the procedural hall. Seats are not in the file - SeatKind draws them, live, lit by the lights below. */
+/** The projector beam through the haze, and the dust drifting in it (the demo's, CR-003): a cone from the projector
+ *  port to the screen's corners, bright where seen edge-on so it reads as a soft shaft, plus specks that drift. The
+ *  dust keeps the canvas drawing every frame; with reduced motion it holds still and nothing redraws. */
+const N_DUST = 900;
+const BEAM = new ShaderMaterial({
+  transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, vertexColors: true,
+  // ponytail: the site's bloom lifts it, so it is dimmer than the demo's, and it fades out within 6 m of the eye (seen
+  // from under it, a cone face is a flat grey sheet). Tune: the 1.6 and the smoothstep range.
+  vertexShader: "varying vec3 vC; varying vec3 vN; varying vec3 vV; varying float vD; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vD = -mv.z; gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "varying vec3 vC; varying vec3 vN; varying vec3 vV; varying float vD; void main(){ float edge = 1.0 - abs(dot(vN, vV)); float a = pow(edge, 4.0) * vC.r * 1.6 * smoothstep(1.5, 6.0, vD); gl_FragColor = vec4(vec3(0.78,0.85,1.0) * a, 1.0); }",
+});
+function Haze({ meta }: { meta: BakedMeta }) {
+  const invalidate = useThree((s) => s.invalidate);
+  const { beam, dust, seeds } = useMemo(() => {
+    const port = new Vector3(...(meta.port ?? [0, meta.screen.zc + 1.8, meta.allseats.look[2] - 6]) as [number, number, number]);
+    const { w, h, zc } = meta.screen, z = meta.screen.z - 0.03, bottom = zc - h / 2;
+    const corner = ([sx, sy]: number[]) => new Vector3((sx * w) / 2, bottom + sy * h, z);
+    const cs = [[-1, 0], [1, 0], [1, 1], [-1, 1]].map(corner);
+    const pos: number[] = [], col: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      pos.push(...port.toArray(), ...cs[i].toArray(), ...cs[(i + 1) % 4].toArray());
+      col.push(0.05, 0.05, 0.05, 0, 0, 0, 0, 0, 0); // bright at the lens, fading to nothing at the screen
+    }
+    const beam = new Geometry();
+    beam.setAttribute("position", new Float32BufferAttribute(pos, 3));
+    beam.setAttribute("color", new Float32BufferAttribute(col, 3));
+    beam.computeVertexNormals();
+    const seeds = Array.from({ length: N_DUST }, () => {
+      const target = new Vector3((Math.random() - 0.5) * w, bottom + Math.random() * h, z);
+      return { base: port.clone().lerp(target, 0.08 + Math.random() * 0.85), ph: Math.random() * 6.28, sp: 0.15 + Math.random() * 0.35 };
+    });
+    const dust = new Geometry();
+    dust.setAttribute("position", new Float32BufferAttribute(seeds.flatMap((s) => s.base.toArray()), 3));
+    return { beam, dust, seeds };
+  }, [meta]);
+  const dot = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 32;
+    const x = c.getContext("2d")!, g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g;
+    x.fillRect(0, 0, 32, 32);
+    return new CanvasTexture(c);
+  }, []);
+  const still = useMemo(reducedMotion, []);
+  useFrame(({ clock }) => {
+    if (still) return;
+    const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
+    seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
+      s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
+    a.needsUpdate = true;
+    invalidate();
+  });
+  return (
+    <>
+      <mesh geometry={beam} material={BEAM} renderOrder={2} />
+      <points geometry={dust} renderOrder={3}>
+        <pointsMaterial size={0.016} map={dot} transparent depthWrite={false} blending={AdditiveBlending} color="#d9e4ff" opacity={0.55} toneMapped={false} />
+      </points>
+    </>
+  );
+}
+
 function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null }) {
   const invalidate = useThree((s) => s.invalidate);
   const painted = usePainted(paint, meta.screen.w / meta.screen.h);
@@ -413,6 +477,7 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
   return (
     <group>
       {room && <primitive object={room} />}
+      {room && <Haze meta={meta} />}
       <pointLight position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
       <pointLight position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
       <ambientLight intensity={0.35} color="#6b4a3a" />
