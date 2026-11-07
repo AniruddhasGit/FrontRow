@@ -1,0 +1,210 @@
+✔ S-BRW-02 synopsis clamp 3 / none, 900 chars in full, a missing poster draws the title and no img (1851.2053ms)
+✔ S-BRW-11 all 220 seats out of service: none activates on Enter or Space (4205.7831ms)
+▶ S-BRW-12 inactive cell style, ArrowRight, no selection; glyphs survive one colour; change ring on fake timer
+  ✔ inactive C-12, wire state available, 375px (783.7025ms)
+  ✔ inactive C-12, wire state held, 375px (764.0565ms)
+  ✔ inactive C-12, wire state sold, 375px (764.7937ms)
+  ✔ inactive C-12, wire state available, 1440px (743.6129ms)
+  ✔ inactive C-12, wire state held, 1440px (756.1378ms)
+  ✔ inactive C-12, wire state sold, 1440px (748.0961ms)
+  ✔ four states, one colour: four distinct data-glyph values (941.7212ms)
+  ✔ every seat sold: 220 cells, the banner, no 'Nothing' (685.5158ms)
+  ✔ change ring, reduced motion no-preference, 375px (3696.0639ms)
+  ✔ change ring, reduced motion reduce, 375px (3029.568ms)
+  ✔ change ring, reduced motion no-preference, 1440px (3588.6855ms)
+  ✔ change ring, reduced motion reduce, 1440px (2995.0099ms)
+✔ S-BRW-12 inactive cell style, ArrowRight, no selection; glyphs survive one colour; change ring on fake timer (19499.5219ms)
+✔ S-BRW-13 the legend's price placeholder is a --fr-surface-inset block with no $ (799.0065ms)
+▶ S-BRW-17 field, screen bar and row gutters keep their rects across the seat-map response
+  ✔ no progressbar and no 'Loading' name at either point (0.1879ms)
+  ✔ screen bar rect equal (0.1835ms)
+  ✔ field x, y and width equal (0.1703ms)
+  ✖ field height and row gutter rects equal (AC as written) (1.4236ms)
+✖ S-BRW-17 field, screen bar and row gutters keep their rects across the seat-map response (1201.2176ms)
+✔ S-SCP-09 the map scrolls in its own box at 375px; the cell is 24px at 375 and at 1280 (1379.2565ms)
+▶ S-XCT-39 375px: 24/4 tokens, body never wider on any route, strip geometry, minimum scroll, scroll-padding, poll keeps scrollLeft, poster 2/3
+  ✔ a restored selection scrolls to the first restored seat (minimum movement) (1181.0658ms)
+  ✔ a 409 carrying details.unavailable_seats scrolls to the first named seat (minimum movement) (1833.0373ms)
+  ✖ AC literal geometry (rendered: {"strip":265,"visible":9,"cols":23,"rowWidth":640,"hidden":375}) (2.8011ms)
+  ✖ the AC's +21 scroll (rendered: +15) (0.8112ms)
+✖ S-XCT-39 375px: 24/4 tokens, body never wider on any route, strip geometry, minimum scroll, scroll-padding, poll keeps scrollLeft, poster 2/3 (19387.8484ms)
+▶ S-SEA-01 computed fill/border per state, the inactive treatment, the arrow grid and one tab stop
+  ✔ 375px (1833.5516ms)
+  ✔ 1440px (1868.7706ms)
+✔ S-SEA-01 computed fill/border per state, the inactive treatment, the arrow grid and one tab stop (3703.117ms)
+✔ S-SEA-02 taps write fr.selection and send nothing; refusals change nothing; the cap; reload re-check; close sends nothing (6578.7489ms)
+✔ S-SEA-03 the total renders in computed --fr-font-mono (823.7468ms)
+✔ S-SEA-04 a chosen seat gone on a poll: one assertive insertion, Dismiss removes it, total drops, no request, focus stays visible (10206.6692ms)
+✖ S-SEA-12 a seat lost at hold time repaints in computed --fr-seat-held-other with the bar; S-SEA-04 SEAT_UNAVAILABLE has no control (32150.9064ms)
+✔ S-SEA-14 one polite insertion at 1:00, urgent colours, sessionStorage only, resume after reload, close sends nothing (5908.3106ms)
+✔ S-SEA-21 a sold seat renders computed --fr-seat-sold with the hatch and no border, and no banner (666.7599ms)
+▶ S-RPT-18 opening load, tabs and hall filter
+  ✔ opening load: scope and dashboard in parallel with no date, showtimes only after the dashboard resolves (749.4002ms)
+  ✔ exactly one tab is aria-selected on arrival and after each of three dispatched activations (907.3315ms)
+  ✔ manager: the hall filter applies &screen_id=3, the scope line follows, both options stay; All my halls drops it (1037.8012ms)
+✔ S-RPT-18 opening load, tabs and hall filter (4273.795ms)
+▶ S-RPT-19 figures, computed styles and pending states
+  ✔ takings figure: --fr-font-mono and tabular-nums from the computed style (905.6562ms)
+  ✔ scope_empty: the line is not an alert and not --fr-danger-ink; figures read the dash (849.6098ms)
+  ✔ films_truncated: the note is not an alert and not --fr-danger-ink; the figures match the untruncated ones (1328.4098ms)
+  ✔ while the dashboard request is pending: four loading blocks, then four values in one commit; a period change clears takings (1186.5804ms)
+✔ S-RPT-19 figures, computed styles and pending states (4270.9753ms)
+▶ S-RPT-20 keyboard, focus ring and narrow layout
+  ✔ administrator: Tab visits 7 contiguous regions in order, named stops, focus ring = --fr-focus-ring (1121.6167ms)
+  ✔ manager: Tab visits 6 contiguous regions in order, named stops, focus ring = --fr-focus-ring (992.327ms)
+  ✔ each table's scroll container is overflow-x auto, and at 320 px the body does not scroll sideways (933.3259ms)
+✔ S-RPT-20 keyboard, focus ring and narrow layout (3047.7496ms)
+▶ S-RPT-21 change log: no auto-submit, cleared filters announced, only audit requests
+  ✔ whole lifecycle against the live API: typing from > to fires nothing; every request the screen makes is GET /api/reports/audit (2569.8364ms)
+  ✔ a date change that drops the selected action and administrator clears both and says so in the count region (1099.2276ms)
+✔ S-RPT-21 change log: no auto-submit, cleared filters announced, only audit requests (3669.2727ms)
+▶ S-ADM-14 the five edit forms submitted unchanged carry the GET's version
+  ✔ SCR-ADM-02 film editor (1505.2697ms)
+  ✔ SCR-ADM-03 showtimes (1241.2015ms)
+  ✔ SCR-ADM-04 seat categories (1144.0838ms)
+  ✔ SCR-ADM-05 hall configuration (1450.8303ms)
+  ✔ SCR-ADM-08 venue (1170.9794ms)
+✔ S-ADM-14 the five edit forms submitted unchanged carry the GET's version (6512.8437ms)
+▶ S-ADM-17 SCR-ADM-05 withdrawal confirmation
+  ✔ the confirmation text is byte-for-byte the published one, and dismissing it writes nothing (1479.5024ms)
+✔ S-ADM-17 SCR-ADM-05 withdrawal confirmation (1479.6834ms)
+▶ S-ADM-19 a booking reads the same bytes after its film, hall and seat are withdrawn
+  ✔ GET /api/me/bookings/{reference} before and after the three withdrawals, compared as bytes (all three restored after) (2777.1731ms)
+✔ S-ADM-19 a booking reads the same bytes after its film, hall and seat are withdrawn (2777.3938ms)
+✔ S-PAY-13: the notice slab is first, holds no control, and its computed font size is not below --fr-text-md (2576.9186ms)
+✔ S-PAY-13: Tab from the top of the panel reaches the pay action, then 'Back to seats', and then leaves the panel (1142.4078ms)
+✔ S-PAY-13: in flight the panel keeps its offsetHeight, reads 'Confirming…', and the countdown keeps changing (5023.0534ms)
+✔ S-PAY-13: 'Back to seats' only navigates: no request releases the hold and every lock keeps its token and TTL (3572.9879ms)
+✔ S-PAY-14: at 0:00 'Hold expired', the zero state once in a polite region, and the map only after 5000 ms (1729.4252ms)
+✔ S-PAY-14: at 0:00 with a confirm in flight the route stays, no return timer starts, and the response is handled as before (1178.0419ms)
+✔ S-PAY-14: a hold response clears fr.last_booking_reference before any navigation, so a second booking reaches checkout (1305.7351ms)
+✔ S-PAY-14: passing the sales cut-off with the screen open changes no panel text and sends no request (1967.6425ms)
+✔ S-TKT-04: the loading state renders the reference element with an empty textContent (641.686ms)
+✔ S-TKT-04 / S-SCP-15: first render after confirming - focus, copy, tab order, receipt line once, no svg or canvas (334.8888ms)
+✔ S-TKT-04 / S-SCP-15: a later visit has the same blocks, no email sentence, no svg or canvas, and the reference matches P-TKT-01 (1454.8363ms)
+⚠ S-SCP-15: every img on the confirmation page and the bookings list is /api/movies/{id}/poster (1791.9116ms) # CR-001 B.2 (approved) puts /art/hall_N_view.jpg on the confirmation page; the cell still names the poster route only
+✔ S-SCP-10: changing Language sends GET /api/movies?language_id and leaves html lang and the nav's link names unchanged (8399.4641ms)
+✔ S-ACC-07: the 202 body, SCR-ACC-02's panel and the rendered email carry the same TTL minutes in one run (1385.9986ms)
+✔ S-XCT-22: the five 409 codes drive five branches, each rendering a different string (7308.7943ms)
+✔ S-XCT-22: on every page a 4xx's request id is not displayed and a 5xx's is (10212.0192ms)
+✔ S-XCT-38: every element with an onClick handler on every customer and guest route is reached by Tab (36062.928ms)
+✔ S-XCT-38: the seat map has exactly one tabindex=0 cell; Tab enters the map once and the next Tab leaves it (742.7098ms)
+ℹ tests 73
+ℹ suites 7
+ℹ pass 66
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 1
+ℹ duration_ms 223189.2018
+
+✖ failing tests:
+
+test at checks\browse_seat.test.mjs:294:11
+✖ field height and row gutter rects equal (AC as written) (1.4236ms)
+  AssertionError [ERR_ASSERTION]: field height
+  
+  310 !== 621
+  
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:295:12)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.start (node:internal/test_runner/test:1015:17)
+      at TestContext.test (node:internal/test_runner/test:368:20)
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:294:11)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 310,
+    expected: 621,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at checks\browse_seat.test.mjs:442:11
+✖ AC literal geometry (rendered: {"strip":265,"visible":9,"cols":23,"rowWidth":640,"hidden":375}) (2.8011ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   cols: 23,
+  +   hidden: 375,
+  +   rowWidth: 640,
+  +   strip: 265,
+  +   visible: 9
+  -   cols: 20,
+  -   hidden: 273,
+  -   rowWidth: 556,
+  -   strip: 283,
+  -   visible: 10
+    }
+  
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:443:12)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.start (node:internal/test_runner/test:1015:17)
+      at TestContext.test (node:internal/test_runner/test:368:20)
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:442:11)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { strip: 265, visible: 9, cols: 23, rowWidth: 640, hidden: 375 },
+    expected: { strip: 283, visible: 10, cols: 20, rowWidth: 556, hidden: 273 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at checks\browse_seat.test.mjs:444:11
+✖ the AC's +21 scroll (rendered: +15) (0.8112ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  15 !== 21
+  
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:444:80)
+      at Test.runInAsyncScope (node:async_hooks:228:14)
+      at Test.run (node:internal/test_runner/test:1118:25)
+      at Test.start (node:internal/test_runner/test:1015:17)
+      at TestContext.test (node:internal/test_runner/test:368:20)
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/browse_seat.test.mjs:444:11)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 15,
+    expected: 21,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at checks\browse_seat.test.mjs:645:1
+✖ S-SEA-12 a seat lost at hold time repaints in computed --fr-seat-held-other with the bar; S-SEA-04 SEAT_UNAVAILABLE has no control (32150.9064ms)
+  locator.click: Timeout 30000ms exceeded.
+  Call log:
+  [2m  - waiting for getByRole('button', { name: /^Hold/ })[22m
+  
+      at TestContext.<anonymous> (D:\Project\FrontRow\frontrow_aws\e2e\checks\browse_seat.test.mjs:662:58) {
+    name: 'TimeoutError'
+  }
+
+test at checks\pay_ticket_account.test.mjs:405:1
+⚠ S-SCP-15: every img on the confirmation page and the bookings list is /api/movies/{id}/poster (1791.9116ms) # CR-001 B.2 (approved) puts /art/hall_N_view.jpg on the confirmation page; the cell still names the poster route only
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + [
+  +   '/art/hall_1_view.jpg'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///D:/Project/FrontRow/frontrow_aws/e2e/checks/pay_ticket_account.test.mjs:419:10)
+      at async Test.run (node:internal/test_runner/test:1125:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:787:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '/art/hall_1_view.jpg' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

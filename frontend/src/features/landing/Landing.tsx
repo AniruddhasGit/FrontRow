@@ -74,7 +74,7 @@ export function Landing() {
     return () => ctl.abort();
   }, [st]);
 
-  // The film centred in the rail is the one on the screen. Read once the scrolling settles, so a fast flick through
+  // The film at the head of the rail (phones: in the middle of the strip) is the one on the screen. Read once the scrolling settles, so a fast flick through
   // the list does not load every hall on the way.
   useEffect(() => {
     const ul = rail.current;
@@ -85,11 +85,11 @@ export function Landing() {
       t = window.setTimeout(() => {
         const box = ul.getBoundingClientRect();
         const across = ul.scrollWidth > ul.clientWidth + 1; // phones: the rail scrolls sideways
-        const mid = across ? box.left + box.width / 2 : box.top + box.height / 2;
+        const head = box.top + parseFloat(getComputedStyle(ul).paddingTop); // where a snapped film's top sits
         let best: HTMLElement | null = null, gap = Infinity;
         for (const li of ul.children as HTMLCollectionOf<HTMLElement>) {
           const r = li.getBoundingClientRect();
-          const d = Math.abs((across ? r.left + r.width / 2 : r.top + r.height / 2) - mid);
+          const d = across ? Math.abs(r.left + r.width / 2 - (box.left + box.width / 2)) : Math.abs(r.top - head);
           if (d < gap) [best, gap] = [li, d];
         }
         const id = Number(best?.dataset.film);
@@ -104,7 +104,7 @@ export function Landing() {
   }, [films]);
   const centre = (id: number) => {
     setFilmId(id);
-    rail.current?.querySelector<HTMLElement>(`[data-film="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    rail.current?.querySelector<HTMLElement>(`[data-film="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start", inline: "center" });
   };
 
   const book = async () => {
@@ -145,9 +145,9 @@ export function Landing() {
         {failed ? <p className="fr-state">The listing could not be loaded.</p>
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}
         <ul ref={rail} className="fr-rail-films">
-          {films?.map((f) => (
+          {films?.map((f, i) => (
             // the same view-transition name as its /films card: the browser glides each film to its place in the grid
-            <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}` }}>
+            <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}`, ["--i" as string]: i }}>
               <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => centre(f.id)}>
                 <Poster src={f.poster_url} title={f.title} />
                 <span className="fr-rail-title">{f.title}</span>

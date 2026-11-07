@@ -83,7 +83,10 @@ export function Hall3D({ map, film = null, mine, onTap }: {
     setMoving(m);
     if (m) setHover(null); // the seat under the pointer is about to change
   }, []);
-  if (!able || !map || meta === undefined) return null;
+  if (!able) return null;
+  // The hall's box is held empty until the map (and the baked-room answer) arrive, so the panel beside it does not
+  // jump from the full width into its column when the seat-map response resolves (S-BRW-17).
+  if (!map || meta === undefined) return <section className="fr-hall3d" aria-hidden="true" />;
 
   if (!on) {
     return (

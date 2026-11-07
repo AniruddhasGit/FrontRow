@@ -158,6 +158,16 @@
 .fr-ticket-facts dd {
   margin: 0;
 }
+/* SCR-TKT-01 Loading: inset blocks the size of the reference and each fact row, never a placeholder string. */
+.fr-ref:empty {
+  min-height: var(--fr-text-2xl);
+}
+.fr-ticket-wait dd {
+  flex: 1;
+  min-height: var(--fr-text-md);
+  background: var(--fr-surface-inset);
+  border-radius: var(--fr-radius-sm);
+}
 .fr-bookings {
   list-style: none;
   padding: 0;
