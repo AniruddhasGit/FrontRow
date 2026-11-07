@@ -7,7 +7,7 @@ import { get } from "../browse/api";
 import { dayLabel, timeLabel } from "../browse/logic";
 import "../booking/booking.css";
 import { takeHandOver } from "./arrival";
-import { ConfirmationPage, NOT_FOUND, UNAVAILABLE, failed, type Booking, hallViewSrc } from "./page";
+import { ConfirmationPage, NOT_FOUND, UNAVAILABLE, failed, resendLine, type Booking, hallViewSrc } from "./page";
 
 export function ConfirmationScreen({ reference }: { reference: string }) {
   const [first] = useState(() => takeHandOver(reference));
@@ -15,6 +15,8 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
   const [email, setEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendNote, setResendNote] = useState<string | null>(null);
   const heading = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,8 +29,25 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
   }, [reference, first]);
 
   useEffect(() => {
-    if (booking) heading.current?.querySelector("h1")?.focus(); // focus moves to the page's only h1 on arrival
+    heading.current?.querySelector("h1")?.focus(); // focus moves to the page's only h1 on arrival
   }, [booking]);
+
+  // EP-TKT-02. Every refusal's sentence is the server's except the three this page owns (branching on status, not text).
+  const resend = async () => {
+    if (!booking || resending) return;
+    setResending(true);
+    setResendNote(null);
+    setError(null);
+    const r = await fetch(`/api/bookings/by-reference/${encodeURIComponent(booking.reference)}/resend-receipt`,
+      { method: "POST", credentials: "same-origin" }).catch(() => null);
+    const body = r ? await r.json().catch(() => ({})) : {};
+    setResending(false);
+    if (r?.status === 202) return setResendNote(resendLine(!!body.queued, String(body.email_address ?? "")));
+    if (r?.status === 401) return navigate(`/sign-in?next=${encodeURIComponent(`/bookings/${reference}`)}`);
+    const e = body.error ?? {};
+    setError(!r ? UNAVAILABLE : r.status === 404 ? NOT_FOUND : r.status === 503 ? UNAVAILABLE
+      : r.status >= 500 ? failed(e.request_id ?? null) : String(e.message ?? ""));
+  };
 
   const copy = () => {
     if (!booking) return;
@@ -38,10 +57,10 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
   return (
     <div ref={heading}>
       <div className="fr-banner-region" aria-live="assertive">{error ? <p className="fr-banner">{error}</p> : null}</div>
-      {booking ? (
+      {booking || !error ? (
         <ConfirmationPage booking={booking} money={formatPaise} copied={copied} onCopy={copy}
-          startsLabel={`${dayLabel(booking.showtime_starts_at.slice(0, 10))} · ${timeLabel(booking.showtime_starts_at)}`}
-          receiptTo={first ? email : null} />
+          startsLabel={booking ? `${dayLabel(booking.showtime_starts_at.slice(0, 10))} · ${timeLabel(booking.showtime_starts_at)}` : ""}
+          receiptTo={first ? email : null} resending={resending} resendNote={resendNote} onResend={() => void resend()} />
       ) : null}
       {booking && hallViewSrc(booking.hall_name) ? (
         <figure className="fr-hall-view">

@@ -28,7 +28,9 @@ test("the policy line sits directly beneath the entry line on the first render a
 
 test("the receipt sentence renders on the first render only", () => {
   assert.ok(render("name@example.invalid").includes(receiptLine("name@example.invalid")));
-  assert.ok(!/receipt/i.test(render(null).replace(/<[^>]+>/g, " ")));
+  // S-TKT-04: a later visit says nothing about the email in any form (the resend control's own label aside).
+  const later = render(null).replace(/<[^>]+>/g, " ");
+  for (const p of ["on its way", "has been sent", "was sent", "delayed"]) assert.ok(!later.includes(p), p);
 });
 
 test("the fact list is exactly FILM, HALL, SHOWTIME, SEATS, PAID, and PAID is the only money on the page", () => {

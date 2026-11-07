@@ -9,12 +9,20 @@ export const ENTRY = "Show this reference at the entrance. A person will check i
 export const POLICY = "This booking cannot be changed, cancelled or refunded.";
 export const COPY = "Copy reference";
 export const COPIED = "Reference copied.";
+export const RESEND = "Send the receipt again";
+export const IN_FLIGHT = "A receipt is already being sent for this booking.";
 export const NOT_FOUND = "No booking with that reference is on your account.";
 export const UNAVAILABLE = "This page is unavailable right now. Your booking is not affected.";
 export const FACT_LABELS = ["FILM", "HALL", "SHOWTIME", "SEATS", "PAID"] as const;
 
 export function failed(requestId: string | null): string {
   return `Something went wrong. Your booking is not affected. If you need help, quote ${requestId ?? ""}.`;
+}
+
+/** The resend's 202 (EP-TKT-02). [JUDGMENT CALL] queued=false is both "first receipt not attempted yet" and "a send is in
+ *  flight": the body does not tell them apart, so the in-flight line is shown for both (PRD gap, SCR-TKT-01 states). */
+export function resendLine(queued: boolean, email: string): string {
+  return queued ? `A receipt was requested. It will arrive at ${email}.` : IN_FLIGHT;
 }
 
 export function receiptLine(email: string): string {
@@ -36,26 +44,30 @@ export interface Booking {
 }
 
 export function ConfirmationPage(p: {
-  booking: Booking; startsLabel: string; money: (paise: number) => string;
+  booking: Booking | null; // null while loading: the frame, the heading and inset blocks, never a placeholder reference
+  startsLabel: string; money: (paise: number) => string;
   receiptTo: string | null; // set only on the first render after a confirm (P-TKT-03); null on every later visit
   copied: boolean; onCopy: () => void;
+  resending?: boolean; resendNote?: string | null; onResend?: () => void;
 }) {
   const b = p.booking;
   // Seats in the order the server returned them; this page never re-sorts.
-  const facts: [string, string][] = [["FILM", b.movie_title], ["HALL", b.hall_name], ["SHOWTIME", p.startsLabel],
-    ["SEATS", b.seats.map((s) => s.seat_label).join(", ")], ["PAID", p.money(b.total_paise)]];
-  return h("section", { className: "fr-ticket" },
+  const facts: [string, string][] = b ? [["FILM", b.movie_title], ["HALL", b.hall_name], ["SHOWTIME", p.startsLabel],
+    ["SEATS", b.seats.map((s) => s.seat_label).join(", ")], ["PAID", p.money(b.total_paise)]] : FACT_LABELS.map((l) => [l, ""]);
+  return h("section", { className: "fr-ticket", "aria-busy": b ? undefined : true },
     h("h1", { tabIndex: -1, key: "h" }, HEADING),
     h("div", { className: "fr-ref-block", key: "ref" },
       h("p", { className: "fr-ref-label" }, REF_LABEL),
-      h("p", { className: "fr-ref", "aria-label": spoken(b.reference) }, b.reference),
-      h("button", { type: "button", className: "fr-link-action", onClick: p.onCopy }, COPY),
+      h("p", { className: "fr-ref", "aria-label": b ? spoken(b.reference) : undefined }, b ? b.reference : ""),
+      b ? h("button", { type: "button", className: "fr-link-action", onClick: p.onCopy }, COPY) : null,
       h("p", { className: "fr-ref-copied", "aria-live": "polite" }, p.copied ? COPIED : "")),
-    p.receiptTo === null ? null : h("p", { className: "fr-ticket-receipt", key: "receipt" }, receiptLine(p.receiptTo)),
-    h("p", { className: "fr-ticket-entry", key: "entry" }, ENTRY),
-    h("p", { className: "fr-ticket-policy", key: "policy" }, POLICY),
-    h("dl", { className: "fr-ticket-facts", key: "facts" },
-      ...facts.map(([label, value]) => h("div", { key: label }, h("dt", null, label), h("dd", { className: "fr-mono" }, value)))),
+    !b || p.receiptTo === null ? null : h("p", { className: "fr-ticket-receipt", key: "receipt" }, receiptLine(p.receiptTo)),
+    b ? h("p", { className: "fr-ticket-entry", key: "entry" }, ENTRY) : null,
+    b ? h("p", { className: "fr-ticket-policy", key: "policy" }, POLICY) : null,
+    h("dl", { className: b ? "fr-ticket-facts" : "fr-ticket-facts fr-ticket-wait", key: "facts" },
+      ...facts.map(([label, value]) => h("div", { key: label }, h("dt", null, b ? label : ""), h("dd", { className: "fr-mono" }, value)))),
+    b ? h("button", { type: "button", className: "fr-link-action", key: "resend", disabled: !!p.resending, onClick: p.onResend }, RESEND) : null,
+    b ? h("p", { className: "fr-ticket-resent", key: "resent", "aria-live": "polite" }, p.resendNote ?? "") : null,
   );
 }
 

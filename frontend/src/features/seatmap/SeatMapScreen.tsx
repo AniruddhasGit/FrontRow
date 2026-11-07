@@ -113,6 +113,8 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   const [selection, setSelection] = useState<number[]>(() => seed?.selection ?? (detour.current ? [] : readSelection(id)));
   const [gone, setGone] = useState<string | null>(seed?.gone ?? null);
   const [changed, setChanged] = useState<Set<number>>(new Set());
+  // The seat the map scrolls to: the first restored one, or the first a 409 names (S-XCT-39). A new object each time.
+  const [reveal, setReveal] = useState<{ id: number } | null>(null);
   const [signedIn, setSignedIn] = useState(seed?.signedIn ?? false);
   const [attempt, setAttempt] = useState(0);
   const [hold, setHoldState] = useState<Hold | null>(() => seed?.hold ?? readHold(id));
@@ -121,6 +123,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => seed?.now ?? Date.now());
   const last = useRef<SeatMap | null>(null);
+  const restored = useRef(false); // the first map has been received (and any restored selection revealed)
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
 
@@ -173,6 +176,8 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
     }
     // Re-check the selection against the fresh map; a seat that has gone leaves it and is named once (P-SEA-03).
     const { kept, gone: lost } = recheck(selectionRef.current, next);
+    if (!restored.current && kept.length > 0) setReveal({ id: kept[0] });
+    restored.current = true;
     if (lost.length > 0) {
       setSelection(kept);
       writeSelection(next.showtime.id, kept);
@@ -239,6 +244,8 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
     if (f.kind === "taken" && map) {
       setMap(markTaken(map, f.labels));
       const kept = withoutLabels(selectionRef.current, map, f.labels);
+      const first = map.seats.find((s) => seatLabel(s) === f.labels[0]);
+      if (first) setReveal({ id: first.id });
       selectionRef.current = kept;
       setSelection(kept);
       writeSelection(map.showtime.id, kept);
@@ -347,7 +354,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
           <div className="fr-screen-bar" aria-hidden="true" />
           <p className="fr-screen-label" aria-hidden="true">SCREEN</p>
           {map ? (
-            <Grid map={map} mine={mine} changed={changed} categoryName={categoryName} onTap={tap} />
+            <Grid map={map} mine={mine} changed={changed} categoryName={categoryName} onTap={tap} reveal={reveal} />
           ) : (
             <div className="fr-grid fr-grid-loading" aria-hidden="true" />
           )}
@@ -409,6 +416,15 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   );
 }
 
+/** The least horizontal scroll that brings `el` fully inside `box`, clear of the pinned row gutter (scroll-padding). */
+function sideways(box: HTMLElement, el: HTMLElement): number {
+  const b = box.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const start = b.left + box.clientLeft + (Number.parseFloat(getComputedStyle(box).scrollPaddingInlineStart) || 0);
+  const end = b.left + box.clientLeft + box.clientWidth;
+  return r.right > end ? r.right - end : r.left < start ? r.left - start : 0;
+}
+
 export function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
   if (r.status === 404) return { message: "That showtime could not be found.", requestId: null };
   if (r.status === 503 && r.message) return { message: r.message, requestId: null };
@@ -425,11 +441,16 @@ function SeatMapHeading({ header }: { header: Header | null }) {
   );
 }
 
-function Grid({ map, mine, changed, categoryName, onTap }: {
+function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
   map: SeatMap; mine: ReadonlySet<number>; changed: ReadonlySet<number>; categoryName: ReadonlyMap<number, string>;
-  onTap: (seat: Seat, visual: Visual) => void;
+  onTap: (seat: Seat, visual: Visual) => void; reveal?: { id: number } | null;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = container.current;
+    const el = reveal && box?.querySelector<HTMLElement>(`[data-seat-id="${reveal.id}"]`);
+    if (box && el) box.scrollLeft += sideways(box, el); // the map's own box only: the page itself does not move
+  }, [reveal]);
   const [focusId, setFocusId] = useState<number | null>(null);
   const rows = useMemo(() => {
     const byRow = new Map<number, Seat[]>();

@@ -9,7 +9,8 @@
 .rpt-tabs [role="tab"] { font-size: var(--fr-text-sm); }
 .rpt-tabs [aria-selected="true"], .rpt-apply { background: var(--fr-surface-accent); color: var(--fr-ink-on-accent); }
 .rpt-panel :focus-visible { outline: var(--fr-stroke-bold) solid var(--fr-focus-ring); outline-offset: 2px; }
-.rpt-field { display: grid; gap: var(--fr-space-1); }
+.rpt-field { display: grid; gap: var(--fr-space-1); min-width: 0; }
+.rpt-field > input, .rpt-field > select { width: 100%; box-sizing: border-box; }
 .rpt-link { color: var(--fr-accent-ink); font-size: var(--fr-text-sm); text-decoration: underline; }
 .rpt-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--fr-space-3); }
 .rpt-figure { display: grid; gap: var(--fr-space-1); margin: 0; }
