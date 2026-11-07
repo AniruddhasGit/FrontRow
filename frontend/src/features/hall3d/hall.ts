@@ -144,13 +144,11 @@ export interface BakedMeta {
 }
 /** CR-004: the seat page's arrival. Seated in the default seat, facing the film on the screen; then up and
  *  round by the side wall (so the look point never passes through the eye) onto the all-seats view. */
-/** The default seat (owner, 2026-11-07: "one of the farther back seats"): on the ground level, the row three quarters of
- *  the way back from the screen, the seat nearest the centre line. Rows run to -z, away from the screen. */
+/** The default seat (owner, 2026-11-07: "put me in the left corner top seat"; their example is Hall 1, row H, seat 1):
+ *  the farthest row from the screen - the top of the rake, the balcony's in Hall 6 - and its seat 1. Rows run to -z. */
 export function defaultSeat(meta: BakedMeta): BakedMeta["seats"][number] {
-  const ground = meta.seats.filter((s) => s.level === meta.seats[0].level);
-  const rows = [...new Set(ground.map((s) => s.pos[2]))].sort((a, b) => b - a);
-  const z = rows[Math.round((rows.length - 1) * 0.75)];
-  return ground.filter((s) => s.pos[2] === z).reduce((a, b) => (Math.abs(b.pos[0]) < Math.abs(a.pos[0]) ? b : a));
+  const back = Math.min(...meta.seats.map((s) => s.pos[2]));
+  return meta.seats.filter((s) => s.pos[2] === back).reduce((a, b) => (b.num < a.num ? b : a));
 }
 
 export function screenFirst(meta: BakedMeta): { eye: number[]; look: number[] }[] {
