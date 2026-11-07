@@ -1,4 +1,4 @@
-// SCR-BRW-01 · the movie listing at `/`. Anyone, no account (P-BRW-05).
+// SCR-BRW-01 · the movie listing, at `/films` since CR-004 (was `/`). Anyone, no account (P-BRW-05).
 // The filters live in the URL query string, so a back navigation returns the same listing. The date strip is
 // derived on the client from the injected clock and the display_until values of the films THIS response returned
 // (P-BRW-04); each reference-backed control renders only when /api/reference holds two or more values for it.
@@ -7,7 +7,6 @@ import { navigate } from "../../router";
 import { takeNotice } from "../auth/session";
 import { get, query, type Film } from "./api";
 import { ChoiceGroup, DayStrip } from "./DayStrip";
-import { Hero } from "./Hero";
 import { controlsFor, countLine, listingStrip, runtimeName, settleListing, type Reference } from "./logic";
 import { Poster } from "./Poster";
 import "./browse.css";
@@ -54,7 +53,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   }, []);
 
   useEffect(() => {
-    window.history.replaceState(null, "", `/${query(filters)}`);
+    window.history.replaceState(null, "", `/films${query(filters)}`);
     const controller = new AbortController();
     get<{ count: number; movies: Film[] }>(`/api/movies${query(filters)}`, controller.signal).then((r) => {
       if (controller.signal.aborted) return;
@@ -85,7 +84,6 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   return (
     <section className="fr-listing">
       {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
-      <Hero film={films?.[0] ?? null} />
       <h1 id="now-showing">Now showing</h1>
       <div role="group" aria-label="Filter what is showing" className="fr-filters">
         {days.length > 0 ? <DayStrip label="Date" days={days} selected={filters.date} anyDate onSelect={(d) => set("date", d)} /> : null}

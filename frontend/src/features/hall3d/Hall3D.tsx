@@ -4,10 +4,10 @@
 // Shown only when it can work: WebGL present (phones included, CR-003). Otherwise, or when the scene fails to
 // load or throws, this renders nothing and the 2D map alone carries the page - nothing is lost. It renders nothing on
 // the first render too (the decision is an effect), so the server-side render harness sees the 2D page unchanged.
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatPaise } from "../admin/money";
 import { seatLabel, selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
-import { screenNumber, seatTip, stateWord, type BakedMeta, type Mode } from "./hall";
+import { screenFirst, screenNumber, seatTip, stateWord, type BakedMeta, type Mode } from "./hall";
 import type { Film } from "./HallScene";
 import "./hall3d.css";
 
@@ -63,6 +63,8 @@ export function Hall3D({ map, film = null, mine, onTap }: {
       live = false;
     };
   }, [hallNo]);
+  // CR-004: the visitor arrives seated, facing their film on the screen, then the camera turns onto the seats.
+  const arrival = useMemo(() => (meta?.seats?.length ? { ...meta, intro: screenFirst(meta) } : meta), [meta]);
   const onMoving = useCallback((m: boolean) => {
     setMoving(m);
     if (m) setHover(null); // the seat under the pointer is about to change
@@ -104,7 +106,7 @@ export function Hall3D({ map, film = null, mine, onTap }: {
             <button key={m} type="button" className="fr-choice" aria-pressed={mode === m} onClick={() => show(m)}>{label}</button>
           ))}
         </div>
-        <button type="button" className="fr-action-secondary" onClick={() => setOn(false)}>Use the 2D map only</button>
+        <button type="button" className="fr-action-secondary" onClick={() => setOn(false)}>2D map</button>
       </div>
       <div className="fr-hall3d-stage" aria-hidden="true" onPointerMove={(e) => {
         // The label follows the pointer by a style write, not a render: React re-renders only when the seat changes.
@@ -114,7 +116,7 @@ export function Hall3D({ map, film = null, mine, onTap }: {
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
             <HallScene map={map} film={film} mine={mine} mode={mode} seatId={seatId} onTap={onTap} onLook={look}
-                       onHover={setHover} onMoving={onMoving} meta={meta} hallNo={hallNo} />
+                       onHover={setHover} onMoving={onMoving} meta={arrival ?? null} hallNo={hallNo} />
           </Suspense>
         </Guard>
         <div ref={tip} className="fr-hall3d-tip" hidden={!hover || moving}>

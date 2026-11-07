@@ -51,7 +51,8 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 
 type BakedViews = ((seatId: number | null) => Record<Mode, View>) | null;
 type Orbit = { target: Vector3; minAzimuthAngle: number; maxAzimuthAngle: number; minPolarAngle: number; maxPolarAngle: number; update: () => void };
-const ARRIVE_MS = 6500; // the baked hall's arrival, flown live along its own route
+const ARRIVE_MS = 5000; // the baked hall's arrival, flown live along its route (CR-004: screen first, then the seats)
+const HOLD_MS = 1400; // the first waypoint is held this long: the film on the screen, before the turn
 const TURN = 0.95, UP = 0.4, DOWN = 0.55; // a baked hall: look around ~55 deg either side, 23 deg up, 31 deg down
 
 /** A baked hall's camera never moves when you drag: the orbit pivot sits 1 cm ahead of the eye, so dragging turns the
@@ -99,7 +100,7 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro }: {
     shown.current = view;
     if (first || reducedMotion()) {
       const fly = first && !reducedMotion() && !bakedViews; // reduced motion cuts (CR-001 B.5)
-      // a baked hall arrives along its own route, ENTRY door to here, flown live in this scene (no video)
+      // a baked hall arrives along the route it is given (Hall3D: screen first, then the seats), flown live (no video)
       const arrive = !!(first && !reducedMotion() && bakedViews && intro && intro.length > 1);
       camera.position.set(...((arrive ? intro![0].eye : view.at) as [number, number, number]));
       if (fly) camera.position.add(FLY_FROM);
@@ -138,7 +139,7 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro }: {
     const g = glide.current;
     if (!g) return;
     g.t0 ??= performance.now();
-    const k = Math.min(1, (performance.now() - g.t0) / g.ms);
+    const k = Math.min(1, Math.max(0, performance.now() - g.t0 - (g.route ? HOLD_MS : 0)) / g.ms);
     const e = ease(k);
     if (g.route && k < 1) {
       camera.position.copy(g.route[0].getPointAt(e));

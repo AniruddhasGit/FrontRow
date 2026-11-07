@@ -12,6 +12,7 @@ import "./styles/app.css";
 import { App } from "./App";
 import { Wake } from "./features/wake/Wake";
 import "./styles/premium.css"; // after App, so it lands after every feature stylesheet
+import "./styles/immersive.css"; // CR-004: edge to edge, after premium
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
