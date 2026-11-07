@@ -142,11 +142,19 @@ export interface BakedMeta {
   /** The projector port (three.js metres): where the beam and its dust start. */
   port?: number[];
 }
-/** CR-004: the seat page's arrival. Seated in the middle of the front level, facing the film on the screen; then up and
+/** CR-004: the seat page's arrival. Seated in the default seat, facing the film on the screen; then up and
  *  round by the side wall (so the look point never passes through the eye) onto the all-seats view. */
+/** The default seat (owner, 2026-11-07: "one of the farther back seats"): on the ground level, the row three quarters of
+ *  the way back from the screen, the seat nearest the centre line. Rows run to -z, away from the screen. */
+export function defaultSeat(meta: BakedMeta): BakedMeta["seats"][number] {
+  const ground = meta.seats.filter((s) => s.level === meta.seats[0].level);
+  const rows = [...new Set(ground.map((s) => s.pos[2]))].sort((a, b) => b - a);
+  const z = rows[Math.round((rows.length - 1) * 0.75)];
+  return ground.filter((s) => s.pos[2] === z).reduce((a, b) => (Math.abs(b.pos[0]) < Math.abs(a.pos[0]) ? b : a));
+}
+
 export function screenFirst(meta: BakedMeta): { eye: number[]; look: number[] }[] {
-  const front = meta.seats.filter((s) => s.level === meta.seats[0].level);
-  const sit = front[Math.floor(front.length / 2)].eye;
+  const sit = defaultSeat(meta).eye;
   const { eye: ae, look: al } = meta.allseats;
   const wall = Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2;
   const mid = [(sit[0] + ae[0]) / 2, Math.max(sit[1], ae[1]) + 0.3, (sit[2] + ae[2]) / 2];
@@ -172,7 +180,7 @@ export function bakedHall(seats: Seat[], meta: BakedMeta): Baked | null {
   const all = { at: v3(meta.allseats.eye), look: v3(meta.allseats.look) };
   return {
     placed, meta,
-    views: (seatId) => ({ all, seat: { at: v3(eye.get(seatId ?? -1) ?? meta.seats[Math.floor(meta.seats.length / 2)].eye), look: screen } }),
+    views: (seatId) => ({ all, seat: { at: v3(eye.get(seatId ?? -1) ?? defaultSeat(meta).eye), look: screen } }),
   };
 }
 
