@@ -36,7 +36,7 @@ test("the screen number comes from the screen's name, and nothing else", () => {
 
 test("CR-004: the seat page arrives seated facing the screen, turns by the side wall, and lands on the all-seats view", () => {
   const r = screenFirst(meta);
-  assert.deepEqual(r[0], { eye: [3, 4.23, -12.95], look: [0, 2.5, -0.29] }); // the default seat (a back row, nearest the centre), at the film
+  assert.deepEqual(r[0], { eye: [3, 4.23, -12.95], look: [0, 2.5, -0.29] }); // the default seat (the farthest row, seat 1), at the film
   assert.deepEqual(r.at(-1), meta.allseats);
   // the turn looks at the side wall, well clear of the eye, so the look point never crosses the camera
   assert.ok(Math.abs(r[1].look[0] - r[1].eye[0]) > 3 && r[1].look[2] === r[1].eye[2]);
