@@ -61,7 +61,7 @@ export function MyBookingsScreen() {
           <h2>Upcoming</h2>
           {data.total_upcoming === 0 ? <p>You have nothing coming up.</p> : <Rows rows={data.upcoming} />}
           <h2>Past</h2>
-          <Rows rows={data.past} />
+          {data.total_past === 0 ? <p>No past bookings yet.</p> : <Rows rows={data.past} />}
           <p className="fr-pager">
             {page > 1 ? <button type="button" className="fr-action-secondary" onClick={() => setPage(page - 1)}>Previous page</button> : null}
             {page * data.page_size < Math.max(data.total_upcoming, data.total_past)
