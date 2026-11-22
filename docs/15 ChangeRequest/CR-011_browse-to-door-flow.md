@@ -85,3 +85,7 @@ walk-in flown from the entrance; landed on `/showtimes/757`; header Back returne
 the door open; reduced motion went straight to the seats. Booking: seat -> hold -> checkout -> Back -> seats -> pay ->
 FR-V5JK-YFKT -> My bookings lists it -> Browse all films. Reviews: `e2e-sweep-1` (saw Outpost 77) posted; no Helpful on
 their own; `e2e-sweep-2` voted, a repeat POST stayed 1; a non-viewer PUT got 403. Screenshots: `e2e/evidence/cr011/f1-*` to `f7-*`.
+
+**Results (2026-11-23, local stack).** Full backend suite: **1419 passed, 0 failed** (a first full run had 2 failures: `S-XCT-03`, from the words "ON CONFLICT" in a new comment in `api/account.py`, reworded; and `S-XCT-21`, a connection-refused flake that passed on its own rerun and in the second full run). Frontend `node --test`: 197 / 197. `tsc -b`: clean. No-sideways sweep: 3 / 3 (guest, customer, admin at 360, 768, 1440).
+
+**Not built (owner reference ideas, left out on purpose):** showtime buttons coloured by seat availability (the listing carries no per-show availability; reading every seat map would hit its rate limit), the "How many seats?" picker before the seat map, review hashtags and thumbs-down, and the seat page re-layout (screen at the bottom) - the seat page is unchanged.
