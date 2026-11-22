@@ -31,7 +31,7 @@ export function ListsScreen({ seed }: { seed?: Seed }) {
     if (!seed) void load();
   }, [kind]);
   const choose = (next: Kind) => {
-    window.history.replaceState(null, "", `/admin/lookups?kind=${next}`); // reflected in the URL without a navigation
+    window.history.replaceState(window.history.state, "", `/admin/lookups?kind=${next}`); // reflected in the URL without a navigation
     setKind(next);
     setItems(null);
     setFieldError("");

@@ -13,6 +13,7 @@ import { PENDING_KEY, SHOWTIME_GONE, leaveForSignIn, leaveNotice, pending, signI
 import { get } from "../browse/api";
 import { timeLabel } from "../browse/logic";
 import { Hall3D } from "../hall3d/Hall3D";
+import { computeHall, PITCH_X } from "../hall3d/hall";
 import { HoldCountdown } from "./Countdown";
 import { GIVE_UP, adding, closedBanner, failureOf, markTaken, primaryLabel, send, withoutLabels, type Hold } from "./hold";
 import {
@@ -358,12 +359,13 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
       <div className="fr-seatmap-body">
         <div className="fr-field">
           <p className="fr-poll-strip" aria-live="polite">{pollStrip ?? ""}</p>
-          <div className="fr-screen-bar" aria-hidden="true" />
-          <p className="fr-screen-label" aria-hidden="true">SCREEN</p>
           {map ? (
             <Grid map={map} mine={mine} changed={changed} categoryName={categoryName} onTap={tap} reveal={reveal} />
           ) : (
-            <div className="fr-grid fr-grid-loading" aria-hidden="true" />
+            <>
+              <Screen />
+              <div className="fr-grid fr-grid-loading" aria-hidden="true" />
+            </>
           )}
         </div>
         <Legend map={map} />
@@ -468,6 +470,13 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     return byRow;
   }, [map]);
   const runs = useMemo(() => bands(map), [map]);
+  // CR-007: the screen sits over the seat block's own columns (a recliner takes two), centred where the 3D hall
+  // centres it, and scrolls with the seats.
+  const over = useMemo(() => {
+    const { halfWidth } = computeHall(map.seats);
+    const start = Math.min(...map.seats.map((s) => s.gc)) + 1;
+    return `${start} / ${start + Math.round((2 * halfWidth) / PITCH_X)}`;
+  }, [map]);
   const bandOf = useMemo(() => {
     const out = new Map<number, number>();
     for (const b of runs) for (let gr = b.from; gr <= b.to; gr++) if (rows.has(gr)) out.set(gr, b.cat);
@@ -553,11 +562,23 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     <>
       {runs.length === 0 ? <p className="fr-mixed-note">Seat categories are mixed within rows. Each seat's category is in the legend and in its label.</p> : null}
       <div ref={container} className="fr-grid-scroll">
+        <Screen cols={map.screen.cols} over={over} />
         <div role="grid" aria-label="Seat map" className="fr-grid" style={{ ["--fr-grid-cols" as string]: String(map.screen.cols) }}>
           {gridRows}
         </div>
       </div>
     </>
+  );
+}
+
+/** The screen as drawn on the 2D map. Before the map arrives it spans the field, holding its height. */
+function Screen({ cols, over }: { cols?: number; over?: string }) {
+  return (
+    <div className={cols ? "fr-screen fr-screen-placed" : "fr-screen"} aria-hidden="true"
+         style={cols ? { ["--fr-grid-cols" as string]: String(cols), ["--fr-screen-over" as string]: over } : undefined}>
+      <div className="fr-screen-bar" />
+      <p className="fr-screen-label">SCREEN</p>
+    </div>
   );
 }
 

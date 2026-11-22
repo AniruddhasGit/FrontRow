@@ -2,7 +2,7 @@
 // Run: node --test frontend/src/nav.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { currentTo, navFor, shortEmail } from "./nav.ts";
+import { currentTo, navFor, parentOf, shortEmail } from "./nav.ts";
 
 const labels = (role) => navFor(role).map((l) => l.label);
 
@@ -27,4 +27,20 @@ test("the address truncates past 24 characters", () => {
   assert.equal(shortEmail("asha@example.invalid"), "asha@example.invalid");
   const long = "customer-12@demo.frontrow.invalid"; // the expected display is derived, so no address-like fragment is typed (S-XCT-28)
   assert.equal(shortEmail(long), long.slice(0, 23) + "…");
+});
+
+// CR-007 (owner, 2026-11-22): a dedicated Back on every screen. With no in-app history (a deep link) it goes up to
+// the nearest registered parent path, else home.
+test("Back's fallback is the nearest registered parent, else home", () => {
+  const known = new Set(["/", "/bookings", "/admin/movies", "/dashboard", "/account/reset"]);
+  const isRoute = (p) => known.has(p) || /^\/showtimes\/[^/]+$/.test(p);
+  assert.equal(parentOf("/showtimes/5/checkout", isRoute), "/showtimes/5");
+  assert.equal(parentOf("/showtimes/5", isRoute), "/");
+  assert.equal(parentOf("/bookings/FR-ABC", isRoute), "/bookings");
+  assert.equal(parentOf("/admin/movies/new", isRoute), "/admin/movies");
+  assert.equal(parentOf("/admin/halls", isRoute), "/");
+  assert.equal(parentOf("/dashboard/audit", isRoute), "/dashboard");
+  assert.equal(parentOf("/account/reset/confirm", isRoute), "/account/reset");
+  assert.equal(parentOf("/sign-in", isRoute), "/");
+  assert.equal(parentOf("/", isRoute), null);
 });

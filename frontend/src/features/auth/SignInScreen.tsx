@@ -30,7 +30,7 @@ export function SignInScreen({ initial }: { initial: Tab }) {
     setPassword(""); // the email survives a tab switch; the password does not
     setBanner(null);
     setFieldError(null);
-    window.history.replaceState(null, "", `/${next}${window.location.search}`); // no navigation: back returns to the map
+    window.history.replaceState(window.history.state, "", `/${next}${window.location.search}`); // no navigation: back returns to the map
   };
 
   const submit = async (e: FormEvent) => {

@@ -94,3 +94,9 @@
   .fr-account { min-width: 0; }
   .fr-account-email { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+/* CR-007: the dedicated Back, first in the header on every screen but home */
+.fr-back { background: transparent; border: var(--fr-stroke-hair) solid var(--fr-control-edge); color: var(--fr-ink-strong);
+  border-radius: var(--fr-radius-md); min-height: var(--fr-tap-min); padding: 0 var(--fr-space-3); font: inherit;
+  font-size: var(--fr-text-sm); cursor: pointer; display: inline-flex; align-items: center; gap: var(--fr-space-2); }
+.fr-back:hover { border-color: var(--fr-ink); }
+.fr-back:focus-visible { outline: 2px solid var(--fr-focus-ring); outline-offset: 2px; }

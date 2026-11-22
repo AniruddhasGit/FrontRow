@@ -53,7 +53,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   }, []);
 
   useEffect(() => {
-    window.history.replaceState(null, "", `/films${query(filters)}`);
+    window.history.replaceState(window.history.state, "", `/films${query(filters)}`);
     const controller = new AbortController();
     get<{ count: number; movies: Film[] }>(`/api/movies${query(filters)}`, controller.signal).then((r) => {
       if (controller.signal.aborted) return;
