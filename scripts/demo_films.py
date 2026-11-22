@@ -53,6 +53,30 @@ FILMS = [
     ("Echoes of the Steppe", "echoes-of-the-steppe", 133, "PG-13", ["Drama", "Adventure"],
      "On the endless grasslands, a young eagle hunter and her grandfather ride to save their herd and the old ways "
      "of their people."),
+    ("The Dragon's Oath", "the-dragons-oath", 138, "PG-13", ["Fantasy", "Action"],
+     "In a ruined mountain kingdom, a young squire and a hardened ranger make a bond with the last dragon, and an "
+     "army comes to break it."),
+    ("The Astral Grimoire", "the-astral-grimoire", 122, "PG", ["Fantasy", "Adventure"],
+     "In a library city floating above the clouds, an apprentice opens a book of star magic that her master swore "
+     "would stay closed."),
+    ("The Redwood Covenant", "the-redwood-covenant", 104, "R", ["Horror", "Thriller"],
+     "A couple renting a cabin deep in the redwoods find the masked people of the forest keep an old promise to the "
+     "trees."),
+    ("The Marigold Reunion", "the-marigold-reunion", 109, "PG-13", ["Comedy", "Family"],
+     "Three generations, one villa, one wedding cake and a week of summer in which every family secret comes out at "
+     "dinner."),
+    ("The Edge of the Map", "the-edge-of-the-map", 129, "PG-13", ["Adventure", "Action"],
+     "An explorer follows a dead man's journal into the jungle, to a temple no map has ever marked."),
+    ("Paws & Claws: The Great Alley Caper", "paws-and-claws", 92, "PG", ["Animation", "Family"],
+     "A streetwise cat and a scruffy terrier team up with every stray on the block to pull off the heist of the "
+     "summer."),
+    ("Caldera", "caldera", 117, "PG-13", ["Action", "Sci-Fi"],
+     "A rescue team drops into a hidden volcanic valley where something has survived for sixty-six million years."),
+    ("Iron Horizon", "iron-horizon", 135, "R", ["War", "Action"],
+     "Cut off on the front line with the storm closing in, a squad leader has one night to hold the ridge."),
+    ("Silent Sky", "silent-sky", 114, "PG-13", ["Sci-Fi", "Thriller"],
+     "When every light on Earth goes out, a paramedic crosses the occupied city to find her brother before the "
+     "machines find her."),
 ]
 LANGUAGE = "English"
 CHANGEOVER = timedelta(minutes=15)
@@ -103,7 +127,7 @@ def main() -> None:
             "SELECT s.id, s.screen_id, s.starts_at FROM showtime s WHERE s.starts_at > %s "
             "AND NOT EXISTS (SELECT 1 FROM booking b WHERE b.showtime_id = s.id) ORDER BY s.starts_at, s.screen_id",
             (now,)).fetchall()
-        # every day's shows (24: 4 slots x 6 halls) are dealt across all nine films in turn, so each film plays daily
+        # every day's shows (24: 4 slots x 6 halls) are dealt across all the films in turn (20 films: most play daily)
         for k, (sid, screen, starts) in enumerate(future):
             film = ids[k % len(ids)]
             cur.execute("UPDATE showtime SET movie_id = %s, ends_at = %s, version = version + 1 WHERE id = %s",
