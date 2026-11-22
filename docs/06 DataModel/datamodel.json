@@ -35,7 +35,8 @@
     "notification": "CR-008 (owner, 2026-11-22): In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them.",
     "support_message": "CR-008 (owner, 2026-11-22): A message sent from the Help & support contact form, stored for the operator to read.",
     "movie_rating": "CR-008 (owner, 2026-11-22): One score 1-10 per customer and film, only after a paid booking for it has started.",
-    "movie_like": "CR-008 (owner, 2026-11-22): One like per customer and film, for films not yet released."
+    "movie_like": "CR-008 (owner, 2026-11-22): One like per customer and film, for films not yet released.",
+    "review_vote": "CR-011 (owner, 2026-11-22): One 'Helpful' vote per customer per review; a customer cannot vote for their own."
   },
   "bible_reference_exceptions": {
     "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
@@ -125,6 +126,7 @@
         "GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app",
         "GRANT SELECT, INSERT ON reward_entry TO frontrow_app",
+        "GRANT SELECT, INSERT ON review_vote TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app",
@@ -813,6 +815,10 @@
       "movie_like": {
         "rows": 0,
         "cite": "CR-008 (owner, 2026-11-22) T12 - the seed writes no rating or like; customers write them"
+      },
+      "review_vote": {
+        "rows": 0,
+        "cite": "CR-011 (owner, 2026-11-22) F4 - the seed writes no review or vote; customers write them"
       }
     },
     "invariants": [
@@ -2650,7 +2656,7 @@
     },
     {
       "name": "movie_rating",
-      "purpose": "One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.",
+      "purpose": "One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row. CR-011 F4: with review_text it is also that customer's review of the film (stars + text), editable by its author.",
       "cite": "CR-008 (owner, 2026-11-22) T12 (ratings and likes)",
       "columns": [
         {
@@ -2659,7 +2665,7 @@
           "nullable": false,
           "default": null,
           "cite": "FR-ADR-017 (bigint identity on every table)",
-          "note": "Never appears in a public URL.",
+          "note": "CR-011 F4: the review's id in /api/me/reviews/{review_id}/helpful (a review is public on the film page).",
           "reserved_row": null,
           "identity": true
         },
@@ -2688,6 +2694,15 @@
           "default": null,
           "cite": "CR-008 (owner, 2026-11-22) T12",
           "note": "1 to 10, whole numbers.",
+          "reserved_row": null
+        },
+        {
+          "name": "review_text",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "note": "The customer's written review (1-2000 characters), shown on the film page with the score; null = a score with no review. Written and edited only by its author, under the same gate as the score.",
           "reserved_row": null
         },
         {
@@ -2761,6 +2776,12 @@
           "expression": "score BETWEEN 1 AND 10",
           "cite": "CR-008 (owner, 2026-11-22) T12",
           "why": "The scale is 1 to 10; the API refuses the same bounds first."
+        },
+        {
+          "name": "ck_movie_rating__review_text",
+          "expression": "review_text IS NULL OR char_length(review_text) BETWEEN 1 AND 2000",
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "why": "The form's bound, refused again at the database; an empty review is stored as null."
         }
       ],
       "indexes": [
@@ -3407,6 +3428,108 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "review_vote",
+      "purpose": "One 'Helpful' vote by one customer for one review (a movie_rating row with review_text). Insert only: a vote is cast once and never changed, so frontrow_app has no UPDATE or DELETE here. The author cannot vote for their own review (checked in the write, app/api/account.py).",
+      "cite": "CR-011 (owner, 2026-11-22) F4 (reviews and Helpful votes)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "rating_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "note": "The review voted for.",
+          "reserved_row": null
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "note": "The voter: always the session's user; never taken from a request.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 Â· FR-ADR-018",
+          "note": "Row metadata at the database (FR-ADR-018).",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "rating_id",
+            "user_id"
+          ],
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "why": "Once per customer per review: the vote's ON CONFLICT DO NOTHING target, so a double click never counts twice. Its leading column also serves the per-review count.",
+          "name": "uq_review_vote__rating_id_user_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "rating_id"
+          ],
+          "references": {
+            "table": "movie_rating",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-011 (owner, 2026-11-22) F4 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_review_vote__rating_id"
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-011 (owner, 2026-11-22) F4 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_review_vote__user_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "cite": "CR-011 (owner, 2026-11-22) F4",
+          "why": "The viewer's own votes on a film page are read by user_id.",
+          "name": "ix_review_vote__user_id"
+        }
+      ]
     },
     {
       "name": "reward_entry",

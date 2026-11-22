@@ -245,3 +245,64 @@
   border-radius: var(--fr-radius-md);
 }
 
+
+/* CR-011 F2: /films - the filters in a left column beside the poster grid; on phones they fold behind "Filters" */
+.fr-listing-layout {
+  display: grid;
+  gap: var(--fr-space-5);
+}
+.fr-listing-side,
+.fr-listing-main {
+  min-width: 0;
+}
+.fr-filter-search {
+  display: grid;
+  gap: var(--fr-space-1);
+  font-weight: var(--fr-weight-medium);
+}
+.fr-filter-search input {
+  min-height: var(--fr-tap-min);
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 var(--fr-space-3);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  border-radius: var(--fr-radius-md);
+  background: var(--fr-surface-inset);
+  color: var(--fr-ink-strong);
+  font: inherit;
+}
+.fr-listing-side .fr-pick::before,
+.fr-listing-side .fr-days::before {
+  content: attr(aria-label);
+  flex-basis: 100%;
+  font-size: var(--fr-text-xs);
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+  color: var(--fr-ink-muted);
+}
+@media (max-width: 59.99rem) {
+  .fr-filters:not([data-open]) {
+    display: none;
+  }
+  .fr-filters-toggle {
+    margin-bottom: var(--fr-space-3);
+  }
+}
+@media (min-width: 60rem) {
+  .fr-listing-layout {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    align-items: start;
+  }
+  .fr-listing-side {
+    padding: var(--fr-space-4);
+    border-radius: var(--fr-radius-lg);
+    background: var(--fr-surface-raised);
+    box-shadow: var(--fr-shadow-card);
+  }
+  .fr-listing-side .fr-filters-toggle {
+    display: none;
+  }
+  .fr-listing-side .fr-week .fr-choice.fr-day {
+    font-size: var(--fr-text-xs);
+  }
+}

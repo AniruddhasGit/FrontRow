@@ -162,15 +162,17 @@ constraint	unique	movie_like	uq_movie_like__user_id_movie_id	CR-008 (owner, 2026
 constraint	foreign_key	movie_like	fk_movie_like__user_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		users
 constraint	foreign_key	movie_like	fk_movie_like__movie_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		movie
 index	index	movie_like	ix_movie_like__movie_id	CR-008 (owner, 2026-11-22) T12		The per-film like count is aggregated by movie_id on every listing build.
-table	entity	movie_rating	movie_rating	CR-008 (owner, 2026-11-22) T12 (ratings and likes)		One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.
-column	bigint	movie_rating	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
+table	entity	movie_rating	movie_rating	CR-008 (owner, 2026-11-22) T12 (ratings and likes)		One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row. CR-011 F4: with review_text it is also that customer's review of the film (stars + text), editable by its author.
+column	bigint	movie_rating	id	FR-ADR-017 (bigint identity on every table)		CR-011 F4: the review's id in /api/me/reviews/{review_id}/helpful (a review is public on the film page).
 column	bigint	movie_rating	user_id	CR-008 (owner, 2026-11-22) T12		Always the session's user; never taken from a request.
 column	bigint	movie_rating	movie_id	CR-008 (owner, 2026-11-22) T12		The film.
 column	integer	movie_rating	score	CR-008 (owner, 2026-11-22) T12		1 to 10, whole numbers.
+column	text	movie_rating	review_text	CR-011 (owner, 2026-11-22) F4		The customer's written review (1-2000 characters), shown on the film page with the score; null = a score with no review. Written and edited only by its author, under the same gate as the score.
 column	timestamptz	movie_rating	created_at	S-XCT-09 Â· FR-ADR-018		Row metadata at the database (FR-ADR-018).
 column	timestamptz	movie_rating	updated_at	CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018		Row metadata; set on every change of the value.
 constraint	unique	movie_rating	uq_movie_rating__user_id_movie_id	CR-008 (owner, 2026-11-22) T12		One rating per customer per film: the upsert's ON CONFLICT target, so re-rating updates and never adds.
 constraint	check	movie_rating	ck_movie_rating__score	CR-008 (owner, 2026-11-22) T12		The scale is 1 to 10; the API refuses the same bounds first.
+constraint	check	movie_rating	ck_movie_rating__review_text	CR-011 (owner, 2026-11-22) F4		The form's bound, refused again at the database; an empty review is stored as null.
 constraint	foreign_key	movie_rating	fk_movie_rating__user_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		users
 constraint	foreign_key	movie_rating	fk_movie_rating__movie_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		movie
 index	index	movie_rating	ix_movie_rating__movie_id	CR-008 (owner, 2026-11-22) T12		The per-film average, count and 1-10 breakdown are aggregated by movie_id on every listing build.
@@ -239,6 +241,15 @@ constraint	unique	receipt_dispatch	uq_receipt_dispatch__booking_id	FR-ADR-032 De
 constraint	check	receipt_dispatch	ck_receipt_dispatch__1	E4 P-TKT-05 Preconditions; E4 P-TKT-04 'The `suppressed` state' block		Closed five-member vocabulary, enumerated identically in three P-rows and proved complete as a 5x3 state machine in P-TKT-05. No criterion asserts the constraint itself, so the mechanism is open as it is for outbox_message.topic.
 constraint	check	receipt_dispatch	ck_receipt_dispatch__2	E4 P-TKT-05 Preconditions ('`dispatch_seq` (integer, `>= 1`)'); E4 P-TKT-04 Server-side validation ('`dispatch_seq`: integer, `>= 1`')		Stated twice as a bound on the value, in two separate specifications. A 0 or negative sequence would make the worker's sequence-conditional claim meaningless.
 constraint	foreign_key	receipt_dispatch	fk_receipt_dispatch__booking_id	FR-ADR-032 Decision; FR-ADR-012 ('every relationship is `ON DELETE RESTRICT`. A cascade is a delete that happens without anyone writing the word delete')		booking
+table	entity	review_vote	review_vote	CR-011 (owner, 2026-11-22) F4 (reviews and Helpful votes)		One 'Helpful' vote by one customer for one review (a movie_rating row with review_text). Insert only: a vote is cast once and never changed, so frontrow_app has no UPDATE or DELETE here. The author cannot vote for their own review (checked in the write, app/api/account.py).
+column	bigint	review_vote	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
+column	bigint	review_vote	rating_id	CR-011 (owner, 2026-11-22) F4		The review voted for.
+column	bigint	review_vote	user_id	CR-011 (owner, 2026-11-22) F4		The voter: always the session's user; never taken from a request.
+column	timestamptz	review_vote	created_at	S-XCT-09 Â· FR-ADR-018		Row metadata at the database (FR-ADR-018).
+constraint	unique	review_vote	uq_review_vote__rating_id_user_id	CR-011 (owner, 2026-11-22) F4		Once per customer per review: the vote's ON CONFLICT DO NOTHING target, so a double click never counts twice. Its leading column also serves the per-review count.
+constraint	foreign_key	review_vote	fk_review_vote__rating_id	CR-011 (owner, 2026-11-22) F4 · S-XCT-09 (every FK is ON DELETE RESTRICT)		movie_rating
+constraint	foreign_key	review_vote	fk_review_vote__user_id	CR-011 (owner, 2026-11-22) F4 · S-XCT-09 (every FK is ON DELETE RESTRICT)		users
+index	index	review_vote	ix_review_vote__user_id	CR-011 (owner, 2026-11-22) F4		The viewer's own votes on a film page are read by user_id.
 table	entity	reward_entry	reward_entry	CR-008 (owner, 2026-11-22) T3 (rewards: points and discounts per account)		The points ledger: one row per points movement, each tied to the booking that caused it. Earned on a paid booking, redeemed as a discount on one. Written only inside the booking-confirm transaction, so a failed payment or an expired hold rolls the redemption back with everything else.
 column	bigint	reward_entry	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
 column	bigint	reward_entry	user_id	CR-008 (owner, 2026-11-22) T3		The booking's own user (the session's).

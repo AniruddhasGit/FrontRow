@@ -90,6 +90,7 @@ DECLARE
     "movie_genre":               ["DELETE","INSERT","SELECT"],
     "movie_rating":              ["INSERT","SELECT","UPDATE"],
     "movie_like":                ["INSERT","SELECT","UPDATE"],
+    "review_vote":               ["INSERT","SELECT"],
     "showtime":                  ["INSERT","SELECT","UPDATE"],
     "showtime_seat":             ["INSERT","SELECT"],
     "certification":             ["INSERT","SELECT","UPDATE"],

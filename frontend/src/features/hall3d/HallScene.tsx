@@ -7,10 +7,13 @@ import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  BufferAttribute, CanvasTexture, Color, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry,
-  SRGBColorSpace, TextureLoader, Vector3, type BufferGeometry, type Group, type Mesh, type PerspectiveCamera, type Texture,
+  BufferAttribute, CanvasTexture, Color, DataTexture, FloatType, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D,
+  PMREMGenerator, RGBAFormat, RingGeometry, SRGBColorSpace, ShaderChunk, TextureLoader, Vector3, type BufferGeometry, type Group, type Material, type Mesh,
+  type PerspectiveCamera, type Texture,
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
+import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, packSH } from "./seatLight";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { stillPath } from "./still";
 import { hallDrawn } from "./hallReady";
@@ -181,18 +184,76 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: 
                         onStart={() => onMoving(true)} onEnd={() => onMoving(false)} />;
 }
 
-function SeatKind({ kind, items, colourOf, onPick, onHover, baked }: {
+/** CR-010: a baked hall whose seats carry Cycles light probes (hall_probes.py). Each seat instance is lit by its own
+ *  two probes (seatLight.ts) instead of the point lights, its reflections come from the hall's Cycles panorama, and its
+ *  light then goes through the bake's own curve (AgX at +0.4 EV, x ROOM_GAIN) and the screen glow, as the room does. */
+type SeatLit = { glow: GlowU; env: Texture | null };
+const ENV_INTENSITY = 0.7; // ponytail: the reflections are there but quiet (brass and the leather's coat); tune here
+// The site's flat LEATHER is the light end of the Blender leather (#8d5024..#b87437 x its scan, mean ~0.72 of LEATHER),
+// so the probe light is scaled to put the seats at the brightness Cycles renders them (render_truth.py side by side).
+const SEAT_GAIN = 0.75;
+// The probes already hold the screen's own light, so the live screen glow (tint, spill, sheen) is applied to the seats
+// at half strength: they still follow the picture, without the front rows washing pink.
+const SEAT_GLOW = 0.5;
+// three's AgX (Blender's, via Filament): the canvas is `flat` (no tone mapping), so three leaves it out; borrowed here
+const AGX = ShaderChunk.tonemapping_pars_fragment.replace("uniform float toneMappingExposure;", "const float toneMappingExposure = 1.0;");
+function lightSeats(m: Material, shU: Record<string, { value: unknown }>, glow: GlowU) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, glow, shU);
+    sh.vertexShader = SH_VERT_PARS + sh.vertexShader.replace("#include <project_vertex>", SH_VERT);
+    sh.fragmentShader = AGX + GLOW_FRAG + SH_FRAG_PARS + sh.fragmentShader.replace("#include <lights_fragment_maps>", SH_FRAG)
+      .replace("#include <opaque_fragment>", `outgoingLight = ${ROOM_GAIN.toFixed(2)} * AgXToneMapping(outgoingLight * ${EXPOSURE.toFixed(4)});\n  vec3 seatBase = outgoingLight;\n  `
+        + GLOW_APPLY.replace("#include <opaque_fragment>", `outgoingLight = mix(seatBase * uHouse, outgoingLight, ${SEAT_GLOW.toFixed(2)});\n  #include <opaque_fragment>`));
+  };
+  m.customProgramCacheKey = () => "seat-probes";
+}
+
+function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
   kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
-  baked: boolean;
+  baked: boolean; lit: SeatLit | null;
 }) {
   const ref = useRef<InstancedMesh>(null);
   const frameRef = useRef<InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
   const [geo, setGeo] = useState<SeatGeo>(() => placeholderGeometry(kind));
   const geometry: BufferGeometry = geo.body;
+  const glow = lit?.glow ?? null;
+  const shU = useMemo(() => ({ uSH: { value: null as DataTexture | null }, uSeatGain: { value: SEAT_GAIN } }), []);
   // Upholstery reads as velvet: matte with a soft sheen. The frame keeps its baked colour (satin black, brass).
-  const material = useMemo(() => new MeshPhysicalMaterial({ roughness: 0.85, metalness: 0, sheen: 0.4, sheenRoughness: 0.4, sheenColor: new Color("#3a5596") }), []);
-  const frameMaterial = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.45 }), []);
+  const material = useMemo(() => {
+    const m = new MeshPhysicalMaterial({ roughness: 0.85, metalness: 0, sheen: 0.4, sheenRoughness: 0.4, sheenColor: new Color("#3a5596") });
+    if (glow) {
+      // the leather of the ray-traced seats (hall1_build.py mat_leather): satin, a thin coat that catches the room's
+      // lights, no velvet sheen
+      Object.assign(m, { sheen: 0, roughness: 0.5, clearcoat: 0.12, clearcoatRoughness: 0.35 });
+      lightSeats(m, shU, glow);
+    }
+    return m;
+  }, [glow, shU]);
+  const frameMaterial = useMemo(() => {
+    const m = new MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.45 });
+    if (glow) lightSeats(m, { uSH: shU.uSH, uSeatGain: { value: 1 } }, glow); // the frame keeps its own albedo
+    return m;
+  }, [glow, shU]);
+  // the probes, one texture row per instance (gl_InstanceID), in the same order as the instance matrices below
+  useEffect(() => {
+    if (!glow) return;
+    const t = new DataTexture(packSH(items.map((p) => p.light)), SH_TEXELS, Math.max(1, items.length), RGBAFormat, FloatType);
+    t.needsUpdate = true;
+    shU.uSH.value = t;
+    invalidate();
+    return () => t.dispose();
+  }, [items, glow, shU, invalidate]);
+  const env = lit?.env ?? null;
+  useEffect(() => {
+    if (!glow) return;
+    for (const m of [material, frameMaterial]) {
+      m.envMap = env;
+      m.envMapIntensity = ENV_INTENSITY;
+      m.needsUpdate = true;
+    }
+    invalidate();
+  }, [env, glow, material, frameMaterial, invalidate]);
   useEffect(() => {
     let live = true;
     void seatGeometry(kind).then((g) => {
@@ -518,8 +579,43 @@ const GLOW_APPLY = `outgoingLight *= uHouse;
 const HOUSE_DOWN = 0.55;
 const DIMMED = /^emit_(dl|led_strip)/;
 
-function BakedRoom({ n, film, tone, meta, paint, houseDown }: {
-  n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean;
+/** The light on the room now (BakedRoom eases it toward the light the current picture casts); the probe-lit seats
+ *  (CR-010) take the same uniforms, so they dim and tint with the room. */
+function glowUniforms(meta: BakedMeta) {
+  return {
+    uHouse: { value: 1 },
+    uGlowPos: { value: new Color(...NO_GLOW.left) }, uGlowNeg: { value: new Color(...NO_GLOW.right) },
+    uLuma: { value: NO_GLOW.luma }, uScreenZ: { value: meta.screen.z },
+    uHalfW: { value: Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 },
+  };
+}
+type GlowU = ReturnType<typeof glowUniforms>;
+
+/** CR-010 L2: the hall's Cycles panorama (/halls/hallN_env.hdr), pre-filtered for the seats' reflections. */
+function useHallEnv(file: string | undefined): Texture | null {
+  const gl = useThree((s) => s.gl);
+  const [env, setEnv] = useState<Texture | null>(null);
+  useEffect(() => {
+    if (!file) return;
+    let live = true, made: Texture | null = null;
+    new HDRLoader().load(`/halls/${file}`, (t) => {
+      const pm = new PMREMGenerator(gl);
+      made = pm.fromEquirectangular(t).texture;
+      pm.dispose();
+      t.dispose();
+      if (live) setEnv(made);
+      else made.dispose();
+    }, undefined, () => null); // no panorama: the seats keep their probe light, without reflections
+    return () => {
+      live = false;
+      made?.dispose();
+    };
+  }, [file, gl]);
+  return env;
+}
+
+function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
+  n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean; glowU: GlowU;
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const painted = usePainted(paint, meta.screen.w / meta.screen.h);
@@ -527,13 +623,6 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown }: {
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
-  // the light on the room now (eased in useFrame below toward `target`, the light the current picture casts)
-  const glowU = useMemo(() => ({
-    uHouse: { value: 1 },
-    uGlowPos: { value: new Color(...NO_GLOW.left) }, uGlowNeg: { value: new Color(...NO_GLOW.right) },
-    uLuma: { value: NO_GLOW.luma }, uScreenZ: { value: meta.screen.z },
-    uHalfW: { value: Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 },
-  }), [meta]);
   const target = useRef<Glow>(NO_GLOW);
   const lamps = useRef<{ material: MeshBasicMaterial; full: Color }[]>([]);
   const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
@@ -635,9 +724,12 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown }: {
     <group>
       {room && <primitive object={room} />}
       {room && <Haze meta={meta} />}
-      <pointLight ref={seatLight} position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
-      <pointLight ref={house} position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
-      <ambientLight ref={fill} intensity={0.35} color="#6b4a3a" />
+      {/* a hall without Cycles probes (an older file) lights its seats the old way */}
+      {!meta.probe && <>
+        <pointLight ref={seatLight} position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
+        <pointLight ref={house} position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
+        <ambientLight ref={fill} intensity={0.35} color="#6b4a3a" />
+      </>}
     </group>
   );
 }
@@ -723,6 +815,18 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
   );
 }
 
+/** Every seat model's instances; a probe-lit hall (CR-010) also loads its reflection panorama here, once. */
+function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env }: {
+  byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  baked: boolean; glow: GlowU | null; env: string | undefined;
+}) {
+  const map = useHallEnv(glow ? env : undefined);
+  const lit = useMemo(() => (glow ? { glow, env: map } : null), [glow, map]);
+  return <>{KINDS.map((k) => (byKind[k].length ? (
+    <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={onPick} onHover={onHover} baked={baked} lit={lit} />
+  ) : null))}</>;
+}
+
 export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false }: {
   map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
@@ -738,6 +842,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
   const shape = map.seats.map((s) => `${s.id}:${s.gr}:${s.gc}`).join();
   const hall = useMemo(() => computeHall(map.seats), [shape]);
   const baked = useMemo(() => (meta && hallNo ? bakedHall(map.seats, meta) : null), [shape, meta, hallNo]);
+  const glowU = useMemo(() => (baked ? glowUniforms(baked.meta) : null), [baked?.meta]);
   const placed = baked?.placed ?? hall.placed;
   const byKind = useMemo(() => {
     const name = new Map(map.categories.map((c) => [c.id, c.name]));
@@ -781,11 +886,9 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
-      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
-      {KINDS.map((k) => (byKind[k].length ? (
-        <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={locked ? () => undefined : pick}
-                  onHover={locked ? () => undefined : hoverSeat} baked={!!baked} />
-      ) : null))}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} glowU={glowU!} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
+      <Seats byKind={byKind} colourOf={colourOf} onPick={locked ? () => undefined : pick} onHover={locked ? () => undefined : hoverSeat}
+             baked={!!baked} glow={baked?.meta.probe ? glowU : null} env={baked?.meta.probe?.env?.file} />
       <Halos placed={placed} mine={mine} tone={tone} />
       <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={baked?.meta.intro ?? null}
            wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} />

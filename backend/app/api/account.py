@@ -27,8 +27,8 @@ from app.domain import rewards
 from app.domain.browse import catalogue
 from app.domain.money import BIGINT_MAX
 from app.domain.visibility import visible
-from app.models import (booking, bookmark, format as format_t, language, movie, movie_like, movie_rating, payment, showtime,
-                        users)
+from app.models import (booking, bookmark, format as format_t, language, movie, movie_like, movie_rating, payment, review_vote,
+                        showtime, users)
 
 router = APIRouter(prefix="/api/me", dependencies=[Depends(caller)])
 
@@ -174,8 +174,17 @@ async def my_film(request: Request, movie_id: Id, conn: AsyncConnection = Depend
         liked = (await conn.execute(select(movie_like.c.liked).where(movie_like.c.user_id == me,
                                                                     movie_like.c.movie_id == movie_id))).scalar()
         can_rate = bool((await conn.execute(select(_watched(me, movie_id, now)))).scalar())
+        # CR-011 F4: my review's text, and which of this film's reviews I have already marked Helpful
+        review = (await conn.execute(select(movie_rating.c.id, movie_rating.c.review_text)
+                                     .where(movie_rating.c.user_id == me, movie_rating.c.movie_id == movie_id))).first()
+        voted = (await conn.execute(select(review_vote.c.rating_id)
+                                    .select_from(review_vote.join(movie_rating, review_vote.c.rating_id == movie_rating.c.id))
+                                    .where(review_vote.c.user_id == me, movie_rating.c.movie_id == movie_id)
+                                    .order_by(review_vote.c.rating_id))).scalars().all()
         await conn.rollback()
-        return {"movie_id": movie_id, "score": score, "can_rate": can_rate, "liked": bool(liked), "coming_soon": soon}
+        return {"movie_id": movie_id, "score": score, "can_rate": can_rate, "liked": bool(liked), "coming_soon": soon,
+                "review": review.review_text if review else None,
+                "review_id": review.id if review and review.review_text else None, "voted": list(voted)}
 
     return await _guard(read())
 
@@ -221,6 +230,74 @@ async def like_film(request: Request, movie_id: Id, conn: AsyncConnection = Depe
                                         .where(movie_like.c.movie_id == movie_id, movie_like.c.liked))).scalar()
         await cache.bump_listing_generation(request.app.state.redis)
         return {"movie_id": movie_id, "liked": body.liked, "likes": likes}
+
+    return await _guard(write())
+
+
+# ---- CR-011 F4: reviews and Helpful votes ---------------------------------------------------------------------------
+# A review is the caller's rating with text: written and edited under the rating's own gate (a paid booking whose show
+# has started, in the write's transaction). A Helpful vote is once per customer per review (UNIQUE + on_conflict_do_nothing,
+# so a second press changes nothing), never on the caller's own review, and never undone (insert-only table).
+
+REVIEW_BOUNDS = "Write a review of 1 to 2000 characters."
+NO_REVIEW = "That review could not be found."
+OWN_REVIEW = "You cannot mark your own review as helpful."
+REVIEW_MAX = 2000
+
+
+class Written(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    score: StrictInt
+    text: StrictStr
+
+
+@router.put("/reviews/{movie_id}")
+async def review_film(request: Request, movie_id: Id, conn: AsyncConnection = Depends(db)) -> dict:
+    body = await _json(request, Written)
+    text = body.text.strip()
+    if not 1 <= body.score <= 10:
+        raise ApiError(422, "VALIDATION_FAILED", BAD_SCORE, {"field": "score"})
+    if not 1 <= len(text) <= REVIEW_MAX:
+        raise ApiError(422, "VALIDATION_FAILED", REVIEW_BOUNDS, {"field": "text"})
+    me, now = request.state.caller.id, request.app.state.clock.now()
+
+    async def write():
+        async with conn.begin():
+            await _visible_film(conn, movie_id, now)
+            if not (await conn.execute(select(_watched(me, movie_id, now)))).scalar():
+                raise ApiError(403, "FORBIDDEN", RATE_REFUSED)
+            review_id = (await conn.execute(
+                pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score, review_text=text,
+                                               created_at=now, updated_at=now)
+                .on_conflict_do_update(index_elements=["user_id", "movie_id"],
+                                       set_={"score": body.score, "review_text": text, "updated_at": now})
+                .returning(movie_rating.c.id))).scalar()
+            rating = await catalogue.rating_breakdown(conn, movie_id)
+        await cache.bump_listing_generation(request.app.state.redis)
+        return {"movie_id": movie_id, "review_id": review_id, "score": body.score, "text": text, "rating": rating}
+
+    return await _guard(write())
+
+
+@router.post("/reviews/{review_id}/helpful")
+async def mark_helpful(request: Request, review_id: Id, conn: AsyncConnection = Depends(db)) -> dict:
+    me, now = request.state.caller.id, request.app.state.clock.now()
+
+    async def write():
+        async with conn.begin():
+            author = (await conn.execute(select(movie_rating.c.user_id)
+                                         .select_from(movie_rating.join(movie, movie_rating.c.movie_id == movie.c.id))
+                                         .where(movie_rating.c.id == review_id, movie_rating.c.review_text.is_not(None),
+                                                visible(now)))).scalar()
+            if author is None:
+                raise ApiError(404, "NOT_FOUND", NO_REVIEW)
+            if author == me:
+                raise ApiError(403, "FORBIDDEN", OWN_REVIEW)
+            await conn.execute(pg_insert(review_vote).values(rating_id=review_id, user_id=me, created_at=now)
+                               .on_conflict_do_nothing(index_elements=["rating_id", "user_id"]))
+            helpful = (await conn.execute(select(func.count()).select_from(review_vote)
+                                          .where(review_vote.c.rating_id == review_id))).scalar()
+        return {"review_id": review_id, "helpful": helpful, "voted": True}
 
     return await _guard(write())
 

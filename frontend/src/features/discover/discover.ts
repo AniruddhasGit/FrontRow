@@ -214,3 +214,90 @@ export function weekRows(days: string[]): { day: string; month: string | null }[
   return out;
 }
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// ---- CR-011: the browse-to-door flow ---------------------------------------------------------------------------------
+
+/** F1: the landing sidebar - at most 10 films that are out, best average first (unrated last), more votes breaking a
+ *  tie, then the title. The same order for everyone. */
+export const SIDEBAR_MAX = 10;
+export function sidebarTop(films: Film[]): Film[] {
+  const avg = (f: Film) => (f.rating.count ? f.rating.average_tenths ?? -1 : -1);
+  return films.filter((f) => !f.coming_soon)
+    .sort((a, b) => (avg(b) - avg(a)) || (b.rating.count - a.rating.count) || a.title.localeCompare(b.title))
+    .slice(0, SIDEBAR_MAX);
+}
+
+/** F3 "You might also like" (owner's request, CR-011; the word is allowed here by the amended S-XCT-47 / S-SCP-10):
+ *  other listed films sharing a genre with this one, most shared genres first, then the higher average, then the title.
+ *  Not personal - the same list for every viewer. */
+export const ALSO_LIKE_MAX = 6;
+export function recommended(film: Pick<Film, "id" | "genres">, films: Film[]): Film[] {
+  const mine = new Set(film.genres.map((g) => g.id));
+  const shared = (f: Film) => f.genres.filter((g) => mine.has(g.id)).length;
+  return films.filter((f) => f.id !== film.id && shared(f) > 0)
+    .sort((a, b) => (shared(b) - shared(a)) || ((b.rating.average_tenths ?? -1) - (a.rating.average_tenths ?? -1))
+      || a.title.localeCompare(b.title))
+    .slice(0, ALSO_LIKE_MAX);
+}
+
+/** F2: the listing filters the client applies on top of the server's (date, language): title words, a genre and a
+ *  minimum star average (whole stars; an unrated film never passes a minimum). */
+export type Narrow = { q: string | null; genre_id: string | null; min_rating: string | null };
+export function narrowFilms(films: Film[], n: Narrow): Film[] {
+  const q = (n.q ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const min = n.min_rating ? Number(n.min_rating) * 10 : null;
+  return films.filter((f) => (!q || f.title.toLowerCase().includes(q))
+    && (!n.genre_id || f.genres.some((g) => String(g.id) === n.genre_id))
+    && (min === null || (f.rating.count > 0 && (f.rating.average_tenths ?? 0) >= min)));
+}
+
+/** The genres the listed films carry, by name - the genre filter's choices (the reference list has no genres). */
+export function genresOf(films: Film[]): { id: number; name: string }[] {
+  const all = new Map<number, string>();
+  for (const f of films) for (const g of f.genres) all.set(g.id, g.name);
+  return [...all].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** F3: a date's showtimes grouped by screen, screens in name order (SCREEN 2 before SCREEN 10), times in order. */
+export function byScreen<S extends { starts_at: string; screen: { id: number; name: string } }>(shows: S[]): { screen: S["screen"]; shows: S[] }[] {
+  const groups = new Map<number, { screen: S["screen"]; shows: S[] }>();
+  for (const s of shows) {
+    if (!groups.has(s.screen.id)) groups.set(s.screen.id, { screen: s.screen, shows: [] });
+    groups.get(s.screen.id)!.shows.push(s);
+  }
+  const out = [...groups.values()];
+  out.forEach((g) => g.shows.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)));
+  return out.sort((a, b) => a.screen.name.localeCompare(b.screen.name, undefined, { numeric: true }));
+}
+
+/** Two letters for a portrait-less person tile: "Mira Hale" -> "MH", "Cher" -> "C". */
+export function initials(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+}
+
+/** F5: an adults-only certificate (A, R, NC-17, 18 / 18+) gets the ID notice at the door. */
+export function adultsOnly(certificate: string): boolean {
+  return /^(a|r|nc-?17|18\+?)$/i.test(certificate.trim());
+}
+
+/** F4: the film page's reviews - one status for the list, one for a write (no flags). */
+export type Review = { id: number; author: string; score: number; text: string; written_at: string; helpful: number };
+export type ReviewList = { kind: "loading" } | { kind: "error" } | { kind: "ready"; count: number; items: Review[] };
+export type ReviewSort = "newest" | "helpful";
+export const REVIEW_MAX = 2000;
+
+/** A review's text as the form sends it, or the reason it cannot be sent (the server checks the same bounds). */
+export function reviewText(raw: string): { ok: true; text: string } | { ok: false; message: string } {
+  const text = raw.trim();
+  if (!text) return { ok: false, message: "Write a few words about the film." };
+  if (text.length > REVIEW_MAX) return { ok: false, message: `Keep it to ${REVIEW_MAX} characters (you have ${text.length}).` };
+  return { ok: true, text };
+}
+
+/** F5/F6: the door's one status. `closed` until pressed; `opening` plays the swing, then the page leaves (an exit that
+ *  always fires: a timer, never an event that might not come). */
+export type Door = { kind: "closed" } | { kind: "opening"; showtimeId: number };
+export const DOOR_OPEN_MS = 700;
+export function pressDoor(d: Door, showtimeId: number): Door {
+  return d.kind === "opening" ? d : { kind: "opening", showtimeId };
+}

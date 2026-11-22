@@ -42,7 +42,8 @@ async def test_rating_is_refused_without_a_started_paid_booking_and_counted_afte
         r = await c.put(f"/api/me/ratings/{film}", json={"score": 8}, cookies=theirs)
         assert (r.status_code, r.json()["error"]["code"]) == (403, "FORBIDDEN")  # never booked: refused
         assert (await c.get(f"/api/me/movies/{film}", cookies=mine)).json() == {
-            "movie_id": film, "score": None, "can_rate": True, "liked": False, "coming_soon": False}
+            "movie_id": film, "score": None, "can_rate": True, "liked": False, "coming_soon": False,
+            "review": None, "review_id": None, "voted": []}  # review, review_id, voted: CR-011 F4
         for bad, status in (({"score": 0}, 422), ({"score": 11}, 422), ({"score": "8"}, 400), ({"score": 8, "x": 1}, 400)):
             assert (await c.put(f"/api/me/ratings/{film}", json=bad, cookies=mine)).status_code == status, bad
         r = await c.put(f"/api/me/ratings/{film}", json={"score": 8}, cookies=mine)

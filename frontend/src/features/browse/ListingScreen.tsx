@@ -2,6 +2,8 @@
 // The filters live in the URL query string, so a back navigation returns the same listing. The date strip is
 // derived on the client from the injected clock and the display_until values of the films THIS response returned
 // (P-BRW-04); each reference-backed control renders only when /api/reference holds two or more values for it.
+// CR-011 F2: plus title, genre and minimum rating, applied here to the films the server returned (no extra request per
+// keystroke), also kept in the URL. The filters sit in a left column; on phones they fold behind a "Filters" button.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navigate } from "../../router";
 import { takeNotice } from "../auth/session";
@@ -12,7 +14,7 @@ import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import type { Saved } from "../account/account";
 import { Genres, RatingBadge, releaseLabel } from "../discover/Bits";
-import { ratingName } from "../discover/discover";
+import { genresOf, narrowFilms, ratingName, type Narrow } from "../discover/discover";
 import "./browse.css";
 
 // The one place these screens read the clock; tests and a harness pass their own `now`. Module-level, so it is
@@ -26,10 +28,16 @@ function fromUrl(): Filters {
   const q = new URLSearchParams(window.location.search);
   return { date: q.get("date"), language_id: q.get("language_id"), format_id: q.get("format_id"), cinema_id: q.get("cinema_id") };
 }
+const NO_NARROW: Narrow = { q: null, genre_id: null, min_rating: null };
+function narrowFromUrl(): Narrow {
+  const q = new URLSearchParams(window.location.search);
+  return { q: q.get("q"), genre_id: q.get("genre_id"), min_rating: q.get("min_rating") };
+}
+const MIN_RATINGS = ["6", "7", "8", "9"];
 
 // The first state, for the render harness (react-dom/server runs no effect, so nothing is fetched there). A seeded
 // `movies` is settled exactly as a response is. Production passes no seed.
-type Seed = { filters?: Filters; movies?: Film[]; reference?: Reference | null; failed?: boolean };
+type Seed = { filters?: Filters; narrow?: Narrow; movies?: Film[]; reference?: Reference | null; failed?: boolean };
 
 export function ListingScreen({ now = wallClock, seed }: { now?: () => number; seed?: Seed }) {
   const [boot] = useState(() => {
@@ -37,6 +45,8 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
     return seed?.movies ? settleListing(f, seed.movies.map((m) => m.display_until), now()) : { filters: f, announce: null };
   });
   const [filters, setFilters] = useState<Filters>(boot.filters);
+  const [narrow, setNarrow] = useState<Narrow>(() => seed ? seed.narrow ?? NO_NARROW : narrowFromUrl());
+  const [panel, setPanel] = useState(false); // phones: the filters column folded behind a button
   const [films, setFilms] = useState<Film[] | null>(seed?.movies ?? null);
   const [failed, setFailed] = useState(seed?.failed ?? false);
   const [reference, setReference] = useState<Reference | null | undefined>(seed?.reference);
@@ -58,7 +68,10 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   }, []);
 
   useEffect(() => {
-    window.history.replaceState(window.history.state, "", `/films${query(filters)}${window.location.hash}`);
+    window.history.replaceState(window.history.state, "", `/films${query({ ...filters, ...narrow })}${window.location.hash}`);
+  }, [filters, narrow]);
+
+  useEffect(() => {
     const controller = new AbortController();
     get<{ count: number; movies: Film[] }>(`/api/movies${query(filters)}`, controller.signal).then((r) => {
       if (controller.signal.aborted) return;
@@ -81,22 +94,43 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
     return () => controller.abort();
   }, [filters, attempt, now]);
 
-  const showing = films?.filter((f) => !f.coming_soon) ?? [];
-  const soon = films?.filter((f) => f.coming_soon) ?? [];
+  const shown = films ? narrowFilms(films, narrow) : null;
+  const showing = shown?.filter((f) => !f.coming_soon) ?? [];
+  const soon = shown?.filter((f) => f.coming_soon) ?? [];
+  const genres = films ? genresOf(films) : [];
   // A #coming-soon link (the landing's See all) scrolls there once the films are on the page.
   useEffect(() => {
     if (films && window.location.hash) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
   }, [films]);
   const days = useMemo(() => (films ? listingStrip(now(), films.map((m) => m.display_until)) : []), [films, now]);
   const controls = reference === undefined ? controlsFor({ cinemas: [], languages: [], formats: [], certifications: [] }) : controlsFor(reference);
-  const anyFilter = KEYS.some((k) => filters[k] !== null);
+  const narrowed = Object.values(narrow).filter((v) => v).length;
+  const anyFilter = KEYS.some((k) => filters[k] !== null) || narrowed > 0;
   const set = (key: keyof Filters, value: string | null) => setFilters((f) => ({ ...f, [key]: value || null }));
+  const narrowBy = (key: keyof Narrow, value: string | null) => setNarrow((n) => ({ ...n, [key]: value || null }));
+  const active = KEYS.filter((k) => filters[k] !== null).length + narrowed;
 
   return (
     <section className="fr-listing">
       {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
       <h1 id="now-showing">Now showing</h1>
-      <div role="group" aria-label="Filter what is showing" className="fr-filters">
+      <div className="fr-listing-layout">
+      <div className="fr-listing-side">
+      <button type="button" className="fr-action-secondary fr-filters-toggle" aria-expanded={panel} aria-controls="film-filters"
+              onClick={() => setPanel((o) => !o)}>
+        Filters{active ? ` (${active})` : ""}
+      </button>
+      <div role="group" aria-label="Filter what is showing" className="fr-filters" id="film-filters" data-open={panel ? "" : undefined}>
+        <label className="fr-filter-search">
+          <span>Title</span>
+          <input type="search" value={narrow.q ?? ""} placeholder="Search titles" onChange={(e) => narrowBy("q", e.target.value)} />
+        </label>
+        {genres.length >= 2 ? (
+          <ChoiceGroup label="Genre" className="fr-pick" selected={narrow.genre_id} onSelect={(v) => narrowBy("genre_id", v)}
+                       choices={[{ value: null, label: "Any genre" }, ...genres.map((g) => ({ value: String(g.id), label: g.name }))]} />
+        ) : null}
+        <ChoiceGroup label="Rating" className="fr-pick" selected={narrow.min_rating} onSelect={(v) => narrowBy("min_rating", v)}
+                     choices={[{ value: null, label: "Any rating" }, ...MIN_RATINGS.map((n) => ({ value: n, label: `★ ${n}+` }))]} />
         {days.length > 0 ? <DayStrip label="Date" days={days} selected={filters.date} anyDate onSelect={(d) => set("date", d)} /> : null}
         {controls.language && reference ? (
           <Pick label="Language" first="Any language" options={reference.languages} value={filters.language_id} onChange={(v) => set("language_id", v)} />
@@ -108,12 +142,17 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
           <Pick label="Cinema" first="Any cinema" options={reference.cinemas} value={filters.cinema_id} onChange={(v) => set("cinema_id", v)} />
         ) : null}
         {anyFilter ? (
-          <button type="button" className="fr-clear" onClick={() => setFilters({ date: null, language_id: null, format_id: null, cinema_id: null })}>
+          <button type="button" className="fr-clear" onClick={() => {
+            setFilters({ date: null, language_id: null, format_id: null, cinema_id: null });
+            setNarrow(NO_NARROW);
+          }}>
             Clear filters
           </button>
         ) : null}
       </div>
       {controls.unavailable ? <p className="fr-filters-down">Filters are unavailable right now.</p> : null}
+      </div>
+      <div className="fr-listing-main">
       <p className="fr-visually-hidden" aria-live="polite">{announce}</p>
       {failed ? (
         <div className="fr-state">
@@ -124,7 +163,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
         <ul className="fr-cards" aria-hidden="true">
           {[0, 1, 2].map((i) => <li key={i} className="fr-card fr-card-loading"><div className="fr-poster" /></li>)}
         </ul>
-      ) : films.length === 0 ? (
+      ) : shown!.length === 0 ? (
         <p className="fr-state">{anyFilter ? "Nothing is showing for the chosen filters." : "Nothing is showing right now."}</p>
       ) : (
         <>
@@ -142,6 +181,8 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
           ) : null}
         </>
       )}
+      </div>
+      </div>
     </section>
   );
 }

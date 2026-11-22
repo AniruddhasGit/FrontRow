@@ -5,7 +5,7 @@
 // A .glb's meshes are split by material name: "fr_upholstery*" becomes the body, which carries the seat-state colour
 // through instanceColor; everything else (fr_frame, fr_trim) becomes the frame, drawn with its own baked vertex colour
 // (satin black, brass) and never tinted. Textures are dropped.
-import { BufferGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMaterial } from "three";
+import { BufferGeometry, Color, Float32BufferAttribute, Mesh, MeshStandardMaterial, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -94,6 +94,21 @@ async function fromFile(kind: ModelKind): Promise<SeatGeo> {
     m.geometry.dispose();
     for (const mat of [m.material].flat()) mat.dispose();
   });
+  // The hard back shell the rows behind look at is leather in the ray-traced halls (hall1_build.py load_seat re-skins
+  // it, same test); re-skin it here too, so a seat back takes the seat's colour and light, not the near-black frame
+  // (CR-010). The recliner has no shell.
+  if (kind !== "recliner") {
+    let hx = 0;
+    for (const g of [...body, ...frame]) {
+      const p = g.getAttribute("position");
+      for (let i = 0; i < p.count; i++) hx = Math.max(hx, Math.abs(p.getX(i)));
+    }
+    frame.forEach((g, i) => {
+      const [shell, rest] = splitBack(g, hx);
+      if (shell) body.push(shell);
+      frame[i] = rest;
+    });
+  }
   const merge = (parts: BufferGeometry[]) => {
     const merged = parts.length ? mergeGeometries(parts) : null;
     parts.forEach((g) => g.dispose());
@@ -102,6 +117,34 @@ async function fromFile(kind: ModelKind): Promise<SeatGeo> {
   const b = merge(body);
   if (!b) throw new Error(`${MODEL_URL[kind]} holds no fr_upholstery mesh`);
   return { body: b, frame: merge(frame) };
+}
+
+/** Splits a non-indexed frame part into its back shell (faces turned to the back, -z, above 0.45 m, inside 80 % of the
+ *  half width) and the rest. The shell keeps position and normal only, like the body. */
+function splitBack(g: BufferGeometry, hx: number): [BufferGeometry | null, BufferGeometry] {
+  const pos = g.getAttribute("position"), nor = g.getAttribute("normal"), col = g.getAttribute("color");
+  const keep: number[] = [], move: number[] = [];
+  const a = new Vector3(), b = new Vector3(), c = new Vector3();
+  for (let t = 0; t < pos.count / 3; t++) {
+    a.fromBufferAttribute(pos, 3 * t); b.fromBufferAttribute(pos, 3 * t + 1); c.fromBufferAttribute(pos, 3 * t + 2);
+    const n = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+    const cy = (a.y + b.y + c.y) / 3, cx = (a.x + b.x + c.x) / 3;
+    (n.z < -0.35 && cy > 0.45 && Math.abs(cx) < hx * 0.8 ? move : keep).push(t);
+  }
+  if (!move.length) return [null, g];
+  const pick = (tris: number[], attrs: [string, typeof pos][]) => {
+    const out = new BufferGeometry();
+    for (const [name, at] of attrs) {
+      const arr = new Float32Array(tris.length * 9);
+      tris.forEach((t, k) => { for (let v = 0; v < 3; v++) for (let d = 0; d < 3; d++) arr[k * 9 + v * 3 + d] = at.getComponent(3 * t + v, d); });
+      out.setAttribute(name, new Float32BufferAttribute(arr, 3));
+    }
+    return out;
+  };
+  const shell = pick(move, [["position", pos], ["normal", nor]]);
+  const rest = pick(keep, [["position", pos], ["normal", nor], ["color", col]]);
+  g.dispose();
+  return [shell, rest];
 }
 
 /** The geometry for one model: the file's, else the stand-in. Never rejects. */

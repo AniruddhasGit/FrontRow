@@ -299,18 +299,20 @@ CREATE TABLE movie_like (
 CREATE INDEX ix_movie_like__movie_id ON movie_like (movie_id);
 
 -- --------------------------------------------------------------------------
--- movie_rating - One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.
+-- movie_rating - One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row. CR-011 F4: with review_text it is also that customer's review of the film (stars + text), editable by its author.
 -- CR-008 (owner, 2026-11-22) T12 (ratings and likes)
 CREATE TABLE movie_rating (
-    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - CR-011 F4: the review's id in /api/me/reviews/{review_id}/helpful (a review is public on the film page).
     user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - Always the session's user; never taken from a request.
     movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - The film.
     score                      integer NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - 1 to 10, whole numbers.
+    review_text                text,  -- CR-011 (owner, 2026-11-22) F4 - The customer's written review (1-2000 characters), shown on the film page with the score; null = a score with no review. Written and edited only by its author, under the same gate as the score.
     created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
     updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018 - Row metadata; set on every change of the value.
     PRIMARY KEY (id),
     CONSTRAINT uq_movie_rating__user_id_movie_id UNIQUE (user_id, movie_id),
     CONSTRAINT ck_movie_rating__score CHECK (score BETWEEN 1 AND 10),
+    CONSTRAINT ck_movie_rating__review_text CHECK (review_text IS NULL OR char_length(review_text) BETWEEN 1 AND 2000),
     CONSTRAINT fk_movie_rating__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_movie_rating__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
@@ -423,6 +425,22 @@ CREATE TABLE booking (
 CREATE INDEX ix_booking__showtime_id ON booking (showtime_id);
 -- The takings query joins payment on p.id = b.payment_id.
 CREATE INDEX ix_booking__payment_id ON booking (payment_id);
+
+-- --------------------------------------------------------------------------
+-- review_vote - One 'Helpful' vote by one customer for one review (a movie_rating row with review_text). Insert only: a vote is cast once and never changed, so frontrow_app has no UPDATE or DELETE here. The author cannot vote for their own review (checked in the write, app/api/account.py).
+-- CR-011 (owner, 2026-11-22) F4 (reviews and Helpful votes)
+CREATE TABLE review_vote (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    rating_id                  bigint NOT NULL,  -- CR-011 (owner, 2026-11-22) F4 - The review voted for.
+    user_id                    bigint NOT NULL,  -- CR-011 (owner, 2026-11-22) F4 - The voter: always the session's user; never taken from a request.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    PRIMARY KEY (id),
+    CONSTRAINT uq_review_vote__rating_id_user_id UNIQUE (rating_id, user_id),
+    CONSTRAINT fk_review_vote__rating_id FOREIGN KEY (rating_id) REFERENCES movie_rating (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_review_vote__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The viewer's own votes on a film page are read by user_id.
+CREATE INDEX ix_review_vote__user_id ON review_vote (user_id);
 
 -- --------------------------------------------------------------------------
 -- showtime_seat - The showtime's MATERIALISED SEAT SET: one row per seat that was in service on that screen at the instant the showtime was created. Written once, by showtime creation, and edited by nothing, ever.
@@ -582,6 +600,7 @@ GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app;
 GRANT SELECT, INSERT ON reward_entry TO frontrow_app;
+GRANT SELECT, INSERT ON review_vote TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app;

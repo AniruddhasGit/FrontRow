@@ -1,7 +1,7 @@
 // SCR-TKT-01 · /bookings/{reference}: durable and reachable again. Read through the caller's own lookup (EP-ACC-08)
 // until lane E4's EP-TKT-01 exists; both are scoped to the signed-in owner on the server.
 import { useEffect, useRef, useState } from "react";
-import { navigate } from "../../router";
+import { Link, navigate } from "../../router";
 import { formatPaise } from "../admin/money";
 import { get } from "../browse/api";
 import { dayLabel, timeLabel } from "../browse/logic";
@@ -71,6 +71,9 @@ function Extras({ booking }: { booking: Booking & { showtime_ends_at?: string } 
       </a>
       <ShareButton label="Share" title={booking.movie_title} path="/"
                    text={`I'm seeing ${booking.movie_title} at FrontRow, ${booking.hall_name}, ${when}.`} />
+      {/* CR-011 F7: after paying - see every ticket, or go back to browsing */}
+      <Link to="/bookings" className="fr-action-secondary">My bookings</Link>
+      <Link to="/films" className="fr-action-secondary">Browse all films</Link>
     </div>
   );
 }

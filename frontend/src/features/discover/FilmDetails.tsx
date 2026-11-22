@@ -2,21 +2,27 @@
 // crew) and its ratings (average, count, the 1-10 breakdown) with the viewer's own control: rate 1-10 once a show they
 // booked has started (the server decides, EP-ACC-20), or like a film that is coming soon (EP-ACC-21).
 // One status for the viewer's half (Mine) and one for a write (Write); no timer, no poll.
+// CR-011 F3/F4: cast and crew as wrapping portrait tiles (initials, no photos), a verified viewer's review form beside
+// their score, and the film's reviews under the ratings (Reviews.tsx).
 import { useEffect, useState } from "react";
 import { get, send, type FilmDetail } from "../browse/api";
 import { runtimeName } from "../browse/logic";
 import { signInHref } from "../auth/session";
 import { Link } from "../../router";
 import { releaseLabel } from "./Bits";
-import { ratingName, ratingText } from "./discover";
+import { initials, ratingName, ratingText, reviewText } from "./discover";
+import { Reviews } from "./Reviews";
 
-type Me = { score: number | null; can_rate: boolean; liked: boolean; coming_soon: boolean };
+type Me = { score: number | null; can_rate: boolean; liked: boolean; coming_soon: boolean;
+            review: string | null; review_id: number | null; voted: number[] };
 type Mine = { kind: "loading" } | { kind: "guest" } | { kind: "error" } | { kind: "ready"; me: Me };
 type Write = { kind: "idle" } | { kind: "saving" } | { kind: "failed"; message: string };
 
 export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: (f: FilmDetail) => void }) {
   const [mine, setMine] = useState<Mine>({ kind: "loading" });
   const [write, setWrite] = useState<Write>({ kind: "idle" });
+  const [draft, setDraft] = useState<string | null>(null); // the review form's text while it is open
+  const [posted, setPosted] = useState(0); // bumped after a review is saved, so the list re-reads once
   useEffect(() => {
     const ctl = new AbortController();
     void get<Me>(`/api/me/movies/${film.id}`, AbortSignal.any([ctl.signal, AbortSignal.timeout(15000)])).then((r) => {
@@ -33,6 +39,20 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
     if (!r.ok) return setWrite({ kind: "failed", message: r.message || "Your rating was not saved. Try again." });
     setWrite({ kind: "idle" });
     setMine({ kind: "ready", me: { ...mine.me, score: r.body.score } });
+    onChanged({ ...film, rating: r.body.rating });
+  };
+  const review = async () => {
+    if (mine.kind !== "ready" || !mine.me.score || draft === null || write.kind === "saving") return;
+    const t = reviewText(draft);
+    if (!t.ok) return setWrite({ kind: "failed", message: t.message });
+    setWrite({ kind: "saving" });
+    const r = await send<{ review_id: number; score: number; text: string; rating: FilmDetail["rating"] }>(
+      "PUT", `/api/me/reviews/${film.id}`, { score: mine.me.score, text: t.text });
+    if (!r.ok) return setWrite({ kind: "failed", message: r.message || "Your review was not saved. Try again." });
+    setWrite({ kind: "idle" });
+    setDraft(null);
+    setMine({ kind: "ready", me: { ...mine.me, review: r.body.text, review_id: r.body.review_id } });
+    setPosted((n) => n + 1);
     onChanged({ ...film, rating: r.body.rating });
   };
   const like = async () => {
@@ -105,11 +125,29 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
                             disabled={write.kind === "saving"} onClick={() => void rate(n)}>{n}</button>
                   ))}
                 </div>
+                {/* CR-011 F4: the review goes with the score; editing reopens the same form */}
+                {!mine.me.score ? null : draft === null ? (
+                  <button type="button" className="fr-action-secondary fr-review-open" onClick={() => setDraft(mine.me.review ?? "")}>
+                    {mine.me.review ? "Edit your review" : "Write a review"}
+                  </button>
+                ) : (
+                  <form className="fr-review-form" onSubmit={(e) => { e.preventDefault(); void review(); }}>
+                    <label htmlFor="review-text">Your review ({mine.me.score} out of 10)</label>
+                    <textarea id="review-text" rows={4} maxLength={2000} value={draft} onChange={(e) => setDraft(e.target.value)} />
+                    <div className="fr-review-actions">
+                      <button type="submit" className="fr-action" disabled={write.kind === "saving"}>Post review</button>
+                      <button type="button" className="fr-action-secondary" onClick={() => setDraft(null)}>Cancel</button>
+                    </div>
+                  </form>
+                )}
               </>
             ) : <p>You can rate this film once a show of it that you booked has started.</p>}
           <p role="status" className="fr-share-note">{write.kind === "failed" ? write.message : write.kind === "saving" ? "Saving…" : ""}</p>
         </div>
       </section>
+      {film.coming_soon ? null : (
+        <Reviews filmId={film.id} version={posted} me={mine.kind === "ready" ? mine.me : null} signedIn={mine.kind === "ready"} />
+      )}
     </div>
   );
 }
@@ -120,7 +158,12 @@ function People({ id, title, people }: { id: string; title: string; people: Film
     <>
       <h2 id={id}>{title}</h2>
       <ul className="fr-people" aria-labelledby={id}>
-        {people.map((p, i) => <li key={`${p.name}-${i}`}><strong>{p.name}</strong>{p.role ? <span>{p.role}</span> : null}</li>)}
+        {people.map((p, i) => (
+          <li key={`${p.name}-${i}`}>
+            <span className="fr-avatar" aria-hidden="true">{initials(p.name)}</span>
+            <strong>{p.name}</strong>{p.role ? <span>{p.role}</span> : null}
+          </li>
+        ))}
       </ul>
     </>
   );

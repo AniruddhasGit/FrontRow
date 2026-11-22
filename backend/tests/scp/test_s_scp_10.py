@@ -27,7 +27,11 @@ def test_no_route_path_names_an_upcoming_section():
 
 
 def test_no_translation_or_recommendation_machinery():
-    assert rg(r"i18n|react-intl|formatjs|gettext|recommend", "frontend/package.json", "frontend/src", ignore_case=True) == []
+    # CR-011 (owner, 2026-11-22): the one helper `recommended` (discover.ts, "You might also like": films sharing a genre,
+    # one order for everyone) is allowed; any other "recommend" still fails.
+    pattern = r"i18n|react-intl|formatjs|gettext|recommend"
+    hits = rg(pattern, "frontend/package.json", "frontend/src", ignore_case=True)
+    assert [h for h in hits if re.search(pattern, re.sub(r"\brecommended\b", "", h[2]), re.IGNORECASE)] == []
 
 
 async def test_anonymous_and_signed_in_listings_share_one_order(migrated_db):

@@ -7,12 +7,12 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "4074e393f77e4633457f4a613e1b6286ef924a491f4a99b486c5bef985b760f0",
-    "TRACEABILITY.tsv": "46e42ce42bd4cd44284af5a6eca55428dd3b8f63f8332f3f312e0efd32140df1",
-    "schema.sql": "901c0e6397fe476c8e7fd2fe46a29ba51d39f0119455d864b3e92d6129238841",
-    "seed/expected_summary.json": "cf989bcb5528c41925b16af31e7c2d2a7719a9d30cca8479a29030924c798964"
+    "datamodel.json": "45b5611f1e8d979ad7d378ff79c0be2c9a953096d8762cd0a29fea70e423fec9",
+    "TRACEABILITY.tsv": "df9e1d47b8530b3adf3dc8611b5ade14ae52713222a6568260dcb52c7de47f97",
+    "schema.sql": "4fedefba84c500d2a6c966f0763eff3124fbe2b1936df88999fa637d2a7a4b1e",
+    "seed/expected_summary.json": "e265a0b5f04f94720e15ebf1d54051b016133618f562688a4377a889045fcd5b"
   },
-  "schema_structure_sha256": "bb730f78188d31e2cbee7d249146526942ebd1b012bf684fb7c69d7019c71a38",
+  "schema_structure_sha256": "a7f901481e5897a1630e4cf96c9f8b7c73dc3c369c050b3db8d6988a592c76f8",
   "roles_and_grants": [
     "role frontrow_owner",
     "role frontrow_app",
@@ -40,6 +40,7 @@
     "grant GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app",
     "grant GRANT SELECT, INSERT ON reward_entry TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON review_vote TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app",
@@ -303,13 +304,15 @@
       ]
     },
     "movie_rating": {
-      "sha256": "bf116e771eae4e008b82453bb228ade90ddd95dff973a51a103405706a12082c",
-      "columns": 6,
+      "sha256": "bcf4537c3242b7546dc478aba9ef68b5fc33e1de6695762d4854f996d4c64d11",
+      "columns": 7,
       "signature": [
+        "check ck_movie_rating__review_text (review_text IS NULL OR char_length(review_text) BETWEEN 1 AND 2000)",
         "check ck_movie_rating__score (score BETWEEN 1 AND 10)",
         "column created_at timestamptz NOT NULL DEFAULT now()",
         "column id bigint NOT NULL IDENTITY",
         "column movie_id bigint NOT NULL",
+        "column review_text text NULL",
         "column score integer NOT NULL",
         "column updated_at timestamptz NULL DEFAULT now()",
         "column user_id bigint NOT NULL",
@@ -413,6 +416,21 @@
         "foreign_key fk_receipt_dispatch__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "primary_key (id)",
         "unique uq_receipt_dispatch__booking_id (booking_id)"
+      ]
+    },
+    "review_vote": {
+      "sha256": "06ff27ac28cd9f60e2e249cf05a5589c4680d59540263417cf88ece82135e629",
+      "columns": 4,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column rating_id bigint NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_review_vote__rating_id (rating_id) -> movie_rating (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_review_vote__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_review_vote__user_id (user_id)",
+        "primary_key (id)",
+        "unique uq_review_vote__rating_id_user_id (rating_id, user_id)"
       ]
     },
     "reward_entry": {
