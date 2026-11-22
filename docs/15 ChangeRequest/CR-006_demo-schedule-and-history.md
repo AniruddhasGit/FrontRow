@@ -51,9 +51,9 @@ The top-up and the deletion have no actor, and S-ADM-02 forbids an audit row wit
 
 ## Addendum, 2026-11-22: the owner's nine demo films
 
-The owner supplied nine AI-generated films, each with a poster and a widescreen still. The names and faces are invented.
+The owner supplied eleven AI-generated films, each with a poster and a widescreen still. The names and faces are invented.
 The films are: Outpost 77, The Iron Garden, Echoes of the Desolate, Deep Sea Reckoning, The First Chronicle,
-Neon Reverie, The Last Stage, Apartment 4B and Voidbound.
+Neon Reverie, The Last Stage, Apartment 4B, Voidbound, Aria and the Star Whales and Echoes of the Steppe.
 
 - **Images:** posters are 1000×1500 WebP, about 210–370 KB. Stills are cropped to the screen's 2.39:1 and are
   1920×803 WebP, about 90–240 KB. Both ship with the website under `frontend/public/art/films/`.
