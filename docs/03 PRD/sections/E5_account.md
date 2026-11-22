@@ -1589,6 +1589,26 @@ two-minute target is not arbitrary against a three-minute hold.**
 
 ---
 
+---
+
+### `P-ACC-16` · A customer's personal account: points, wishlist, profile, inbox and help · `RULED`
+`[SRC: CR-008 T3-T8 (owner, 2026-11-22), which amends the frozen scope - SRC-001 §6's "no loyalty points" is lifted by the owner's own request]`
+`[BRD: R-ACC-02, R-ACC-03]`
+
+**Behaviour.** A signed-in customer earns points on every paid booking (10 per whole currency unit actually paid,
+once per booking however often the confirm is retried), may choose "use my points" at checkout (100 points = 1.00
+off, capped at 50% of the order, floored, computed by the server against the server's hold), saves films to a
+wishlist, edits a display name, phone and preferred language and format, reads in-app notifications created by
+three events (booking confirmed, points earned, points redeemed), and sends a Help & support message that is stored
+and never emailed. Every rule's numbers live in `backend/app/domain/rewards.py` and nowhere else.
+
+**Who may do it.** Any signed-in account, on its own rows only (`P-ACC-12`). The support form is also open to a guest.
+
+**Exceptions.** A redemption is written inside the booking-confirm transaction, so a failed payment or an expired
+hold leaves the balance as it was. A confirm whose `expected_total_paise` differs from the server's total is refused
+with `TOTAL_CHANGED` and books nothing. Nothing in this row runs on a schedule or a timer.
+
+
 ## S5 — UX specification
 
 ### `SCR-ACC-01` · Sign in or register — one screen, two tabs
@@ -2406,6 +2426,475 @@ to adjudicate rather than invented inline.
 ```
 
 ---
+
+---
+
+CR-008 T3-T8 (`P-ACC-16`): the personal account. Every `/api/me/` route below carries the same caller rule as
+`EP-ACC-07`; the support form is public.
+
+```endpoint
+{
+  "id": "EP-ACC-09",
+  "method": "GET",
+  "path": "/api/me/summary",
+  "summary": "The account sidebar's one read: greeting, points balance, unread notification count",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The caller's summary",
+      "body": {
+        "display_name": "string or null",
+        "email": "string",
+        "points_balance": "integer",
+        "unread_notifications": "integer"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none - read on navigation like EP-ACC-04, never on a timer (CR-008 T7)",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-10",
+  "method": "GET",
+  "path": "/api/me/rewards",
+  "summary": "The caller's points balance, the rules, the newest 100 ledger movements, and optionally a quote",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "query": {
+      "quote_paise": "integer, 0..bigint max, optional - an order total; the response then carries what 'use my points' would do to it, from the same function the confirm uses"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Balance and history",
+      "body": {
+        "points_balance": "integer",
+        "rules": "object {earn_points_per_unit, redeem_points_per_unit, redeem_cap_percent}",
+        "history": "array of {kind earned|redeemed, points, discount_paise or null, created_at, booking_reference}",
+        "quote": "object {points, discount_paise, total_paise}, present only with quote_paise"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "422": {
+      "description": "quote_paise is not a non-negative integer"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-11",
+  "method": "GET",
+  "path": "/api/me/bookmarks",
+  "summary": "The caller's wishlist: saved films a customer can currently see, newest first",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "Saved films",
+      "body": {
+        "items": "array of {movie_id, title, runtime_minutes, poster_url}"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-12",
+  "method": "PUT",
+  "path": "/api/me/bookmarks/{movie_id}",
+  "summary": "Save or un-save one film on the caller's wishlist",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "saved": "boolean, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The new state",
+      "body": {
+        "movie_id": "integer",
+        "saved": "boolean"
+      }
+    },
+    "400": {
+      "description": "The body does not parse or carries another property"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id); the same body twice leaves the same state and one row. Un-saving is an UPDATE, never a DELETE.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-13",
+  "method": "GET",
+  "path": "/api/me/notifications",
+  "summary": "The caller's in-app notifications, newest 100, and the unread count",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The inbox",
+      "body": {
+        "unread": "integer",
+        "items": "array of {id, kind booking_confirmed|points_earned|points_redeemed, title, body, read, created_at, booking_reference}"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-14",
+  "method": "POST",
+  "path": "/api/me/notifications/read",
+  "summary": "Mark some or all of the caller's notifications read",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "ids": "array of integer, 1..100, optional",
+      "all": "boolean true, optional - exactly one of ids and all"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The unread count afterwards",
+      "body": {
+        "unread": "integer"
+      }
+    },
+    "400": {
+      "description": "Neither or both of ids and all, or another property"
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: only unread rows of the caller's are set read; a repeat changes nothing.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-15",
+  "method": "GET",
+  "path": "/api/me/profile",
+  "summary": "The caller's profile and settings",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The profile",
+      "body": {
+        "email": "string",
+        "display_name": "string or null",
+        "phone": "string or null",
+        "preferred_language_id": "integer or null",
+        "preferred_format_id": "integer or null"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-16",
+  "method": "PUT",
+  "path": "/api/me/profile",
+  "summary": "Replace the caller's profile and settings",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "display_name": "string or null, 1..60 after trimming",
+      "phone": "string or null, 7..15 digits with an optional leading +, after removing spaces and dashes",
+      "preferred_language_id": "integer or null, an active language",
+      "preferred_format_id": "integer or null, an active format"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The saved profile, as EP-ACC-15"
+    },
+    "400": {
+      "description": "A field is missing, mistyped, or unknown"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "422": {
+      "description": "A value is out of bounds; details.fields names every failing field with its sentence, for inline display"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: a PUT of the same body leaves the same row.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-17",
+  "method": "POST",
+  "path": "/api/support/messages",
+  "summary": "Store a Help & support contact message (no email is sent)",
+  "auth": "public",
+  "roles": [
+    "guest",
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "topic": "string, one of booking, payment, rewards, account, other",
+      "message": "string, 1..2000 after trimming",
+      "email": "string, required for a guest; ignored for a signed-in caller, whose account address is used"
+    }
+  },
+  "responses": {
+    "201": {
+      "description": "Stored",
+      "body": {
+        "id": "integer",
+        "message": "string"
+      }
+    },
+    "400": {
+      "description": "The body does not parse, carries another property, or names another topic"
+    },
+    "422": {
+      "description": "No usable reply address, or a message out of bounds; details.fields names them"
+    },
+    "429": {
+      "description": "Over the per-IP bucket; carries Retry-After"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "VALIDATION_FAILED",
+    "RATE_LIMITED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Not idempotent: each accepted request stores one row. Bounded by the rate limit.",
+  "rate_limit": "5 per hour per real client IP, in Redis, failing closed (the register bucket's capacity setting under its own key)",
+  "authorisation_rule": "Public. When a valid session is present the row is filed under that user and that user's own address; a body cannot file a message under another account.",
+  "satisfies": [
+    "P-ACC-16"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```newerrorcode
+{"code":"TOTAL_CHANGED","http":409,"when":"A booking confirm carried expected_total_paise and the server's total for the hold (after any points discount) is different","raised_by":["EP-PAY-01"],"why_needed":"CR-008: one hold per customer and showtime can grow from another tab, so a checkout could show fewer seats than Pay books. The client sends the total it showed; a mismatch must be its own code because the remedy - re-read the hold and show the new total - differs from every other 409."}
+```
+
 
 ## Lane notes
 

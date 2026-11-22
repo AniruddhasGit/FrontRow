@@ -95,7 +95,11 @@ DECLARE
     "genre":                     ["INSERT","SELECT","UPDATE"],
     "format":                    ["INSERT","SELECT","UPDATE"],
     "manager_screen_assignment": ["DELETE","INSERT","SELECT"],
-    "admin_grant":               ["DELETE","INSERT","SELECT"]
+    "admin_grant":               ["DELETE","INSERT","SELECT"],
+    "bookmark":                  ["INSERT","SELECT","UPDATE"],
+    "notification":              ["INSERT","SELECT","UPDATE"],
+    "reward_entry":              ["INSERT","SELECT"],
+    "support_message":           ["INSERT","SELECT"]
   }';
 BEGIN
 

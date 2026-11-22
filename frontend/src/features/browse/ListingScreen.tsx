@@ -9,6 +9,8 @@ import { get, query, type Film } from "./api";
 import { ChoiceGroup, DayStrip } from "./DayStrip";
 import { controlsFor, countLine, listingStrip, runtimeName, settleListing, type Reference } from "./logic";
 import { Poster } from "./Poster";
+import { BookmarkToggle, useSaved } from "../account/Bookmark";
+import type { Saved } from "../account/account";
 import "./browse.css";
 
 // The one place these screens read the clock; tests and a harness pass their own `now`. Module-level, so it is
@@ -38,6 +40,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   const [reference, setReference] = useState<Reference | null | undefined>(seed?.reference);
   const [announce, setAnnounce] = useState(boot.announce ?? "");
   const [attempt, setAttempt] = useState(0);
+  const [saved, toggle] = useSaved(); // CR-008 T4: one read of the saved set for every card
   const first = useRef(true);
   // One sentence another screen left for this one, read once (P-ACC-13 row 6: the showtime has gone).
   const [notice] = useState(() => {
@@ -117,14 +120,14 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
         <p className="fr-state">{anyFilter ? "Nothing is showing for the chosen filters." : "Nothing is showing right now."}</p>
       ) : (
         <ul className="fr-cards">
-          {films.map((m, i) => <Card key={m.id} film={m} index={i} />)}
+          {films.map((m, i) => <Card key={m.id} film={m} index={i} saved={saved} toggle={toggle} />)}
         </ul>
       )}
     </section>
   );
 }
 
-function Card({ film, index }: { film: Film; index: number }) {
+function Card({ film, index, saved, toggle }: { film: Film; index: number; saved: Saved; toggle: (id: number, s: boolean) => void }) {
   const name = `${film.title}, ${runtimeName(film.runtime_minutes)}, ${film.certification.name}, ${film.language.name}`;
   return (
     <li className="fr-card" style={{ ["--i" as string]: index, viewTransitionName: `film-${film.id}` }}>
@@ -143,6 +146,8 @@ function Card({ film, index }: { film: Film; index: number }) {
           {film.genres.length > 0 ? <span>{film.genres.map((g) => g.name).join(", ")}</span> : null}
         </p>
       </a>
+      {/* a sibling of the card's link, never inside it: one control per tab stop */}
+      <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
     </li>
   );
 }

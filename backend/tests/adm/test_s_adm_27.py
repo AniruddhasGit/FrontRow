@@ -39,7 +39,7 @@ def test_the_predicate_lives_in_one_function_and_every_caller_imports_it():
         if "visible" in used and path.name != "visibility.py":
             callers.append(path.name)
             assert "visible" in imported and "visible" not in defined, path
-    assert sorted(callers) == ["catalogue.py", "films.py"]
+    assert sorted(callers) == ["account.py", "catalogue.py", "films.py"]  # account.py: the CR-008 wishlist shows visible films only
 
 
 def test_publish_stamps_the_clock_instant_increments_once_and_audits(client):

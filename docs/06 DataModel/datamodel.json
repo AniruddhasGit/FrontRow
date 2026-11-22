@@ -29,7 +29,11 @@
     "language": "P-ADM-23.",
     "certification": "P-ADM-23.",
     "format": "P-ADM-23.",
-    "admin_grant": "SRC-008 ROLE-1 and its ADDENDUM, S-ADM-30: the list of granted admin emails. The Bible names the behaviour, not the table."
+    "admin_grant": "SRC-008 ROLE-1 and its ADDENDUM, S-ADM-30: the list of granted admin emails. The Bible names the behaviour, not the table.",
+    "bookmark": "CR-008 (owner, 2026-11-22): One row per (account, film) the customer has ever bookmarked; `saved` says whether it is on the wishlist now.",
+    "reward_entry": "CR-008 (owner, 2026-11-22): The points ledger: one row per points movement, each tied to the booking that caused it.",
+    "notification": "CR-008 (owner, 2026-11-22): In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them.",
+    "support_message": "CR-008 (owner, 2026-11-22): A message sent from the Help & support contact form, stored for the operator to read."
   },
   "bible_reference_exceptions": {
     "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
@@ -96,10 +100,12 @@
       "cite": "S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11 · least-privilege matrix: checks/roles_local.sql section 3 (each table's privileges cited there; verify_invariants.sql A4 fails on any excess) · CREATED BY THE OPERATOR, NOT BY schema.sql: checks/roles_local.sql locally, the client on RDS (AWS_PREP_QUEUE row 20); schema.sql only GRANTs and fails loudly if the role is absent.",
       "grants": [
         "GRANT USAGE ON SCHEMA public TO frontrow_app",
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app",
         "GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app",
         "GRANT SELECT, INSERT ON audit_log TO frontrow_app",
         "GRANT SELECT, INSERT ON booking TO frontrow_app",
         "GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE ON bookmark TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON certification TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON cinema TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON format TO frontrow_app",
@@ -109,15 +115,18 @@
         "GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app",
         "GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app",
+        "GRANT SELECT, INSERT ON reward_entry TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON showtime TO frontrow_app",
         "GRANT SELECT, INSERT ON showtime_seat TO frontrow_app",
+        "GRANT SELECT, INSERT ON support_message TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON users TO frontrow_app",
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app"
       ]
@@ -776,6 +785,22 @@
       "admin_grant": {
         "rows": 0,
         "cite": "S-ADM-30 ('after a fresh seed the list holds 0 rows') · SRC-008 ROLE-1 ADDENDUM (the seeded admin is not on the list)"
+      },
+      "bookmark": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+      },
+      "reward_entry": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+      },
+      "notification": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+      },
+      "support_message": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
       }
     },
     "invariants": [
@@ -1489,6 +1514,116 @@
           "name": "ix_booking_seat__booking_id"
         }
       ]
+    },
+    {
+      "name": "bookmark",
+      "purpose": "One row per (account, film) the customer has ever bookmarked; `saved` says whether it is on the wishlist now. Un-saving sets saved = false rather than deleting, so frontrow_app needs no DELETE grant here.",
+      "cite": "CR-008 (owner, 2026-11-22) T4 (bookmarks / wishlist)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T4",
+          "note": "Always the session's user; never taken from a request.",
+          "reserved_row": null
+        },
+        {
+          "name": "movie_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T4",
+          "note": "The film saved.",
+          "reserved_row": null
+        },
+        {
+          "name": "saved",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T4",
+          "note": "true = on the wishlist. The toggle is one INSERT ... ON CONFLICT DO UPDATE.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 · FR-ADR-018",
+          "note": "Row metadata at the database (FR-ADR-018).",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "CR-008 (owner, 2026-11-22) T4 · FR-ADR-018",
+          "note": "Row metadata; the wishlist orders by it, newest first.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "user_id",
+            "movie_id"
+          ],
+          "cite": "CR-008 (owner, 2026-11-22) T4",
+          "why": "One row per account and film: the toggle's ON CONFLICT target, so a double click never makes two.",
+          "name": "uq_bookmark__user_id_movie_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T4 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_bookmark__user_id"
+        },
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "references": {
+            "table": "movie",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T4 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_bookmark__movie_id"
+        }
+      ],
+      "checks": [],
+      "indexes": []
     },
     {
       "name": "certification",
@@ -2342,6 +2477,152 @@
       "indexes": []
     },
     {
+      "name": "notification",
+      "purpose": "In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them. Nothing schedules or polls them; the unread count is read on navigation.",
+      "cite": "CR-008 (owner, 2026-11-22) T7 (notifications)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "note": "The account it is for (the booking's user).",
+          "reserved_row": null
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "note": "The event's booking; the inbox links to it.",
+          "reserved_row": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "note": "booking_confirmed, points_earned or points_redeemed.",
+          "reserved_row": null
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "note": "The one line the inbox shows, rendered by the server at the event.",
+          "reserved_row": null
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "note": "The sentence under it.",
+          "reserved_row": null
+        },
+        {
+          "name": "read_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T7 (mark-read, mark-all-read)",
+          "note": "NULL = unread. Set from the injected clock.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 · FR-ADR-018",
+          "note": "Written from the injected clock with the event; DEFAULT now() as row metadata.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "booking_id",
+            "kind"
+          ],
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "why": "One notification per event per booking, so a retried confirm never notifies twice.",
+          "name": "uq_notification__booking_id_kind"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T7 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_notification__user_id"
+        },
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "references": {
+            "table": "booking",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T7 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_notification__booking_id"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_notification__kind",
+          "expression": "kind IN ('booking_confirmed', 'points_earned', 'points_redeemed')",
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "why": "Exactly the three events CR-008 names."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id",
+            "id"
+          ],
+          "unique": false,
+          "cite": "CR-008 (owner, 2026-11-22) T7",
+          "why": "The inbox and the unread count: the caller's rows, newest first.",
+          "name": "ix_notification__user_id_id"
+        }
+      ]
+    },
+    {
       "name": "outbox_message",
       "purpose": "The whole product's transactional outbox: one row per asynchronous job, inserted in the same database transaction as the business change and relayed to SQS/ElasticMQ afterwards, so the job commits with the change or does not exist.",
       "cite": "FR-ADR-031 Decision; E4 P-TKT-04 'Enqueue the receipt through a transactional outbox' Preconditions",
@@ -2827,6 +3108,155 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "reward_entry",
+      "purpose": "The points ledger: one row per points movement, each tied to the booking that caused it. Earned on a paid booking, redeemed as a discount on one. Written only inside the booking-confirm transaction, so a failed payment or an expired hold rolls the redemption back with everything else.",
+      "cite": "CR-008 (owner, 2026-11-22) T3 (rewards: points and discounts per account)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "note": "The booking's own user (the session's).",
+          "reserved_row": null
+        },
+        {
+          "name": "booking_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T3 ('earns points ... once, even if payment is retried')",
+          "note": "The booking the movement belongs to; with kind, unique.",
+          "reserved_row": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "note": "earned or redeemed.",
+          "reserved_row": null
+        },
+        {
+          "name": "points",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "note": "Always positive; kind gives the sign.",
+          "reserved_row": null
+        },
+        {
+          "name": "discount_paise",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T3 ('the server computes the discount')",
+          "note": "The money a redemption took off, in the minor unit. NULL on an earned row.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "CR-008 (owner, 2026-11-22) T3 · FR-ADR-018",
+          "note": "Written from the injected clock with the booking (the history shows it), DEFAULT now() as row metadata.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "booking_id",
+            "kind"
+          ],
+          "cite": "CR-008 (owner, 2026-11-22) T3 (earned once per booking, even on a retried confirm)",
+          "why": "THE idempotency guard for points: a booking earns at most once and redeems at most once, whatever retries.",
+          "name": "uq_reward_entry__booking_id_kind"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T3 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_reward_entry__user_id"
+        },
+        {
+          "columns": [
+            "booking_id"
+          ],
+          "references": {
+            "table": "booking",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T3 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_reward_entry__booking_id"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_reward_entry__kind",
+          "expression": "kind IN ('earned', 'redeemed')",
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "why": "The two movements. A CHECK rather than an enum, as every vocabulary here."
+        },
+        {
+          "name": "ck_reward_entry__points",
+          "expression": "points > 0",
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "why": "A zero movement is not written."
+        },
+        {
+          "name": "ck_reward_entry__discount",
+          "expression": "(kind = 'redeemed') = (discount_paise IS NOT NULL AND discount_paise > 0)",
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "why": "A redemption always carries its discount; an earning never does."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "user_id",
+            "id"
+          ],
+          "unique": false,
+          "cite": "CR-008 (owner, 2026-11-22) T3",
+          "why": "The Rewards history: the caller's rows, newest first.",
+          "name": "ix_reward_entry__user_id_id"
+        }
+      ]
     },
     {
       "name": "screen",
@@ -3426,6 +3856,110 @@
       "indexes": []
     },
     {
+      "name": "support_message",
+      "purpose": "A message sent from the Help & support contact form, stored for the operator to read. No email is sent.",
+      "cite": "CR-008 (owner, 2026-11-22) T8 (help & support: 'a contact form that stores the message')",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "note": "The sender's account when signed in; NULL for a guest.",
+          "reserved_row": null
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "note": "Where a reply would go: the account's address, or the one a guest typed.",
+          "reserved_row": null
+        },
+        {
+          "name": "topic",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "note": "One of the form's topics.",
+          "reserved_row": null
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "note": "What the person wrote, 1 to 2000 characters after trimming.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 · FR-ADR-018",
+          "note": "Row metadata at the database (FR-ADR-018).",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T8 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_support_message__user_id"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_support_message__topic",
+          "expression": "topic IN ('booking', 'payment', 'rewards', 'account', 'other')",
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "why": "The form's topic list."
+        },
+        {
+          "name": "ck_support_message__message",
+          "expression": "char_length(btrim(message)) BETWEEN 1 AND 2000",
+          "cite": "CR-008 (owner, 2026-11-22) T8",
+          "why": "Bounded so a form cannot store an unbounded blob."
+        },
+        {
+          "name": "ck_support_message__email",
+          "expression": "char_length(btrim(email)) BETWEEN 3 AND 254",
+          "cite": "CR-008 (owner, 2026-11-22) T8 · P-ACC-01 (the address bounds)",
+          "why": "The same bounds as an account email."
+        }
+      ],
+      "indexes": []
+    },
+    {
       "name": "users",
       "purpose": "One row per person who holds an account — customer, manager or admin; the identity every booking, audit row and reset token points at.",
       "cite": "P-ACC-01 (E5 S4, 'The complete field list of the user row') · E8 S7.5 · FR-ADR-050",
@@ -3493,6 +4027,51 @@
           "cite": "P-ACC-01 (field table: timestamptz, UTC, nullable) · P-ACC-02 step 4 · P-ACC-08 step 4",
           "note": "NULL means the account has never signed in — a real and expected state, not a defect. Written from the INJECTED CLOCK on every successful sign-in (`UPDATE users SET last_signed_in_at = :now WHERE id = :id`) and inside P-ACC-08's reset transaction. NOT written on a failed attempt. `has_signed_in` on EP-ADM-22 is DERIVED as `last_signed_in_at IS NOT NULL` and is never stored (S-ADM-18 asserts no `has_signed_in` column exists in information_schema).",
           "reserved_row": null
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T6 (profile & settings)",
+          "note": "What the account greeting shows. NULL until the customer sets one; the greeting then uses the email's local part.",
+          "reserved_row": null
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T6",
+          "note": "Optional contact number, digits with an optional leading +. Nothing sends to it: there is no SMS in this product.",
+          "reserved_row": null
+        },
+        {
+          "name": "preferred_language_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T6 (preferred language, from the existing lookups)",
+          "note": "A preference only: the listing filter starts from it on the client. It never filters anything server-side.",
+          "reserved_row": null
+        },
+        {
+          "name": "preferred_format_id",
+          "type": "bigint",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T6 (preferred format, from the existing lookups)",
+          "note": "A preference only, as preferred_language_id.",
+          "reserved_row": null
+        },
+        {
+          "name": "points_balance",
+          "type": "bigint",
+          "nullable": false,
+          "default": "0",
+          "cite": "CR-008 (owner, 2026-11-22) T3 (rewards: points per account)",
+          "note": "The spendable balance, kept beside the ledger (reward_entry) so a redemption can lock ONE row (the caller's users row, SELECT ... FOR UPDATE inside the booking transaction) and the CHECK below refuses any overdraw outright. Always equals the sum of the caller's earned minus redeemed reward_entry points; both are written in the same transaction.",
+          "reserved_row": null
         }
       ],
       "primary_key": [
@@ -3509,13 +4088,62 @@
           "expression_index": true
         }
       ],
-      "foreign_keys": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "preferred_language_id"
+          ],
+          "references": {
+            "table": "language",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T6 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_users__preferred_language_id"
+        },
+        {
+          "columns": [
+            "preferred_format_id"
+          ],
+          "references": {
+            "table": "format",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T6 · S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_users__preferred_format_id"
+        }
+      ],
       "checks": [
         {
           "name": "ck_users__role",
           "expression": "role IN ('customer', 'manager', 'admin')",
           "cite": "S3.1 'The four roles' (Modelled as: `user.role = 'customer'` / `'manager'` / `'admin'`) · P-XCT-05 preconditions ('exactly one role value in a single column') · FR-ADR-009 · SRC-003 C-1",
           "why": "the user_role vocabulary. A CHECK rather than a PostgreSQL enum so that adding a value is an ordinary migration."
+        },
+        {
+          "name": "ck_users__display_name",
+          "expression": "display_name IS NULL OR char_length(btrim(display_name)) BETWEEN 1 AND 60",
+          "cite": "CR-008 (owner, 2026-11-22) T6",
+          "why": "Inline validation on the profile form mirrors this; the database refuses anything that slipped past."
+        },
+        {
+          "name": "ck_users__phone",
+          "expression": "phone IS NULL OR phone ~ '^[+]?[0-9]{7,15}$'",
+          "cite": "CR-008 (owner, 2026-11-22) T6",
+          "why": "Digits only, 7 to 15 (the E.164 maximum), optional leading +. The form strips spaces and dashes before sending."
+        },
+        {
+          "name": "ck_users__points_balance",
+          "expression": "points_balance >= 0",
+          "cite": "CR-008 (owner, 2026-11-22) T3 ('redeeming more than the balance ... is refused')",
+          "why": "THE overdraw guard. The redemption is a locked read then an UPDATE; should two ever race past the lock, this refuses the second."
         }
       ],
       "indexes": []

@@ -56,6 +56,7 @@ class ErrorCode(StrEnum):
     IDEMPOTENCY_IN_FLIGHT = "IDEMPOTENCY_IN_FLIGHT"
     IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
     PAYMENT_FAILED = "PAYMENT_FAILED"
+    TOTAL_CHANGED = "TOTAL_CHANGED"  # CR-008: the checkout's total is not the server's
     RATE_LIMITED = "RATE_LIMITED"
     DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -72,6 +73,7 @@ FAILED = "Something went wrong and your booking was not completed. No payment wa
 UNAVAILABLE = ("We cannot complete your booking right now. You have not been charged. Try again in a few minutes. "
                "If you need help, quote {request_id}.")
 RATE_LIMITED = "Too many attempts. Try again in {span}."
+TOTAL_CHANGED = "The seats or the total in this checkout have changed. Check the new total, then pay again."
 
 
 class Duplicate(Exception):
@@ -94,9 +96,15 @@ class ReferenceExhausted(Exception):
     """Five draws, five collisions (P-TKT-01 exception 2)."""
 
 
-def fingerprint(hold_token: str, showtime_id: int) -> str:
-    """sha256 of the canonicalised body: exactly the two fields EP-PAY-01 accepts."""
-    canonical = json.dumps({"hold_token": hold_token, "showtime_id": showtime_id}, sort_keys=True, separators=(",", ":"))
+def fingerprint(hold_token: str, showtime_id: int, use_points: bool = False, expected_total_paise: int | None = None) -> str:
+    """sha256 of the canonicalised body. CR-008's two optional fields join it only when sent, so a two-field body
+    hashes exactly as before."""
+    fields: dict = {"hold_token": hold_token, "showtime_id": showtime_id}
+    if use_points:
+        fields["use_points"] = True
+    if expected_total_paise is not None:
+        fields["expected_total_paise"] = expected_total_paise
+    canonical = json.dumps(fields, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

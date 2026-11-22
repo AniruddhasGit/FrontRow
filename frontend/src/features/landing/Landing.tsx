@@ -14,6 +14,7 @@ import { leaveForSignIn, signInHref, takeNotice } from "../auth/session";
 import { get, query, type Film, type Showtime } from "../browse/api";
 import { runtimeName, showtimeName, timeLabel } from "../browse/logic";
 import { Poster } from "../browse/Poster";
+import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import { FLOWN } from "../hall3d/Hall3D";
 import { screenNumber } from "../hall3d/hall";
 import { nextHallDrawn } from "../hall3d/hallReady";
@@ -36,6 +37,7 @@ export function Landing() {
   const [map, setMap] = useState<SeatMap | null>(null);
   const [leaving, setLeaving] = useState<Leaving>(null);
   const rail = useRef<HTMLUListElement>(null);
+  const [saved, toggle] = useSaved(); // CR-008 T4: Save for the film on the screen
   const [notice] = useState(() => {
     try {
       return takeNotice(window.sessionStorage);
@@ -170,6 +172,7 @@ export function Landing() {
         {film ? (
           <div className="fr-landing-bar">
             <p className="fr-landing-now">{film.title}</p>
+            <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
             {listed === null ? <p className="fr-browse-note">Finding the times…</p> : listed.showtimes.length === 0 ? (
               <p className="fr-browse-note">No showtimes today.</p>
             ) : (

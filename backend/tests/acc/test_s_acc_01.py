@@ -63,7 +63,8 @@ async def test_register_returns_201_sets_the_session_and_stores_one_customer_row
 async def test_the_users_table_has_exactly_the_seven_columns(migrated_db):
     cols = {r[0] for r in app_sql(migrated_db, "SELECT column_name FROM information_schema.columns "
                                                "WHERE table_schema = 'public' AND table_name = 'users'")}
-    assert cols == {"id", "email", "password_hash", "role", "password_version", "created_at", "last_signed_in_at"}
+    assert cols == {"id", "email", "password_hash", "role", "password_version", "created_at", "last_signed_in_at",
+            "display_name", "phone", "preferred_language_id", "preferred_format_id", "points_balance"}  # + CR-008 T3/T6
 
 
 async def test_a_second_registration_in_another_case_is_409(migrated_db, clock):

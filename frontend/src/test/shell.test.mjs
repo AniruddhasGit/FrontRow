@@ -37,6 +37,7 @@ test("S-SCP-12: the demonstration line renders inside the single contentinfo lan
     const doc = page(url);
     const info = all(doc, (e) => role(e) === "contentinfo");
     assert.equal(info.length, 1, url);
-    assert.equal(text(info[0]), line, url);
+    // CR-008 T8 adds a Help & support link to the footer, so the line is its own paragraph, word for word.
+    assert.equal(text(all(info[0], (e) => e.tag === "p")[0]), line, url);
   }
 });

@@ -179,10 +179,10 @@ exclusion in `S2.4` or an `OPEN` row, and neither may be quietly filled in.
 disagree** — a check added after this table silently went stale at 53 while claiming it could
 not.*
 
-**61 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
+**70 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
 once, under the **narrowest** router that admits it.
 
-**Public — no session required** — 12
+**Public — no session required** — 13
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -198,8 +198,9 @@ once, under the **narrowest** router that admits it.
 | `EP-BRW-04` | `GET` | `/api/showtimes` | anyone |
 | `EP-BRW-05` | `GET` | `/api/showtimes/{showtime_id}` | anyone |
 | `EP-BRW-06` | `GET` | `/api/showtimes/{showtime_id}/seatmap` | anyone |
+| `EP-ACC-17` | `POST` | `/api/support/messages` | anyone |
 
-**Customer — a session, and the caller's own resources** — 10
+**Customer — a session, and the caller's own resources** — 18
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -212,6 +213,14 @@ once, under the **narrowest** router that admits it.
 | `EP-HLD-03` | `DELETE` | `/api/holds/{hold_token}/seats/{seat_id}` | customer / manager / admin |
 | `EP-ACC-07` | `GET` | `/api/me/bookings` | any signed-in user |
 | `EP-ACC-08` | `GET` | `/api/me/bookings/{reference}` | any signed-in user |
+| `EP-ACC-09` | `GET` | `/api/me/summary` | any signed-in user |
+| `EP-ACC-10` | `GET` | `/api/me/rewards` | any signed-in user |
+| `EP-ACC-11` | `GET` | `/api/me/bookmarks` | any signed-in user |
+| `EP-ACC-12` | `PUT` | `/api/me/bookmarks/{movie_id}` | any signed-in user |
+| `EP-ACC-13` | `GET` | `/api/me/notifications` | any signed-in user |
+| `EP-ACC-14` | `POST` | `/api/me/notifications/read` | any signed-in user |
+| `EP-ACC-15` | `GET` | `/api/me/profile` | any signed-in user |
+| `EP-ACC-16` | `PUT` | `/api/me/profile` | any signed-in user |
 | `EP-HLD-01` | `POST` | `/api/showtimes/{showtime_id}/holds` | customer / manager / admin |
 
 **Reporting — manager and admin, screen-scoped** — 3

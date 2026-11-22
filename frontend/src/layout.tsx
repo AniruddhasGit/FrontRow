@@ -37,6 +37,8 @@ export function Layout({ children, nav, account }: { children: ReactNode; nav?: 
       </main>
       <footer className="fr-footer">
         <p>Demonstration environment. Payments are simulated and no card details are ever taken.</p>
+        {/* CR-008 T8: Help & support is reachable from every page's footer */}
+        <p className="fr-footer-links"><Link to="/help">Help &amp; support</Link></p>
       </footer>
     </div>
   );

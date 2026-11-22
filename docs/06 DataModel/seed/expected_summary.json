@@ -41,6 +41,11 @@
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-XCT-30 occupancy · S-XCT-45"
     },
+    "bookmark": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+    },
     "certification": {
       "rows": 2,
       "basis": "derived by generate.py from the rule cited",
@@ -87,6 +92,11 @@
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-XCT-30 'genres = {genre[i mod 4], genre[(i + 1) mod 4]} two per film, always distinct'"
     },
+    "notification": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+    },
     "outbox_message": {
       "rows": null,
       "basis": "UNSPECIFIED - no document states a figure; a gap stays a gap",
@@ -110,6 +120,11 @@
       "rows": 11003,
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-XCT-30 · P-XCT-32 · E4 P-TKT-04 (one row per booking, suppressed) · S-XCT-45"
+    },
+    "reward_entry": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
     },
     "screen": {
       "rows": 6,
@@ -135,6 +150,11 @@
       "rows": 115200,
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-ADM-14 (one row per in-service seat at showtime creation) · P-XCT-30 · S-XCT-45"
+    },
+    "support_message": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
     },
     "users": {
       "rows": 63,

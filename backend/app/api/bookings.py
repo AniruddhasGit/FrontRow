@@ -34,7 +34,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError
 from redis.exceptions import RedisError
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
@@ -51,6 +51,7 @@ from app.domain import booking as bk
 from app.domain import holds
 from app.domain import payment as pay
 from app.domain import reference as refs
+from app.domain import rewards
 from app.domain.booking import ErrorCode
 from app.domain.browse.catalogue import local_iso
 from app.domain.money import BIGINT_MAX
@@ -64,7 +65,7 @@ EMITS = frozenset({
     ErrorCode.SEAT_UNAVAILABLE,
     ErrorCode.IDEMPOTENCY_IN_FLIGHT,
     ErrorCode.IDEMPOTENCY_KEY_REUSED,
-    ErrorCode.PAYMENT_FAILED, ErrorCode.RATE_LIMITED, ErrorCode.DEPENDENCY_UNAVAILABLE, ErrorCode.INTERNAL_ERROR,
+    ErrorCode.PAYMENT_FAILED, ErrorCode.TOTAL_CHANGED, ErrorCode.RATE_LIMITED, ErrorCode.DEPENDENCY_UNAVAILABLE, ErrorCode.INTERNAL_ERROR,
 })
 
 # The booking-confirm bucket (S7.4): per user and per real client IP, both per minute.
@@ -91,11 +92,16 @@ router = APIRouter(dependencies=[Depends(confirm_session)])
 
 
 class ConfirmRequest(BaseModel):
-    """Exactly two properties. Seats come from the hold record and from nowhere else (P-PAY-01)."""
+    """Seats come from the hold record and from nowhere else (P-PAY-01). CR-008 adds two optional properties:
+    use_points (the customer's choice; the server decides how many) and expected_total_paise (the total the
+    checkout showed, after any discount - a different server total is refused, so Pay never books what the screen
+    did not show: the hold may have grown from another tab)."""
 
     model_config = ConfigDict(extra="forbid")
     hold_token: StrictStr
     showtime_id: StrictInt = Field(gt=0, le=BIGINT_MAX)
+    use_points: StrictBool = False
+    expected_total_paise: StrictInt | None = Field(None, ge=0, le=BIGINT_MAX)
 
 
 def _bad() -> ApiError:
@@ -163,7 +169,7 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
     sleep = getattr(state, "payment_sleep", None) or (lambda ms: asyncio.sleep(ms / 1000))
     draw = getattr(state, "draw_reference", None) or refs.new_reference
     redis = state.redis
-    fingerprint = bk.fingerprint(body.hold_token, body.showtime_id)
+    fingerprint = bk.fingerprint(body.hold_token, body.showtime_id, body.use_points, body.expected_total_paise)
     hold = None
     total = 0
     try:
@@ -191,6 +197,16 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
             observe("price sum")
             lines = bk.snapshot(hold)
             total = sum(line["price_paise"] for line in lines)
+            # CR-008 T3: the discount is computed here, against the SERVER's hold, with the caller's users row locked.
+            redeemed = None
+            if body.use_points:
+                q = rewards.quote(total, await rewards.locked_balance(conn, user.id), settings.CURRENCY_MINOR_UNIT_RATIO)
+                redeemed = q if q["points"] else None
+                total = q["total_paise"]
+            if body.expected_total_paise is not None and body.expected_total_paise != total:
+                raise ApiError(409, ErrorCode.TOTAL_CHANGED, bk.TOTAL_CHANGED, {"total_paise": total})
+            if redeemed:
+                await rewards.spend(conn, user.id, redeemed["points"])
             observe("payment capture")
             payment_id = await pay.take(conn, amount_paise=total, idempotency_key=key, fail_prefix=settings.PAYMENT_SIMULATOR_FAIL_KEY_PREFIX,
                                         delay_ms=settings.PAYMENT_SIMULATED_DELAY_MS, sleep=sleep, now=clock.now)
@@ -198,6 +214,9 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
             now = clock.now()
             booking_id, ref = await bk.insert_booking(conn, user_id=user.id, showtime_id=hold.showtime_id, payment_id=payment_id,
                                                       total_paise=total, lines=lines, now=now, draw=draw)
+            await rewards.after_booking(conn, user_id=user.id, booking_id=booking_id, reference=bk.presentation(ref), film=head.title,
+                                        starts_at=head.starts_at, zone=head.timezone, paid_paise=total, redeemed=redeemed,
+                                        ratio=settings.CURRENCY_MINOR_UNIT_RATIO, now=now)
             observe("audit")  # step 8: a customer booking is not a privileged action, so no audit row is written
             observe("receipt_dispatch insert")
             observe("outbox_message insert")

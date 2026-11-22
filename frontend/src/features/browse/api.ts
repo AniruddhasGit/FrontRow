@@ -7,9 +7,20 @@ export type Got<T> =
   | { ok: false; status: number; code: string; message: string; requestId: string | null; retryAfter: number | null };
 
 export async function get<T>(path: string, signal?: AbortSignal): Promise<Got<T>> {
+  return request<T>(path, { credentials: "same-origin", signal });
+}
+
+/** A JSON write (CR-008 account screens): the same envelope handling as get(). `details` carries field errors. */
+export async function send<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<Got<T> & { details?: unknown }> {
+  // A write that never answers ends as a failure after 15 s (web-app-pitfalls rule 2), so its form never sticks on Sending.
+  return request<T>(path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+                            signal: AbortSignal.timeout(15000) });
+}
+
+async function request<T>(path: string, init: RequestInit): Promise<Got<T> & { details?: unknown }> {
   let response: Response;
   try {
-    response = await fetch(path, { credentials: "same-origin", signal });
+    response = await fetch(path, init);
   } catch {
     return { ok: false, status: 0, code: "NETWORK", message: "", requestId: null, retryAfter: null };
   }
@@ -24,6 +35,7 @@ export async function get<T>(path: string, signal?: AbortSignal): Promise<Got<T>
     message: error.message ?? "",
     requestId: error.request_id ?? null,
     retryAfter: Number.isFinite(retry) && retry > 0 ? retry : null,
+    details: error.details,
   };
 }
 

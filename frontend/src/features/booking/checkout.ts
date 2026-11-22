@@ -157,6 +157,7 @@ const OWN: Record<string, string> = {
     "The payment did not go through and you have not been charged. You can try again while the countdown is still running. " +
     "If it has reached zero your hold has ended and you will need to choose your seats again.",
   IDEMPOTENCY_IN_FLIGHT: "This booking is still being processed.",
+  TOTAL_CHANGED: "The seats or the total in this checkout have changed. Check the new total, then pay again.",
 };
 
 /** The banner for a failure, chosen by code. `null` means no banner (a dropped connection publishes no sentence). */
@@ -190,13 +191,16 @@ type Fetch = (url: string, init: { method: string; credentials: "same-origin"; h
   status: number; ok: boolean; headers: { get(name: string): string | null }; json(): Promise<unknown>;
 }>;
 
-async function post(fetchFn: Fetch, key: string, hold: HeldHold): Promise<Outcome & { retryAfter?: number }> {
+/** CR-008: the two optional confirm fields - the points choice and the total this screen showed. */
+export interface PayExtras { use_points: boolean; expected_total_paise: number }
+
+async function post(fetchFn: Fetch, key: string, hold: HeldHold, extras?: PayExtras): Promise<Outcome & { retryAfter?: number }> {
   let r;
   try {
     r = await fetchFn("/api/bookings", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json", "Idempotency-Key": key },
-      body: JSON.stringify({ hold_token: hold.hold_token, showtime_id: hold.showtime_id }),
+      body: JSON.stringify({ hold_token: hold.hold_token, showtime_id: hold.showtime_id, ...extras }),
     });
   } catch {
     return { ok: false, status: 0, code: "NETWORK", message: "", requestId: null, details: null };
@@ -214,13 +218,13 @@ async function post(fetchFn: Fetch, key: string, hold: HeldHold): Promise<Outcom
  *  again after Retry-After seconds, at most three times. `wait` is the screen's timer, so tests own time. A 201 stores the
  *  reference (before the caller navigates) and ends the attempt; a 402 ends it; every other outcome keeps the key. */
 export async function pay(deps: { fetch: Fetch; store: Store; wait: (ms: number) => Promise<void>; hold: HeldHold;
-                                  onInFlight?: () => void; mint?: () => string }): Promise<Outcome> {
+                                  onInFlight?: () => void; mint?: () => string; extras?: PayExtras }): Promise<Outcome> {
   const key = keyFor(deps.store, deps.hold.hold_token, deps.mint);
-  let outcome = await post(deps.fetch, key, deps.hold);
+  let outcome = await post(deps.fetch, key, deps.hold, deps.extras);
   for (let resend = 0; !outcome.ok && outcome.code === "IDEMPOTENCY_IN_FLIGHT" && resend < IN_FLIGHT_RESENDS; resend++) {
     deps.onInFlight?.();
     await deps.wait((outcome.retryAfter ?? 1) * 1000);
-    outcome = await post(deps.fetch, key, deps.hold);
+    outcome = await post(deps.fetch, key, deps.hold, deps.extras);
   }
   if (outcome.ok) {
     rememberBooking(deps.store, outcome.body.booking_reference, outcome.body.showtime_id);
@@ -252,10 +256,13 @@ export interface PanelProps {
   inFlight: boolean;
   onPay: () => void;
   onBack: () => void;
+  discountPaise?: number; // CR-008 T3: the server's quote when the customer chose to use points
+  points?: ReactNode; // the "use my points" control, rendered above the total
 }
 
 export function CheckoutPanel(p: PanelProps) {
-  const total = checkoutTotal(p.seats);
+  const subtotal = checkoutTotal(p.seats);
+  const total = subtotal === null ? null : subtotal - (p.discountPaise ?? 0);
   const formatted = total === null ? null : p.money(total);
   const disabled = !p.live || p.expired || p.inFlight || total === null;
   return h("section", { className: "fr-checkout", "aria-labelledby": "fr-checkout-heading" },
@@ -269,6 +276,9 @@ export function CheckoutPanel(p: PanelProps) {
         ? h("span", { className: "fr-mono" }, p.money(s.price_paise))
         : h("span", { className: "fr-checkout-pending", "aria-hidden": "true" }))),
     h("hr", { className: "fr-perforation", key: "perforation" }),
+    p.points ? h("div", { key: "points" }, p.points) : null,
+    p.discountPaise ? h("p", { className: "fr-checkout-line", key: "discount" },
+      h("span", null, "Points discount"), h("span", { className: "fr-mono" }, `−${p.money(p.discountPaise)}`)) : null,
     total === null ? null : h("p", { className: "fr-checkout-total", key: "total" },
       h("span", { className: "fr-total-label" }, TOTAL_LABEL), h("span", { className: "fr-total fr-mono" }, formatted)),
     h("div", { className: "fr-checkout-countdown", key: "countdown" }, p.countdown),

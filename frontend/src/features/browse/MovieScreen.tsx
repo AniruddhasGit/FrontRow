@@ -9,6 +9,7 @@ import { get, query, type Film, type Showtime } from "./api";
 import { DayStrip } from "./DayStrip";
 import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logic";
 import { Poster } from "./Poster";
+import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import "./browse.css";
 
 // The one place these screens read the clock; tests and a harness pass their own `now`. Module-level, so it is
@@ -27,6 +28,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
   const [failed, setFailed] = useState(seed?.failed ?? false);
   const [attempt, setAttempt] = useState(0);
   const [announce, setAnnounce] = useState("");
+  const [saved, toggle] = useSaved(); // CR-008 T4
   const first = useRef(true);
 
   useEffect(() => {
@@ -81,6 +83,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
               {film.genres.length > 0 ? <span>{film.genres.map((g) => g.name).join(", ")}</span> : null}
             </p>
             <p className="fr-movie-synopsis">{film.synopsis}</p>
+            <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
           </div>
         </header>
       ) : null}

@@ -15,8 +15,11 @@ pytestmark = pytest.mark.anyio
 APP = Path(__file__).resolve().parents[2] / "app"
 SOURCE = (APP / "api" / "bookings.py").read_text(encoding="utf-8")
 REF = r"^FR-[23456789ACDEFHJKMNPQRTVWXY]{4}-[23456789ACDEFHJKMNPQRTVWXY]{4}$"
+# Twelve since CR-008: TOTAL_CHANGED (the checkout's expected_total_paise is not the server's). The name is kept so the
+# criterion's text still finds its test; raised for a Bible amendment.
 ELEVEN = sorted(["REQUEST_INVALID", "AUTH_REQUIRED", "HOLD_EXPIRED", "HOLD_NOT_OWNED", "SEAT_UNAVAILABLE", "IDEMPOTENCY_IN_FLIGHT",
-                 "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"])
+                 "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR",
+                 "TOTAL_CHANGED"])
 
 
 @pytest.fixture
@@ -169,5 +172,8 @@ def test_the_openapi_body_is_closed_with_exactly_two_properties():
 
     schema = create_app(Settings(**VALID_ENV)).openapi()
     body = schema["paths"]["/api/bookings"]["post"]["requestBody"]["content"]["application/json"]["schema"]
-    assert body["additionalProperties"] is False and sorted(body["properties"]) == ["hold_token", "showtime_id"]
+    # CR-008 adds two OPTIONAL properties (use_points, expected_total_paise); the two required ones are unchanged.
+    assert body["additionalProperties"] is False and sorted(body["properties"]) == ["expected_total_paise", "hold_token", "showtime_id",
+                                                                                    "use_points"]
+    assert sorted(body["required"]) == ["hold_token", "showtime_id"]
 
