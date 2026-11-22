@@ -2,6 +2,7 @@
 // no runtime import, so node --test loads it directly. Nothing here knows the six halls: an aisle is an empty grid
 // column, a walkway an empty grid row, a row may be any length, and a seat may span two columns.
 import type { Seat, Visual } from "../seatmap/model";
+import type { SeatSH } from "./seatLight";
 
 export const PITCH_X = 0.62; // metres per grid column
 export const PITCH_Z = 1.05; // metres per grid row
@@ -9,7 +10,7 @@ export const RISE = 0.22; // the rake: the floor climbs this much per grid row
 export const EYE = 1.15; // seated eye height above the tier
 export const SCREEN_GAP = 5; // front row to the screen
 
-export interface Placed { seat: Seat; x: number; y: number; z: number; span: number }
+export interface Placed { seat: Seat; x: number; y: number; z: number; span: number; /** CR-010: its Cycles probes */ light?: SeatSH }
 export interface Hall {
   placed: Placed[];
   halfWidth: number; // half the width of the seat block
@@ -136,7 +137,9 @@ export function seatTip(seat: Seat, category: string, visual: Visual, price: str
  *  metres; the room itself is hallN.glb). Seats face +z (the screen is at z ~ 0, the rows at -z). */
 export interface BakedMeta {
   hall: number; allseats: { eye: number[]; look: number[] }; screen: { w: number; h: number; zc: number; z: number };
-  seats: { id: string; row: string; num: number; cat: string; level: string; pos: number[]; eye: number[] }[];
+  seats: { id: string; row: string; num: number; cat: string; level: string; pos: number[]; eye: number[]; sh?: SeatSH }[];
+  /** CR-010 (hall_probes.py): the seats carry Cycles light probes and the hall a reflection map, /halls/<env.file>. */
+  probe?: { env?: { file: string } };
   /** The arrival route, ENTRY door to the all-seats view (hall_path.py); the live camera flies it, no video. */
   intro?: { eye: number[]; look: number[] }[];
   /** The projector port (three.js metres): where the beam and its dust start. */
@@ -171,7 +174,7 @@ export function bakedHall(seats: Seat[], meta: BakedMeta): Baked | null {
   for (const seat of seats) {
     const m = at.get(`${seat.row}${seat.num}`);
     if (!m) return null;
-    placed.push({ seat, x: m.pos[0], y: m.pos[1], z: m.pos[2], span: 1 });
+    placed.push({ seat, x: m.pos[0], y: m.pos[1], z: m.pos[2], span: 1, light: m.sh });
   }
   const eye = new Map(seats.map((s) => [s.id, at.get(`${s.row}${s.num}`)!.eye]));
   const screen: [number, number, number] = [0, meta.screen.zc - 0.35, meta.screen.z];
