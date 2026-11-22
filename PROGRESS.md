@@ -532,3 +532,8 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 - PRD real-browser verification: new e2e/ kit (73 tests, 66 pass, 6 = documented AC conflicts, 1 todo); 6 defects fixed; 23 stories to Done. Ledger 157 Done / 63 Blocked, --check PASS. Frontend 160/160.
 - Open for the owner: S-SCP-15, S-XCT-39, S-BRW-17, S-RPT-20 (axe-core dep), resend wording, plus the night run's list.
 - **Session closed 2026-11-07_1816 by ani87** → handoff: handoffs/HANDOFF_2026-11-07_1816_ani87.md
+
+## 2026-11-22 (autonomous redesign run)
+
+- CR-006 demo schedule top-up + history cleanup (Neon at 0004); curtain deleted; All films wipe + View Transition; smoothness pass; ui-design redesign + one button system; S-SEA-04 focus fix.
+- **Session closed 2026-11-22 by ani87** -> handoff: handoffs/HANDOFF_2026-11-22_1530_ani87.md
