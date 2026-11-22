@@ -196,7 +196,7 @@
       "source": "FR-ADR-052 (extension) · CR-008 (raised with T3, the checkout-shows-the-server's-hold fix)"
     }
   ],
-  "endpoint_count": 74,
+  "endpoint_count": 77,
   "endpoints": [
     {
       "id": "EP-ACC-01",
@@ -1187,7 +1187,10 @@
             "score": "integer 1..10 or null",
             "can_rate": "boolean",
             "liked": "boolean",
-            "coming_soon": "boolean"
+            "coming_soon": "boolean",
+            "review": "string or null - the caller's review text for this film (CR-011 F4)",
+            "review_id": "integer or null - that review's id, null when there is no text (CR-011 F4)",
+            "voted": "array of integer review ids of this film the caller marked Helpful (CR-011 F4)"
           }
         },
         "401": {
@@ -1334,6 +1337,184 @@
       "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
       "satisfies": [
         "P-ACC-17",
+        "P-ACC-12"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-22",
+      "method": "GET",
+      "path": "/api/movies/{movie_id}/reviews",
+      "summary": "A visible film's reviews, newest or most helpful first",
+      "auth": "public",
+      "roles": [
+        "guest",
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "movie_id": "integer, positive, a film a customer can currently see"
+        },
+        "query": {
+          "sort": "newest (default) | helpful"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "At most 50 reviews and the total",
+          "body": {
+            "movie_id": "integer",
+            "count": "integer - every review of the film",
+            "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer}"
+          }
+        },
+        "404": {
+          "description": "No visible film with that id"
+        },
+        "422": {
+          "description": "sort is not newest or helpful"
+        },
+        "503": {
+          "description": "Postgres is unreachable"
+        }
+      },
+      "errors": [
+        "NOT_FOUND",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "safe method - no state change",
+      "rate_limit": "none, as the film page it belongs to; read once per visit, never polled",
+      "authorisation_rule": "Public. The visibility predicate (app/domain/visibility.py) gates the film in the query; no email is selected.",
+      "satisfies": [
+        "P-ACC-18"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-23",
+      "method": "PUT",
+      "path": "/api/me/reviews/{movie_id}",
+      "summary": "Write or edit the caller's review (score and text) of a film they have seen here",
+      "auth": "authenticated",
+      "roles": [
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "movie_id": "integer, positive, a film a customer can currently see"
+        },
+        "body": {
+          "score": "integer 1..10, required",
+          "text": "string, 1..2000 characters after trimming, required"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Saved; the review and the film's new figures",
+          "body": {
+            "movie_id": "integer",
+            "review_id": "integer",
+            "score": "integer",
+            "text": "string, as stored (trimmed)",
+            "rating": "object {average_tenths integer or null, count, breakdown [10 integers, scores 1..10]}"
+          }
+        },
+        "400": {
+          "description": "The body does not parse, carries another property, or a field has the wrong type"
+        },
+        "401": {
+          "description": "No valid session"
+        },
+        "403": {
+          "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+        },
+        "404": {
+          "description": "No visible film with that id"
+        },
+        "422": {
+          "description": "score is outside 1..10, or text is empty or longer than 2000 characters"
+        }
+      },
+      "errors": [
+        "REQUEST_INVALID",
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id) of movie_rating; the same body twice leaves the same state and one row.",
+      "rate_limit": "none",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's EXISTS over the caller's own bookings, in the write's transaction.",
+      "satisfies": [
+        "P-ACC-18",
+        "P-ACC-12"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-24",
+      "method": "POST",
+      "path": "/api/me/reviews/{review_id}/helpful",
+      "summary": "Mark another customer's review as helpful, once",
+      "auth": "authenticated",
+      "roles": [
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "review_id": "integer, positive, a review (EP-ACC-22 items[].id)"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Counted (or already counted); the review's Helpful total",
+          "body": {
+            "review_id": "integer",
+            "helpful": "integer",
+            "voted": "true"
+          }
+        },
+        "401": {
+          "description": "No valid session"
+        },
+        "403": {
+          "description": "The review is the caller's own"
+        },
+        "404": {
+          "description": "No review with that id, it has no text, or its film is not visible"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "Idempotent: INSERT ... ON CONFLICT DO NOTHING on UNIQUE(rating_id, user_id); a second vote by the same customer changes nothing.",
+      "rate_limit": "none",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; the vote is written for that user id only, and the author check compares it to the review's user_id in the write's transaction (P-ACC-12).",
+      "satisfies": [
+        "P-ACC-18",
         "P-ACC-12"
       ],
       "brd": [

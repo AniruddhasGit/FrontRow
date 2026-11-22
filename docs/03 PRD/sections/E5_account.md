@@ -1628,6 +1628,25 @@ is `403 FORBIDDEN`. A score outside 1..10 is `422`. Nothing in this row runs on 
 cached figures are refreshed by the write itself (the listing generation is bumped after it commits).
 
 
+### `P-ACC-18` · Reviews and Helpful votes · `RULED`
+`[SRC: CR-011 F4 (owner, 2026-11-22): "reviews and comments ... on page which looks like" the reference film page; the lead's decision: reviews, not open comment threads]`
+`[BRD: R-ACC-02, R-ACC-03]`
+
+**Behaviour.** A customer who may rate a film (`P-ACC-17`'s gate: a confirmed, captured booking for a showtime of it
+that has started) may write a review: a score 1 to 10 and 1 to 2000 characters of text, stored on their one rating
+row, so a review replaces their score and a second review edits the first. Anyone may read a visible film's reviews
+(the score, the text, the reviewer's display name or "FrontRow viewer" - never an email - when it was last written,
+and its Helpful count), newest first or most helpful first, at most 50, with the total. A signed-in customer may mark
+another customer's review Helpful once; a vote is never changed or withdrawn.
+
+**Who may do it.** Reading: anyone. Writing and voting: a signed-in account, on its own rows only (`P-ACC-12`); both gates
+are checked by the server inside the write's transaction.
+
+**Exceptions.** A review without the gate is `403 FORBIDDEN`; text that is empty after trimming or longer than 2000
+characters is `422`; marking one's own review is `403 FORBIDDEN`; a review that does not exist, has no text or belongs to
+a film no customer can see is `404`; a second vote by the same customer is accepted and changes nothing. No comment
+threads, no moderation queue, nothing on a timer.
+
 ## S5 — UX specification
 
 ### `SCR-ACC-01` · Sign in or register — one screen, two tabs
@@ -2987,7 +3006,10 @@ CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
         "score": "integer 1..10 or null",
         "can_rate": "boolean",
         "liked": "boolean",
-        "coming_soon": "boolean"
+        "coming_soon": "boolean",
+        "review": "string or null - the caller's review text for this film (CR-011 F4)",
+        "review_id": "integer or null - that review's id, null when there is no text (CR-011 F4)",
+        "voted": "array of integer review ids of this film the caller marked Helpful (CR-011 F4)"
       }
     },
     "401": {
@@ -3140,6 +3162,195 @@ CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
   "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
   "satisfies": [
     "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
+
+```endpoint
+{
+  "id": "EP-ACC-22",
+  "method": "GET",
+  "path": "/api/movies/{movie_id}/reviews",
+  "summary": "A visible film's reviews, newest or most helpful first",
+  "auth": "public",
+  "roles": [
+    "guest",
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "query": {
+      "sort": "newest (default) | helpful"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "At most 50 reviews and the total",
+      "body": {
+        "movie_id": "integer",
+        "count": "integer - every review of the film",
+        "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer}"
+      }
+    },
+    "404": {
+      "description": "No visible film with that id"
+    },
+    "422": {
+      "description": "sort is not newest or helpful"
+    },
+    "503": {
+      "description": "Postgres is unreachable"
+    }
+  },
+  "errors": [
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none, as the film page it belongs to; read once per visit, never polled",
+  "authorisation_rule": "Public. The visibility predicate (app/domain/visibility.py) gates the film in the query; no email is selected.",
+  "satisfies": [
+    "P-ACC-18"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-23",
+  "method": "PUT",
+  "path": "/api/me/reviews/{movie_id}",
+  "summary": "Write or edit the caller's review (score and text) of a film they have seen here",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "score": "integer 1..10, required",
+      "text": "string, 1..2000 characters after trimming, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Saved; the review and the film's new figures",
+      "body": {
+        "movie_id": "integer",
+        "review_id": "integer",
+        "score": "integer",
+        "text": "string, as stored (trimmed)",
+        "rating": "object {average_tenths integer or null, count, breakdown [10 integers, scores 1..10]}"
+      }
+    },
+    "400": {
+      "description": "The body does not parse, carries another property, or a field has the wrong type"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    },
+    "422": {
+      "description": "score is outside 1..10, or text is empty or longer than 2000 characters"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id) of movie_rating; the same body twice leaves the same state and one row.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's EXISTS over the caller's own bookings, in the write's transaction.",
+  "satisfies": [
+    "P-ACC-18",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-24",
+  "method": "POST",
+  "path": "/api/me/reviews/{review_id}/helpful",
+  "summary": "Mark another customer's review as helpful, once",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "review_id": "integer, positive, a review (EP-ACC-22 items[].id)"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Counted (or already counted); the review's Helpful total",
+      "body": {
+        "review_id": "integer",
+        "helpful": "integer",
+        "voted": "true"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The review is the caller's own"
+    },
+    "404": {
+      "description": "No review with that id, it has no text, or its film is not visible"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: INSERT ... ON CONFLICT DO NOTHING on UNIQUE(rating_id, user_id); a second vote by the same customer changes nothing.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; the vote is written for that user id only, and the author check compares it to the review's user_id in the write's transaction (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-18",
     "P-ACC-12"
   ],
   "brd": [

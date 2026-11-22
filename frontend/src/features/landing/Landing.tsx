@@ -7,6 +7,9 @@
 // "All films" (owner, 2026-11-22; the curtain is gone): the rail expands across the page, then the films already in it
 // glide to their places in the /films grid (a View Transition, matched by name) and the films that were not in the
 // rail fade in a moment after (immersive.css).
+// CR-011 F1 (owner: "browse a few films like 10 max in the left side bar which are top 10 rated one, then to explore more
+// movies they'll have to hit on all films"): the rail holds the 10 best-rated films that are out (discover.ts sidebarTop),
+// then "All films".
 // Reads only the public read path, once per choice; nothing polls.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatPaise } from "../admin/money";
@@ -15,6 +18,7 @@ import { get, query, type Film, type Showtime } from "../browse/api";
 import { runtimeName, showtimeName, timeLabel } from "../browse/logic";
 import { Poster } from "../browse/Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
+import { sidebarTop } from "../discover/discover";
 import { Discover } from "../discover/Rows";
 import { FLOWN } from "../hall3d/Hall3D";
 import { screenNumber } from "../hall3d/hall";
@@ -51,7 +55,7 @@ export function Landing() {
   useEffect(() => {
     get<{ movies: Film[] }>("/api/movies").then((r) => {
       if (!r.ok) return setFailed(true);
-      const showing = r.body.movies.filter((m) => !m.coming_soon);
+      const showing = sidebarTop(r.body.movies);
       setAll(r.body.movies);
       setFilms(showing);
       setFilmId((id) => id ?? showing[0]?.id ?? null);
@@ -153,7 +157,8 @@ export function Landing() {
     <>
     <section className="fr-immersive fr-landing" data-leaving={leaving ?? undefined}>
       <aside className="fr-rail" aria-label="Films">
-        <h1>Now showing</h1>
+        <h1>Top 10</h1>
+        <p className="fr-rail-note">The best-rated films showing now.</p>
         {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
         {failed ? <p className="fr-state">The listing could not be loaded.</p>
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}

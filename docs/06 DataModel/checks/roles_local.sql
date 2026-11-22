@@ -163,6 +163,7 @@ REVOKE CREATE ON SCHEMA public FROM frontrow_app;
 --    support_message           S I       CR-008 T8: the contact form stores a message; nothing edits it
 --    movie_rating              S I U     CR-008 T12: one score per customer and film; re-rating updates it
 --    movie_like                S I U     CR-008 T12: the like toggle is an upsert on liked; no DELETE
+--    review_vote               S I       CR-011 F4: one Helpful vote per customer per review, never changed
 --
 --    No table:  TRUNCATE, REFERENCES, TRIGGER - nothing in the product needs
 --    them, and TRUNCATE on audit_log would defeat FR-ADR-019 outright.

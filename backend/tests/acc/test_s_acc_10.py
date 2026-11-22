@@ -110,7 +110,7 @@ async def test_a_user_with_no_booking_can_be_deleted_and_its_session_then_ends(m
 
 async def test_no_route_takes_a_booking_owner_from_the_request(migrated_db, clock):
     endpoints = json.loads(CONTRACT.read_text(encoding="utf-8"))["endpoints"]
-    assert len(endpoints) == 74  # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30) + EP-ACC-09..17 (CR-008 T3-T8) + EP-ACC-18..21 (T9-T12)
+    assert len(endpoints) == 77  # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30) + EP-ACC-09..17 (CR-008 T3-T8) + EP-ACC-18..21 (T9-T12) + EP-ACC-22..24 (CR-011 F4)
     assert [(e["id"], e["method"], e["path"]) for e in endpoints if "{user_id}" in e["path"]] == \
         [("EP-ADM-24", "PUT", "/api/admin/managers/{user_id}/screens")]
     owner_names = {"user_id", "owner_id", "on_behalf_of"}

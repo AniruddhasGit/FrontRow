@@ -131,6 +131,11 @@
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-XCT-30 · P-XCT-32 · E4 P-TKT-04 (one row per booking, suppressed) · S-XCT-45"
     },
+    "review_vote": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-011 (owner, 2026-11-22) F4 - the seed writes no review or vote; customers write them"
+    },
     "reward_entry": {
       "rows": 0,
       "basis": "stated by the document cited",

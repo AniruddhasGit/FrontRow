@@ -11,13 +11,21 @@ documents disagree, so this clause needs a Bible amendment, not a code change.
 
 from __future__ import annotations
 
+import re
+
 from ._support import rg
+
+# CR-011 (owner, 2026-11-22): the film page's "You might also like" - films sharing its genres, the same list for every
+# viewer - is built by one helper named `recommended` (frontend/src/features/discover/discover.ts). That identifier is
+# allowed; every other form of the word (a recommender, recommendation machinery) is still refused.
+ALSO_LIKE_HELPER = re.compile(r"\brecommended\b")
 
 
 def test_model_vocabulary_appears_only_where_it_says_there_is_none():
     pattern = r"openai|anthropic|bedrock|sagemaker|huggingface|cohere|vertexai|embedding|inference|recommend"
     hits = rg(pattern, "backend/app", "backend/migrations", "frontend/src", ignore_case=True)
-    assert [h for h in hits if "no artificial-intelligence feature" not in h[2]] == []
+    assert [h for h in hits if "no artificial-intelligence feature" not in h[2]
+            and re.search(pattern, ALSO_LIKE_HELPER.sub("", h[2]), re.IGNORECASE)] == []
 
 
 def test_no_boto3_client_outside_s3_sqs_ses():

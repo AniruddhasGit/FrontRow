@@ -391,6 +391,7 @@ movie_rating = Table(
     Column('user_id', BigInteger, nullable=False),
     Column('movie_id', BigInteger, nullable=False),
     Column('score', Integer, nullable=False),
+    Column('review_text', Text, nullable=True),  # CR-011 F4
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Column('updated_at', TIMESTAMP(timezone=True), nullable=True),
 )
@@ -405,4 +406,14 @@ movie_like = Table(
     Column('liked', Boolean, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
     Column('updated_at', TIMESTAMP(timezone=True), nullable=True),
+)
+
+
+review_vote = Table(  # CR-011 F4: one Helpful vote per customer per review
+    'review_vote',
+    metadata,
+    Column('id', BigInteger, Identity(always=True), primary_key=True, nullable=False),
+    Column('rating_id', BigInteger, nullable=False),
+    Column('user_id', BigInteger, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
 )

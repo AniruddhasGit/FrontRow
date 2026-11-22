@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import logging
 import re
 from collections.abc import AsyncIterator
@@ -97,7 +98,10 @@ def _json(body: object) -> bytes:
 
 def _fingerprint(endpoint: str, **params: object) -> str:
     """The listings cache key's filter component: every parameter that can change the body, resolved."""
-    canonical = json.dumps({"endpoint": endpoint, **params}, sort_keys=True, default=str)
+    # The deployed commit is part of the key: a new release can change a listing's shape, and an old release's
+    # entry (live for its TTL) once crashed /films (rating.average_tenths undefined, 2026-11-22).
+    canonical = json.dumps({"endpoint": endpoint, "release": os.environ.get("RENDER_GIT_COMMIT", ""), **params},
+                           sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()[:32]
 
 
@@ -173,6 +177,23 @@ async def get_poster(request: Request, movie_id: Id) -> Response:
     target = key if key.startswith("/art/") else posters.store(request.app.state).presign(key)
     return RedirectResponse(target, status_code=302,
                             headers={"Cache-Control": f"max-age={settings.POSTER_REDIRECT_CACHE_SECONDS}"})
+
+
+BAD_REVIEW_SORT = "Sort reviews by newest or helpful."
+
+
+@router.get("/movies/{movie_id}/reviews")
+async def movie_reviews(request: Request, movie_id: Id, sort: str = Query("newest")) -> Response:
+    """CR-011 F4: the film page's reviews, public like the film itself. Uncached: a vote or an edit shows at once, and
+    it is read once per film page visit (no poll)."""
+    if sort not in catalogue.REVIEW_SORTS:
+        raise ApiError(422, "VALIDATION_FAILED", BAD_REVIEW_SORT, {"field": "sort"})
+    async with _db(request) as conn:
+        zones = await catalogue.load_zones(conn)
+        found = await catalogue.reviews(conn, request.app.state.clock.now(), movie_id, sort, catalogue.default_zone(zones))
+    if found is None:
+        raise ApiError(404, "NOT_FOUND", MOVIE_NOT_SHOWING)
+    return Response(_json(found), media_type="application/json")
 
 
 SEARCH_TOO_LONG = "Search for at most 100 characters."

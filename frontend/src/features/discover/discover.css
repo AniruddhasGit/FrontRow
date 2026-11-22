@@ -610,3 +610,330 @@
 .fr-movie-head .fr-title-row .fr-stars {
   font-size: var(--fr-text-md);
 }
+
+/* ---- CR-011 F3: the film page in the reference layout ---------------------------------------------------------- */
+/* The hero: the film's own poster, blurred and darkened, behind the poster card and the facts (a dark room in both
+   themes, so its text uses the notice inks that hold contrast on dark). Nothing wider than the page. */
+.fr-movie-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin: 0 0 var(--fr-space-6);
+  border-radius: var(--fr-radius-lg);
+  background: var(--fr-surface-notice);
+  color: var(--fr-ink-on-notice);
+}
+.fr-movie-backdrop {
+  position: absolute;
+  inset: -40px;
+  z-index: -1;
+  background-size: cover;
+  background-position: center 30%;
+  filter: blur(28px) saturate(1.2) brightness(0.45);
+  transform: scale(1.1);
+}
+.fr-movie-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--fr-surface-notice) 92%, transparent) 0%,
+    color-mix(in srgb, var(--fr-surface-notice) 55%, transparent) 60%, color-mix(in srgb, var(--fr-surface-notice) 80%, transparent));
+}
+.fr-movie-hero-inner {
+  display: grid;
+  grid-template-columns: minmax(7rem, 15rem) minmax(0, 1fr);
+  gap: var(--fr-space-5);
+  padding: var(--fr-space-5);
+  align-items: start;
+}
+.fr-movie-poster .fr-poster {
+  border-radius: var(--fr-radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+.fr-movie-in {
+  margin: calc(-1 * var(--fr-space-5)) var(--fr-space-3) 0;
+  position: relative;
+  padding: var(--fr-space-1) var(--fr-space-2);
+  border-radius: 0 0 var(--fr-radius-md) var(--fr-radius-md);
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--fr-ink-on-notice);
+  font-size: var(--fr-text-xs);
+  text-align: center;
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+}
+.fr-movie-info {
+  display: grid;
+  gap: var(--fr-space-3);
+  align-content: start;
+  min-width: 0;
+}
+.fr-movie-hero h1 {
+  margin: 0;
+  font-family: var(--fr-font-display);
+  font-size: clamp(var(--fr-text-xl), 4vw, 3rem);
+  line-height: 1.05;
+  color: var(--fr-ink-on-notice);
+  overflow-wrap: anywhere;
+}
+.fr-rate-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fr-space-2) var(--fr-space-4);
+  max-width: 28rem;
+  padding: var(--fr-space-3) var(--fr-space-4);
+  border-radius: var(--fr-radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.fr-rate-figure {
+  font-weight: var(--fr-weight-bold);
+  font-size: var(--fr-text-lg);
+}
+.fr-rate-figure > span:first-child {
+  color: var(--fr-surface-accent);
+}
+.fr-rate-votes {
+  font-size: var(--fr-text-sm);
+  font-weight: var(--fr-weight-medium);
+  opacity: 0.85;
+}
+.fr-movie-hero .fr-action-secondary {
+  color: var(--fr-ink-on-notice);
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+}
+.fr-movie-meta {
+  margin: 0;
+  opacity: 0.9;
+}
+.fr-movie-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2);
+  margin: 0;
+}
+.fr-movie-chips .fr-chip {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--fr-ink-on-ticket);
+}
+.fr-book {
+  justify-self: start;
+  width: auto;
+  min-width: 14rem;
+  text-align: center;
+  text-decoration: none;
+}
+.fr-movie-hero .fr-movie-actions {
+  grid-column: 1 / -1;
+}
+.fr-movie-hero .fr-share-note {
+  color: var(--fr-ink-on-notice);
+}
+@media (max-width: 40rem) {
+  .fr-movie-hero-inner {
+    grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+    gap: var(--fr-space-3);
+    padding: var(--fr-space-4);
+  }
+  .fr-movie-info {
+    display: contents;
+  }
+  .fr-movie-hero .fr-rate-box,
+  .fr-movie-hero .fr-movie-meta,
+  .fr-movie-hero .fr-movie-chips,
+  .fr-movie-hero .fr-book {
+    grid-column: 1 / -1;
+  }
+  .fr-movie-hero h1,
+  .fr-movie-hero .fr-opens {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+  }
+  .fr-book {
+    justify-self: stretch;
+  }
+}
+@media (min-width: 60rem) {
+  .fr-movie-hero .fr-movie-actions {
+    position: absolute;
+    top: var(--fr-space-4);
+    right: var(--fr-space-4);
+  }
+  .fr-movie-hero-inner {
+    padding: var(--fr-space-7) var(--fr-space-6);
+  }
+}
+
+/* The showtimes: a card per screen, its times wrapping inside it; the chosen time lit */
+.fr-showtimes > h2,
+.fr-also h2,
+.fr-reviews h2 {
+  font-family: var(--fr-font-display);
+  font-size: var(--fr-text-xl);
+  color: var(--fr-ink-strong);
+  margin: 0 0 var(--fr-space-3);
+}
+.fr-screens {
+  display: grid;
+  gap: var(--fr-space-3);
+  margin-top: var(--fr-space-4);
+}
+.fr-screen-card {
+  padding: var(--fr-space-4);
+  border-radius: var(--fr-radius-lg);
+  background: var(--fr-surface-raised);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  box-shadow: var(--fr-shadow-card);
+}
+.fr-screen-card h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fr-space-2);
+  margin: 0 0 var(--fr-space-3);
+  font-size: var(--fr-text-md);
+  letter-spacing: var(--fr-track-caps);
+  color: var(--fr-ink-strong);
+}
+.fr-screen-card .fr-times {
+  margin: 0;
+}
+.fr-time[aria-current="true"] {
+  background: var(--fr-surface-accent);
+  border-color: var(--fr-surface-accent);
+  color: var(--fr-ink-on-accent);
+}
+.fr-time[aria-current="true"] .fr-time-hall,
+.fr-time[aria-current="true"] .fr-time-price {
+  color: inherit;
+}
+
+/* Cast and crew: portrait tiles with initials (no photos) */
+.fr-people li {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--fr-space-3);
+  align-items: center;
+}
+.fr-people li > :not(.fr-avatar) {
+  grid-column: 2;
+}
+.fr-people li .fr-avatar {
+  grid-row: span 2;
+}
+.fr-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--fr-surface-accent) 55%, var(--fr-surface-inset)), var(--fr-surface-inset));
+  color: var(--fr-ink-strong);
+  font-weight: var(--fr-weight-bold);
+  font-size: var(--fr-text-sm);
+  letter-spacing: 0.04em;
+}
+
+/* Reviews */
+.fr-reviews {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--fr-space-3);
+}
+.fr-review-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--fr-space-3);
+}
+.fr-review-card {
+  display: grid;
+  gap: var(--fr-space-3);
+  align-content: start;
+  padding: var(--fr-space-4);
+  border-radius: var(--fr-radius-lg);
+  background: var(--fr-surface-raised);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  box-shadow: var(--fr-shadow-card);
+  min-width: 0;
+}
+.fr-review-who {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--fr-space-3);
+  align-items: center;
+}
+.fr-review-who strong {
+  display: block;
+  color: var(--fr-ink-strong);
+  overflow-wrap: anywhere;
+}
+.fr-review-badge {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 var(--fr-space-2);
+  border-radius: var(--fr-radius-pill);
+  background: color-mix(in srgb, var(--fr-screen-ink) 14%, transparent);
+  color: var(--fr-screen-ink);
+  font-size: var(--fr-text-xs);
+}
+.fr-review-score {
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-accent-ink);
+}
+.fr-review-text {
+  margin: 0;
+  color: var(--fr-ink);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.fr-review-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fr-space-2) var(--fr-space-4);
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+}
+.fr-helpful {
+  margin-left: auto;
+}
+.fr-review-form {
+  display: grid;
+  gap: var(--fr-space-2);
+  margin-top: var(--fr-space-3);
+}
+.fr-review-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+  border: var(--fr-stroke-hair) solid var(--fr-control-edge);
+  background: var(--fr-surface-inset);
+  color: var(--fr-ink-strong);
+  font: inherit;
+  resize: vertical;
+}
+.fr-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2);
+}
+.fr-review-open {
+  margin-top: var(--fr-space-3);
+}
+
+/* You might also like */
+.fr-also {
+  margin-top: var(--fr-space-7);
+}
+.fr-rail-note {
+  margin: calc(-1 * var(--fr-space-2)) 0 var(--fr-space-3);
+  font-size: var(--fr-text-sm);
+  color: var(--fr-ink-muted);
+}

@@ -28,8 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 # THE visibility predicate (P-BRW-01, P-ADM-05) lives in one module; every movie-addressed query here applies it.
 from app.domain.visibility import visible
-from app.models import (certification, cinema, format, genre, language, movie, movie_genre, movie_like, movie_rating, screen,
-                        showtime)
+from app.models import (certification, cinema, format, genre, language, movie, movie_genre, movie_like, movie_rating, review_vote,
+                        screen, showtime, users)
 
 
 class SortOption(str, enum.Enum):
@@ -204,6 +204,33 @@ async def get_movie(conn: AsyncConnection, t: datetime, movie_id: int, zone: str
     film = _film(row, (await _genres(conn, [row.id]))[row.id], zone, t, (await _ratings(conn, [row.id]))[row.id])
     return {**film, "rating": await rating_breakdown(conn, row.id), "cast": people(row.cast_members),
             "crew": people(row.crew_members)}
+
+
+REVIEW_LIMIT = 50
+REVIEW_SORTS = ("newest", "helpful")
+REVIEWER = "FrontRow viewer"  # a reviewer who set no display name; the email is never shown
+
+
+async def reviews(conn: AsyncConnection, t: datetime, movie_id: int, sort: str, zone: str) -> dict | None:
+    """CR-011 F4: a visible film's reviews - ratings that carry text, all by verified viewers (the write's gate) - newest
+    first or most helpful first (ties newest), at most REVIEW_LIMIT, with the total. None when the film is not visible."""
+    if (await conn.execute(select(movie.c.id).where(movie.c.id == movie_id, visible(t)))).first() is None:
+        return None
+    helpful = (select(func.count()).select_from(review_vote).where(review_vote.c.rating_id == movie_rating.c.id)
+               .scalar_subquery())
+    written = func.coalesce(movie_rating.c.updated_at, movie_rating.c.created_at)
+    order = [written.desc(), movie_rating.c.id.desc()]
+    if sort == "helpful":
+        order = [helpful.desc(), *order]
+    where = (movie_rating.c.movie_id == movie_id, movie_rating.c.review_text.is_not(None))
+    total = (await conn.execute(select(func.count()).select_from(movie_rating).where(*where))).scalar()
+    rows = (await conn.execute(select(movie_rating.c.id, movie_rating.c.score, movie_rating.c.review_text, written.label("at"),
+                                      users.c.display_name, helpful.label("helpful"))
+                               .select_from(movie_rating.join(users, movie_rating.c.user_id == users.c.id))
+                               .where(*where).order_by(*order).limit(REVIEW_LIMIT))).all()
+    return {"movie_id": movie_id, "count": total, "items": [
+        {"id": r.id, "author": (r.display_name or "").strip() or REVIEWER, "score": r.score, "text": r.review_text,
+         "written_at": local_iso(r.at, zone), "helpful": r.helpful} for r in rows]}
 
 
 SEARCH_LIMIT = 8

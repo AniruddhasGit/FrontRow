@@ -2,16 +2,21 @@
 // With no date the server answers for TODAY IN THE CINEMA'S ZONE and says which date it used; the strip is today
 // through the last day of the film's window (P-BRW-06). A closed showtime is listed, marked, not focusable, and
 // goes nowhere (P-BRW-07).
-import { useEffect, useRef, useState } from "react";
+// CR-011 F3 (the owner's reference: a big film page): a hero over the film's own poster light - poster, the rating box
+// with Rate now, runtime / genres / certificate / release date, the formats and language, Book tickets and Share; then
+// the showtimes for the chosen date grouped by screen; About, cast and crew, ratings and reviews; You might also like.
+// F5: choosing a time does not jump to the seats - it shows that screen's door (Door.tsx), and the door walks you in.
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { formatPaise } from "../admin/money";
 import { Link, navigate } from "../../router";
-import { get, query, type FilmDetail, type Showtime } from "./api";
+import { get, query, type Film, type FilmDetail, type Showtime } from "./api";
 import { DayStrip } from "./DayStrip";
 import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logic";
 import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
-import { Genres, RatingBadge, releaseLabel, ShareButton } from "../discover/Bits";
-import { pushRecent, recentStore } from "../discover/discover";
+import { FilmTile, releaseLabel, ShareButton } from "../discover/Bits";
+import { byScreen, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
+import { TheatreDoor } from "../discover/Door";
 import { FilmDetails } from "../discover/FilmDetails";
 import "./browse.css";
 
@@ -22,7 +27,12 @@ const wallClock = () => Date.now();
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
 
 // The first state, for the render harness (react-dom/server runs no effect). Production passes no seed.
-type Seed = { film?: FilmDetail | "missing"; date?: string | null; listed?: Listed; failed?: boolean };
+type Seed = { film?: FilmDetail | "missing"; date?: string | null; listed?: Listed; failed?: boolean; chosen?: number | null };
+
+/** `2h 13m` / `55m` */
+function hours(minutes: number): string {
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
+}
 
 export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: string; now?: () => number; seed?: Seed }) {
   const [film, setFilm] = useState<FilmDetail | null | "missing">(seed?.film ?? null);
@@ -33,6 +43,22 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
   const [announce, setAnnounce] = useState("");
   const [saved, toggle] = useSaved(); // CR-008 T4
   const first = useRef(true);
+  // CR-011 F5: the show whose door is open, kept in the URL (?show=) so Back from the seat page returns to it
+  const [chosen, setChosen] = useState<number | null>(() => (seed ? seed.chosen ?? null
+    : Number(new URLSearchParams(window.location.search).get("show")) || null));
+  const [all, setAll] = useState<Film[]>([]); // CR-011 F3: the listing, for You might also like
+  const door = useRef<HTMLDivElement>(null);
+  const toDoor = useRef(false);
+
+  useEffect(() => {
+    get<{ movies: Film[] }>("/api/movies").then((r) => r.ok && setAll(r.body.movies));
+  }, []);
+  useEffect(() => {
+    if (!toDoor.current || chosen === null) return;
+    toDoor.current = false;
+    door.current?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    door.current?.querySelector<HTMLButtonElement>(".fr-door")?.focus({ preventScroll: true });
+  }, [chosen]);
 
   useEffect(() => {
     get<FilmDetail>(`/api/movies/${encodeURIComponent(movieId)}`).then((r) => {
@@ -61,7 +87,13 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
 
   const choose = (day: string | null) => {
     setDate(day);
+    setChosen(null);
     window.history.replaceState(window.history.state, "", `/movies/${movieId}${query({ date: day })}`);
+  };
+  const pick = (id: number) => {
+    toDoor.current = true;
+    setChosen(id);
+    window.history.replaceState(window.history.state, "", `/movies/${movieId}${query({ date, show: id })}`);
   };
 
   if (film === "missing") {
@@ -73,26 +105,50 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
     );
   }
   const selected = date ?? listed?.date ?? null;
+  const show = listed?.showtimes.find((t) => t.id === chosen) ?? null;
+  const also = film ? recommended(film, all) : [];
   const days = film ? movieStrip(now(), film.display_until) : [];
 
   return (
     <section className="fr-movie">
       {film ? (
-        <header className="fr-movie-head">
-          <Poster src={film.poster_url} title={film.title} />
-          <div>
-            {film.coming_soon && film.release_date ? <p className="fr-opens">Opens {releaseLabel(film.release_date)}</p> : null}
-            <div className="fr-title-row">
-              <h1>{film.title}</h1>
-              {film.coming_soon ? null : <RatingBadge rating={film.rating} />}
+        <header className="fr-movie-hero">
+          <div className="fr-movie-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${film.poster_url})` }} />
+          <div className="fr-movie-hero-inner">
+            <div className="fr-movie-poster">
+              <Poster src={film.poster_url} title={film.title} />
+              <p className="fr-movie-in">{film.coming_soon ? "Coming soon" : "In cinemas"}</p>
             </div>
-            <Genres film={film} />
-            <p className="fr-meta">
-              <span className="fr-mono">{film.runtime_minutes} min</span>
-              <span className="fr-chip">{film.certification.name}</span>
-              <span>{film.language.name}</span>
-            </p>
-            <p className="fr-movie-synopsis">{film.synopsis}</p>
+            <div className="fr-movie-info">
+              {film.coming_soon && film.release_date ? <p className="fr-opens">Opens {releaseLabel(film.release_date)}</p> : null}
+              <h1>{film.title}</h1>
+              <div className="fr-rate-box">
+                {film.coming_soon ? (
+                  <span className="fr-rate-figure">♥ {film.likes} {film.likes === 1 ? "person wants" : "people want"} to see it</span>
+                ) : (
+                  <span className="fr-rate-figure" role="img" aria-label={ratingName(film.rating)}>
+                    <span aria-hidden="true">★ {ratingText(film.rating) ?? "New"}{film.rating.count ? "/10" : ""}</span>
+                    <span className="fr-rate-votes" aria-hidden="true">
+                      {film.rating.count ? ` (${film.rating.count} ${film.rating.count === 1 ? "vote" : "votes"})` : " No votes yet"}
+                    </span>
+                  </span>
+                )}
+                <a className="fr-action-secondary fr-rate-now" href="#film-ratings" onClick={(e) => jump(e, "film-ratings")}>
+                  {film.coming_soon ? "Like it" : "Rate now"}
+                </a>
+              </div>
+              <p className="fr-movie-meta">
+                {[hours(film.runtime_minutes), film.genres.map((g) => g.name).join(", "), film.certification.name,
+                  film.release_date ? releaseLabel(film.release_date) : ""].filter(Boolean).join(" • ")}
+              </p>
+              <p className="fr-movie-chips">
+                {formats(listed?.showtimes ?? []).map((f) => <span key={f} className="fr-chip">{f}</span>)}
+                <span className="fr-chip">{film.language.name}</span>
+              </p>
+              {film.coming_soon ? null : (
+                <a className="fr-action fr-book" href="#showtimes" onClick={(e) => jump(e, "showtimes")}>Book tickets</a>
+              )}
+            </div>
             <div className="fr-movie-actions">
               <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
               <ShareButton title={film.title} text={`${film.title} at FrontRow`} path={`/movies/${film.id}`} />
@@ -100,6 +156,8 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
           </div>
         </header>
       ) : null}
+      <section id="showtimes" className="fr-showtimes" aria-labelledby="showtimes-title">
+      <h2 id="showtimes-title">Showtimes</h2>
       {days.length > 0 ? <DayStrip label="Choose a date" days={days} selected={selected} onSelect={choose} /> : null}
       <p className="fr-visually-hidden" aria-live="polite">{announce}</p>
       {failed ? (
@@ -124,27 +182,59 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
         </div>
       ) : (
         <>
-          <ul className="fr-times">
-            {listed.showtimes.map((st) => (
-              <li key={st.id}>
-                <ShowtimeButton st={st} />
-              </li>
+          {/* CR-011 F3: one card per screen, its times as buttons; choosing one opens that screen's door below */}
+          <div className="fr-screens">
+            {byScreen(listed.showtimes).map((g) => (
+              <div key={g.screen.id} className="fr-screen-card">
+                <h3>{g.screen.name} {formats(g.shows).map((f) => <span key={f} className="fr-chip">{f}</span>)}</h3>
+                <ul className="fr-times">
+                  {g.shows.map((st) => (
+                    <li key={st.id}>
+                      <ShowtimeButton st={st} chosen={st.id === chosen} onChoose={pick} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
           {listed.next_date_with_showtimes && listed.showtimes.every((s) => s.sales_closed) ? (
             // Every showtime here is closed: the list stays, and the next buyable date is offered (P-BRW-06 1a).
             <button type="button" className="fr-clear" onClick={() => choose(listed.next_date_with_showtimes)}>
               Next: {dayLabel(listed.next_date_with_showtimes)}
             </button>
           ) : null}
+          {film && show && !show.sales_closed ? <div ref={door}><TheatreDoor show={show} film={film} now={now()} /></div> : null}
         </>
       )}
+      </section>
       {film && film.rating.breakdown ? <FilmDetails film={film} onChanged={setFilm} /> : null}
+      {film && also.length ? (
+        <section aria-labelledby="also-like" className="fr-also">
+          <div className="fr-row-head">
+            <h2 id="also-like">You might also like</h2>
+            <p>Films that share its genres.</p>
+            <a className="fr-see-all" href="/films" onClick={(e) => { e.preventDefault(); navigate("/films"); }}>View all films →</a>
+          </div>
+          <ul className="fr-tiles">{also.map((f) => <FilmTile key={f.id} film={f} />)}</ul>
+        </section>
+      ) : null}
     </section>
   );
 }
 
-function ShowtimeButton({ st }: { st: Showtime }) {
+/** The formats a set of showtimes is shown in (2D, IMAX...), once each. */
+function formats(shows: Showtime[]): string[] {
+  return [...new Set(shows.map((t) => t.format?.name).filter((f): f is string => Boolean(f)))];
+}
+
+/** An in-page jump (Rate now, Book tickets) that scrolls without adding a history step. */
+function jump(e: MouseEvent<HTMLAnchorElement>, id: string) {
+  e.preventDefault();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(id)?.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+}
+
+function ShowtimeButton({ st, chosen, onChoose }: { st: Showtime; chosen: boolean; onChoose: (id: number) => void }) {
   const name = showtimeName(st, formatPaise);
   const body = (
     <>
@@ -159,10 +249,11 @@ function ShowtimeButton({ st }: { st: Showtime }) {
   }
   const to = `/showtimes/${st.id}`;
   return (
-    <a className="fr-time" href={to} aria-label={name} onClick={(e) => {
+    // CR-011 F5: a plain click chooses the show and opens its door; a modified click still opens the seats in a new tab
+    <a className="fr-time" href={to} aria-label={name} aria-current={chosen || undefined} onClick={(e) => {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
-      navigate(to);
+      onChoose(st.id);
     }}>
       {body}
     </a>

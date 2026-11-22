@@ -9,6 +9,7 @@ import { formatPaise } from "../admin/money";
 import { seatLabel, selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { screenFirst, screenNumber, seatTip, stateWord, type BakedMeta, type Mode } from "./hall";
 import type { Film } from "./HallScene";
+import { WALKIN } from "./hallReady";
 import "./hall3d.css";
 
 const HallScene = lazy(() => import("./HallScene"));
@@ -76,9 +77,22 @@ export function Hall3D({ map, film = null, mine, onTap }: {
       return null;
     }
   });
+  // CR-011 F6: through the film page's door (it leaves fr.walkin = this showtime), the hall plays the walk-in: the baked
+  // route from the ENTRY door to the seats (meta.intro), not the seated arrival.
+  const [walked] = useState(() => {
+    try {
+      const v = window.sessionStorage.getItem(WALKIN);
+      window.sessionStorage.removeItem(WALKIN);
+      return v;
+    } catch {
+      return null;
+    }
+  });
   const showtimeId = map?.showtime.id;
   const arrival = useMemo(() => (meta?.seats?.length
-    ? { ...meta, intro: flown !== null && String(showtimeId) === flown ? undefined : screenFirst(meta) } : meta), [meta, flown, showtimeId]);
+    ? { ...meta, intro: flown !== null && String(showtimeId) === flown ? undefined
+      : walked !== null && String(showtimeId) === walked && meta.intro?.length ? meta.intro : screenFirst(meta) }
+    : meta), [meta, flown, walked, showtimeId]);
   const onMoving = useCallback((m: boolean) => {
     setMoving(m);
     if (m) setHover(null); // the seat under the pointer is about to change
