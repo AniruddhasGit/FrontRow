@@ -13,6 +13,7 @@ import {
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { hallDrawn } from "./hallReady";
+import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
 import { placeholderGeometry, seatGeometry, type SeatGeo } from "./seatModels";
@@ -388,12 +389,18 @@ function usePainted(paint: Paint | null, aspect: number): Texture | null {
  *  port to the screen's corners, bright where seen edge-on so it reads as a soft shaft, plus specks that drift. The
  *  dust keeps the canvas drawing every frame; with reduced motion it holds still and nothing redraws. */
 const N_DUST = 900;
+/** The light the screen casts right now (BakedRoom eases it toward each new picture); the beam and the dust read it. */
+const WHITE = new Color(1, 1, 1);
+const WARM_FILL = new Color("#6b4a3a");
+const HOUSE_WARM = new Color("#e8a868");
+const SCREEN_LIGHT = { color: new Color(0.78, 0.85, 1.0), luma: 0.25 };
 const BEAM = new ShaderMaterial({
   transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, vertexColors: true,
+  uniforms: { uTint: { value: new Color(0.78, 0.85, 1.0) } },
   // ponytail: the site's bloom lifts it, so it is dimmer than the demo's, and it fades out within 6 m of the eye (seen
   // from under it, a cone face is a flat grey sheet). Tune: the 1.6 and the smoothstep range.
   vertexShader: "varying vec3 vC; varying vec3 vN; varying vec3 vV; varying float vD; void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vD = -mv.z; gl_Position = projectionMatrix * mv; }",
-  fragmentShader: "varying vec3 vC; varying vec3 vN; varying vec3 vV; varying float vD; void main(){ float edge = 1.0 - abs(dot(vN, vV)); float a = pow(edge, 4.0) * vC.r * 1.6 * smoothstep(1.5, 6.0, vD); gl_FragColor = vec4(vec3(0.78,0.85,1.0) * a, 1.0); }",
+  fragmentShader: "uniform vec3 uTint; varying vec3 vC; varying vec3 vN; varying vec3 vV; varying float vD; void main(){ float edge = 1.0 - abs(dot(vN, vV)); float a = pow(edge, 4.0) * vC.r * 1.6 * smoothstep(1.5, 6.0, vD); gl_FragColor = vec4(uTint * a, 1.0); }",
 });
 function Haze({ meta }: { meta: BakedMeta }) {
   const invalidate = useThree((s) => s.invalidate);
@@ -436,7 +443,12 @@ function Haze({ meta }: { meta: BakedMeta }) {
   // display frame (owner, 2026-11-22: "lightweight"). Slow drifting specks read the same at 24.
   const next = useRef(0);
   useEffect(() => () => clearTimeout(next.current), []);
+  const specks = useRef<{ color: Color } | null>(null);
   useFrame(({ clock }) => {
+    // the beam and its dust carry the picture's light: whiter than the picture (a projector beam is mostly white
+    // light), brighter for a bright frame
+    BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar(0.55 + 0.9 * SCREEN_LIGHT.luma);
+    specks.current?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55);
     if (still) return;
     const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
     seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
@@ -449,11 +461,54 @@ function Haze({ meta }: { meta: BakedMeta }) {
     <>
       <mesh geometry={beam} material={BEAM} renderOrder={2} />
       <points geometry={dust} renderOrder={3}>
-        <pointsMaterial size={0.016} map={dot} transparent depthWrite={false} blending={AdditiveBlending} color="#d9e4ff" opacity={0.55} toneMapped={false} />
+        <pointsMaterial ref={specks} size={0.016} map={dot} transparent depthWrite={false} blending={AdditiveBlending} color="#d9e4ff" opacity={0.55} toneMapped={false} />
       </points>
     </>
   );
 }
+
+/** The screen's picture, averaged into the light it casts (screenGlow.ts). */
+function sampleGlow(t: Texture | null): Glow {
+  const img = t?.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+  if (!img?.width) return NO_GLOW;
+  try {
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 27;
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(img, 0, 0, 64, 27);
+    return glowOf(g.getImageData(0, 0, 64, 27).data, 64, 27);
+  } catch {
+    return NO_GLOW;
+  }
+}
+
+/** The baked room lit by the screen (owner, 2026-11-22: "if there is something bright on the screen the whole theatre
+ *  colors do change ... I want the light to make sense and feel real"). The bake is fixed light, so this adds what the
+ *  picture casts, per pixel, on top of it:
+ *   - the surface takes the picture's hue, strongest near the screen and falling off with distance like a lamp
+ *     (1 / (1 + 0.015 d^2) over the metres d from the screen plane);
+ *   - the picture's left half lights the side of the room it is on (the picture is mirrored onto +x), the right half
+ *     the other side, blended across the room;
+ *   - the whole room lifts for a bright frame and sinks for a dark one;
+ *   - more of the picture's colour is reflected where the light falls hardest (the spill on the front rows). Every term
+ *     scales the surface's own baked light, as real reflected light scales with albedo: a black seat stays black,
+ *     and nothing is added as a flat wash (that read as fog).
+ *  The uniforms ease toward each new picture over about a second (a cut on a real screen re-lights the room; it does
+ *  not flicker). Tune: 0.015 (reach), 0.22 + 0.38 (tint), 0.74 + 0.56 (brightness swing), 0.55 (spill), 0.6 + 0.8 (sheen). */
+const GLOW_VERT = "#include <begin_vertex>\n  vRoomW = (modelMatrix * vec4(transformed, 1.0)).xyz;";
+const GLOW_FRAG = "uniform vec3 uGlowPos; uniform vec3 uGlowNeg; uniform float uLuma; uniform float uScreenZ; uniform float uHalfW;\nvarying vec3 vRoomW;\n";
+const GLOW_APPLY = `float glowD = max(0.0, uScreenZ - vRoomW.z);
+  float glowNear = 1.0 / (1.0 + 0.015 * glowD * glowD);
+  vec3 glow = mix(uGlowNeg, uGlowPos, smoothstep(-uHalfW, uHalfW, vRoomW.x));
+  vec3 glowHue = glow / max(max(glow.r, glow.g), max(glow.b, 0.05));
+  outgoingLight *= mix(vec3(1.0), glowHue, 0.22 + 0.38 * glowNear) * (0.74 + 0.56 * uLuma * (0.35 + 0.65 * glowNear))
+    + glow * glowNear * 0.55;
+  // the sheen: every surface reflects some of the screen's own colour in proportion to how lit it already is (its
+  // luminance, not its paint colour), so a cyan frame turns even the orange panels cool and a red frame warms them
+  outgoingLight += glowHue * glowNear * dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722)) * (0.6 + 0.8 * uLuma);
+  #include <opaque_fragment>`;
 
 function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null }) {
   const invalidate = useThree((s) => s.invalidate);
@@ -462,6 +517,16 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
+  // the light on the room now (eased in useFrame below toward `target`, the light the current picture casts)
+  const glowU = useMemo(() => ({
+    uGlowPos: { value: new Color(...NO_GLOW.left) }, uGlowNeg: { value: new Color(...NO_GLOW.right) },
+    uLuma: { value: NO_GLOW.luma }, uScreenZ: { value: meta.screen.z },
+    uHalfW: { value: Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 },
+  }), [meta]);
+  const target = useRef<Glow>(NO_GLOW);
+  const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
+  const fill = useRef<{ color: Color; intensity: number } | null>(null);
+  const house = useRef<{ color: Color } | null>(null);
   useEffect(() => {
     let live = true;
     new GLTFLoader().load(`/halls/hall${n}.glb`, (g) => {
@@ -471,7 +536,13 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
         if (!m.isMesh) return;
         const was = m.material as MeshStandardMaterial;
         if (m.name.startsWith("bake_")) {
-          m.material = new MeshBasicMaterial({ map: was.map, color: new Color(ROOM_GAIN, ROOM_GAIN, ROOM_GAIN), toneMapped: false });
+          const lit = new MeshBasicMaterial({ map: was.map, color: new Color(ROOM_GAIN, ROOM_GAIN, ROOM_GAIN), toneMapped: false });
+          lit.onBeforeCompile = (sh) => {
+            Object.assign(sh.uniforms, glowU);
+            sh.vertexShader = "varying vec3 vRoomW;\n" + sh.vertexShader.replace("#include <begin_vertex>", GLOW_VERT);
+            sh.fragmentShader = GLOW_FRAG + sh.fragmentShader.replace("#include <opaque_fragment>", GLOW_APPLY);
+          };
+          m.material = lit;
         } else if (m.name.includes("screen")) {
           const geo = m.geometry;
           geo.computeBoundingBox();
@@ -493,7 +564,37 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
     return () => {
       live = false;
     };
-  }, [n, invalidate]);
+  }, [n, invalidate, glowU]);
+  useEffect(() => {
+    target.current = sampleGlow(art);
+    invalidate();
+  }, [art, invalidate]);
+  useFrame((_, delta) => {
+    const k = 1 - Math.exp(-Math.min(delta, 0.1) * 3); // ~1 s to settle on a new picture
+    const t = target.current;
+    const off = (c: Color, v: Glow["left"]) => Math.abs(c.r - v[0]) + Math.abs(c.g - v[1]) + Math.abs(c.b - v[2]);
+    const settling = Math.abs(t.luma - glowU.uLuma.value) > 1e-3 || off(glowU.uGlowPos.value, t.left) > 3e-3
+      || off(glowU.uGlowNeg.value, t.right) > 3e-3; // redraw only while the light is still moving
+    glowU.uGlowPos.value.lerp(new Color(...t.left), k);
+    glowU.uGlowNeg.value.lerp(new Color(...t.right), k);
+    glowU.uLuma.value += (t.luma - glowU.uLuma.value) * k;
+    SCREEN_LIGHT.color.copy(glowU.uGlowPos.value).add(glowU.uGlowNeg.value).multiplyScalar(0.5);
+    SCREEN_LIGHT.luma = glowU.uLuma.value;
+    // the live seats (lit, not baked) take the same light from the screen
+    if (seatLight.current) {
+      const c = SCREEN_LIGHT.color;
+      seatLight.current.color.copy(c).multiplyScalar(1 / Math.max(c.r, c.g, c.b, 0.05));
+      seatLight.current.intensity = 30 * (0.45 + 1.1 * SCREEN_LIGHT.luma);
+    }
+    // the room's soft fill is mostly light bounced off the screen: half house-warm, half the picture's hue
+    if (fill.current) {
+      fill.current.color.copy(WARM_FILL).lerp(seatLight.current?.color ?? WARM_FILL, 0.5);
+      fill.current.intensity = 0.35 * (0.6 + 0.9 * SCREEN_LIGHT.luma);
+    }
+    // the house light over the seat backs is partly screen light off the ceiling and walls
+    if (house.current && seatLight.current) house.current.color.copy(HOUSE_WARM).lerp(seatLight.current.color, 0.35);
+    if (settling) invalidate();
+  });
   useEffect(() => {
     if (!screen.current) return;
     screen.current.material = new MeshBasicMaterial({ map: art, color: art ? new Color(1.2, 1.2, 1.2) : tone.screen, toneMapped: false });
@@ -511,9 +612,9 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
     <group>
       {room && <primitive object={room} />}
       {room && <Haze meta={meta} />}
-      <pointLight position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
-      <pointLight position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
-      <ambientLight intensity={0.35} color="#6b4a3a" />
+      <pointLight ref={seatLight} position={[0, meta.screen.zc, -1.5]} color={tone.screen} intensity={30} distance={40} decay={1.2} />
+      <pointLight ref={house} position={[look[0], look[1] + 4, look[2]]} color="#e8a868" intensity={12} distance={30} decay={1.4} />
+      <ambientLight ref={fill} intensity={0.35} color="#6b4a3a" />
     </group>
   );
 }
