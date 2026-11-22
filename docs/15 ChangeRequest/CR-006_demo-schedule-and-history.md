@@ -57,7 +57,8 @@ Neon Reverie, The Last Stage, Apartment 4B, Voidbound, Aria and the Star Whales 
 
 A second batch of nine followed the same day (20 films in all): The Dragon's Oath, The Astral Grimoire, The Redwood
 Covenant, The Marigold Reunion, The Edge of the Map, Paws & Claws: The Great Alley Caper, Caldera, Iron Horizon and
-Silent Sky. `demo_films.py` was run on Neon again: 20 published, 486 future showtimes rotated across them.
+Silent Sky. The nine are **held back on Neon** (unpublished, no showtimes) until the web service deploys their images; after
+that deploy, run `demo_films.py` on Neon once to publish all 20 and deal the showtimes across them.
 
 - **Images:** posters are 1000×1500 WebP, about 210–370 KB. Stills are cropped to the screen's 2.39:1 and are
   1920×803 WebP, about 90–240 KB. Both ship with the website under `frontend/public/art/films/`.
