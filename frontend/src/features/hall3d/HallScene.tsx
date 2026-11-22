@@ -12,6 +12,7 @@ import {
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
+import { stillPath } from "./still";
 import { hallDrawn } from "./hallReady";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
@@ -338,10 +339,9 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
     if (film) {
       // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
       // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
-      void fetch(`/api/movies/${film.id}/poster`, { method: "HEAD" }).then((r) => {
-        const path = new URL(r.url).pathname;
-        if (!/^\/art\/films\/[a-z0-9-]+\.webp$/.test(path)) return;
-        new TextureLoader().load(path.replace(/\.webp$/, "-still.webp"), (t) => {
+      void stillPath(film.id, (u, init) => fetch(u, init)).then((path) => {
+        if (!path || !live) return;
+        new TextureLoader().load(path, (t) => {
           t.colorSpace = SRGBColorSpace;
           t.userData.still = true; // the film is on: the house lights may go down
           show(t, true);
