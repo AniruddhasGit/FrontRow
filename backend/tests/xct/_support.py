@@ -121,6 +121,7 @@ LOCK_ALLOW_LIST = {
                       "language", "certification", "genre", "format"},  # version-checked admin edits (P-ADM-13)
     "workers/__init__.py": {"outbox_message"},  # with SKIP LOCKED (S-TKT-06)
     "api/receipts.py": {"receipt_dispatch"},  # P-TKT-05
+    "domain/rewards.py": {"users"},  # CR-008 T3: the caller's own row, so two redemptions spend the balance one at a time
 }
 SEAT_OCCUPANCY = {"booking_seat", "showtime_seat"}
 LOCK = re.compile(r"FOR UPDATE|with_for_update\(")

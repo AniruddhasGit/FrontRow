@@ -88,6 +88,8 @@ DECLARE
     "seat_category":             ["INSERT","SELECT","UPDATE"],
     "movie":                     ["INSERT","SELECT","UPDATE"],
     "movie_genre":               ["DELETE","INSERT","SELECT"],
+    "movie_rating":              ["INSERT","SELECT","UPDATE"],
+    "movie_like":                ["INSERT","SELECT","UPDATE"],
     "showtime":                  ["INSERT","SELECT","UPDATE"],
     "showtime_seat":             ["INSERT","SELECT"],
     "certification":             ["INSERT","SELECT","UPDATE"],
@@ -95,7 +97,11 @@ DECLARE
     "genre":                     ["INSERT","SELECT","UPDATE"],
     "format":                    ["INSERT","SELECT","UPDATE"],
     "manager_screen_assignment": ["DELETE","INSERT","SELECT"],
-    "admin_grant":               ["DELETE","INSERT","SELECT"]
+    "admin_grant":               ["DELETE","INSERT","SELECT"],
+    "bookmark":                  ["INSERT","SELECT","UPDATE"],
+    "notification":              ["INSERT","SELECT","UPDATE"],
+    "reward_entry":              ["INSERT","SELECT"],
+    "support_message":           ["INSERT","SELECT"]
   }';
 BEGIN
 

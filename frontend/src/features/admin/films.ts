@@ -24,6 +24,10 @@ export interface Film {
   window_open: boolean;
   is_visible_now: boolean;
   version: number;
+  // CR-008 T12: the full details (optional)
+  release_date?: string | null;
+  cast_members?: string | null;
+  crew_members?: string | null;
 }
 export interface Entry {
   id: number;

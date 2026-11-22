@@ -349,30 +349,23 @@ test("S-TKT-04 / S-SCP-15: first render after confirming - focus, copy, tab orde
   const text = await page.locator("main").textContent();
   assert.equal(text.split("A receipt is on its way to e2e-pay-1@example.com.").length - 1, 1);
   assert.deepEqual(await page.locator(".fr-ticket-facts dt").allTextContents(), ["FILM", "HALL", "SHOWTIME", "SEATS", "PAID"]);
-  // Order: heading, reference, copy control, facts, resend control - in the DOM, and the focus stops among them in that order.
+  // Order: heading, reference, copy control, facts - in the DOM (CR-009: no resend control).
   const order = await page.evaluate(() => {
     const at = (el) => [...document.querySelectorAll("main *")].indexOf(el);
     const q = (s) => document.querySelector(s);
     const btn = (t) => [...document.querySelectorAll("main button")].find((b) => b.textContent === t);
-    return [at(q("main h1")), at(q(".fr-ref")), at(btn("Copy reference")), at(q(".fr-ticket-facts")), at(btn("Send the receipt again"))];
+    return [at(q("main h1")), at(q(".fr-ref")), at(btn("Copy reference")), at(q(".fr-ticket-facts"))];
   });
   assert.ok(order.every((x) => x >= 0), `missing element: ${order}`);
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   await page.keyboard.press("Tab");
   assert.equal(await page.evaluate(() => document.activeElement.textContent), "Copy reference");
-  await page.keyboard.press("Tab");
-  assert.equal(await page.evaluate(() => document.activeElement.textContent), "Send the receipt again");
+  assert.equal(await page.getByRole("button", { name: "Send the receipt again" }).count(), 0);
   // S-SCP-15 on this page.
   assert.equal(await page.evaluate(() => document.querySelectorAll("svg, canvas").length), 0);
   await page.getByRole("button", { name: "Copy reference" }).click();
   await page.locator('[aria-live="polite"]', { hasText: "Reference copied." }).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), reference);
-  // The resend control (SCR-TKT-01): its 202 is announced in a polite region and the reference block does not change.
-  await page.route("**/resend-receipt", (r) => r.fulfill({ status: 202, json: { queued: true, email_address: EMAIL } }));
-  await page.getByRole("button", { name: "Send the receipt again" }).click();
-  await page.locator('[aria-live="polite"]', { hasText: `A receipt was requested. It will arrive at ${EMAIL}.` }).waitFor();
-  assert.equal(await ref.textContent(), reference);
-  await page.unroute("**/resend-receipt");
   await shot(page, "tkt_first_render");
 });
 

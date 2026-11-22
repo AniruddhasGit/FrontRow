@@ -134,6 +134,48 @@ CREATE TABLE seat_category (
 CREATE UNIQUE INDEX uq_seat_category__name_ci ON seat_category ((lower(trim(name))));
 
 -- --------------------------------------------------------------------------
+-- movie - One film, typed in by hand by an admin; carries the six details a customer chooses on, the poster key, and the two independent visibility gates (publication and the display window).
+-- P-ADM-01 (docs/03 PRD/sections/E6_admin.md S4) + FR-ADR-021 + SRC-001 §5.1.1
+CREATE TABLE movie (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 - NOT uuid. FR-ADR-017 rules bigint identity on EVERY table, database-generated, explicitly rejecting UUIDv4/v7/ULID; the oversell index (showtime_id, seat_id) is named as the deciding reason. Every criterion addresses movies by small integers (GET /api/movies/11; poster key regex ^posters/\d+/[0-9a-f]{32}$; GET /api/movies/abc returns 422). This contradicts the BRIEF's uuid default and the 'application generates ids' default — reporting the source as instructed.
+    title                      text NOT NULL,  -- P-ADM-01 server-side validation table; EP-ADM-02 - 1..200 characters after trimming, enforced at the API (422). DELIBERATELY NOT UNIQUE — FR-ADR-021: 'No natural key. No unique constraint on title.' A re-release is a legitimate second row.
+    synopsis                   text NOT NULL,  -- P-ADM-01 server-side validation table; EP-ADM-02 body - EP-ADM-02 declares it 'string, 0..4000, required' — required on the wire, so NOT NULL, but an empty string is a legal value. Plain text, no markup (P-BRW-02).
+    runtime_minutes            integer NOT NULL,  -- P-ADM-01; SRC-001 §5.1.1 - >= 1, whole minutes. Read by the showtime form to PREFILL ends_at, never to derive it — S-ADM-09 asserts changing runtime_minutes leaves every stored showtime.ends_at byte-identical.
+    certification_id           bigint NOT NULL,  -- P-ADM-01; FR-ADR-021 - FK to the certification lookup table. FR-ADR-021: a lookup table, not free text and not a PostgreSQL enum. P-BRW-02: the wire shape is {id, name} and THERE IS NO code COLUMN — 'No code column is added.'
+    language_id                bigint NOT NULL,  -- P-ADM-01; FR-ADR-021; SRC-001 §5.1.3 - FK to the language lookup table. It is a customer-facing filter facet (P-BRW-04), applied to the movie row and not to a showtime.
+    poster_object_key          text,  -- P-ADM-03; FR-ADR-021; FR-ADR-061 - The S3 OBJECT KEY, never a URL — 'moving buckets does not rewrite every row' (FR-ADR-021). Nullable because a film is drafted before its poster is uploaded; a film cannot be PUBLISHED with a null key, and that is a publish-time check inside the transaction, explicitly NOT a column constraint (P-ADM-05, FR-ADR-021). Key shape asserted by S-ADM-25: ^posters/\d+/[0-9a-f]{32}$, carrying no part of the client's filename. NAME COLLISION — see notes: two Bible stories call this column poster_key.
+    published_at               timestamptz,  -- P-BRW-01; P-ADM-05; FR-ADR-021 - Gate 1 of 2. Null means draft. Server-stamped from the injected clock at publish, never typed by an admin, so it keeps its zone and is serialised as a real instant (EP-ADM-03). The read path tests ONLY 'IS NOT NULL' and NEVER compares it to the clock — a future-dated published_at would duplicate display_from. Unpublish sets it back to null (P-ADM-06). Also the default listing sort key: ORDER BY published_at DESC (P-BRW-03, FR-ADR-021).
+    display_from               timestamptz,  -- P-ADM-04; P-BRW-01; FR-ADR-021 - INCLUSIVE lower bound of gate 2. Stored as a UTC instant converted from the naive local Asia/Kolkata value the admin typed; the server 'adds no day, rounds nothing to midnight and derives neither end from the other'. NULLABLE and a null FAILS the window predicate — 'there is no three-valued subtlety'; the query carries no COALESCE (asserted by S-BRW-01).
+    display_until              timestamptz,  -- P-ADM-04; P-BRW-01; FR-ADR-021 - EXCLUSIVE upper bound. The ADMIN types the exclusive end instant; the server shifts nothing. Nullable, and null fails the predicate. Must be strictly greater than display_from IN THE MERGED ROW (a PATCH sending one half alone is checked against the stored other half). Also carried on the customer listing payload, because the date strip is built from max(display_until) (P-BRW-02, P-BRW-04).
+    version                    integer NOT NULL,  -- P-ADM-02; FR-ADR-035; S-ADM-14 - Optimistic concurrency. Set to 1 by the application on insert; incremented by exactly 1 on every successful mutating write. S-ADM-14 asserts the EXACT set of tables carrying a column named version: movie, showtime, screen, seat_category, cinema — and no others. A no-op write does not increment it. Default is application-set, not database-side, per P-ADM-01 step 4 ('inserts the movie row with ... version = 1').
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23 - Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' DEFAULT now() at the database (FR-ADR-018: 'created_at and updated_at ... default to now() at the database'; the injected clock governs domain decisions, the database clock governs row metadata).
+    release_date               date,  -- CR-008 (owner, 2026-11-22) T12 - The film's release date, a calendar date in the cinema's zone (no instant). After the cinema's today the film is 'Coming soon' on the landing and takes likes instead of ratings; null is treated as released. Typed by the admin; never derived from display_from.
+    cast_members               text,  -- CR-008 (owner, 2026-11-22) T12 - The cast, one person per line as 'Name: character'. Plain text, edited in the admin film editor; the film page splits it into lines. Null = not entered.
+    crew_members               text,  -- CR-008 (owner, 2026-11-22) T12 - The crew, one person per line as 'Name: job'. Same shape and rules as cast_members.
+    PRIMARY KEY (id),
+    CONSTRAINT ck_movie__cast_members CHECK (cast_members IS NULL OR char_length(cast_members) <= 4000),
+    CONSTRAINT ck_movie__crew_members CHECK (crew_members IS NULL OR char_length(crew_members) <= 4000),
+    CONSTRAINT fk_movie__certification_id FOREIGN KEY (certification_id) REFERENCES certification (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_movie__language_id FOREIGN KEY (language_id) REFERENCES language (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+
+-- --------------------------------------------------------------------------
+-- screen - A hall. Six of them in v1, each belonging to the one cinema; it is the unit manager scope attaches to and the row every seat write takes SELECT ... FOR UPDATE on.
+-- P-ADM-13 · P-ADM-16 · FR-ADR-010 · FR-ADR-011 · FR-ADR-022
+CREATE TABLE screen (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- EP-ADM-17 path_params `screen_id: integer, positive`; EP-ADM-16 201 body `{id: integer, ...}` - Integer, as above. Referenced by showtime.screen_id, seat.screen_id and manager_screen_assignment (other clusters).
+    cinema_id                  bigint NOT NULL,  -- P-ADM-25 · FR-ADR-010 · EP-ADM-16 request body `cinema_id: integer, must exist, required` · S-SCP-05 - NOT NULL and never defaulted server-side to the only cinema row — S-ADM-03 asserts POST /api/admin/screens with no cinema_id returns 422 precisely so a second venue costs an insert and not a migration. S-SCP-05 asserts the NOT NULL column and the FK to cinema(id) exist, positively: the test fails if the column is missing, so this column may NOT be optimised away even though the parent table holds one row.
+    name                       text NOT NULL,  -- P-ADM-13 validation table; EP-ADM-16 / EP-ADM-17 request bodies; S-ADM-05 - 1..60 characters after trimming (0 -> 422, 60 -> 201, 61 -> 422), unique on (cinema_id, lower(trim(name))). Renaming stays permitted after showtimes exist — only seat identity freezes. The seed writes `SCREEN 1`..`SCREEN 6` (S-ADM-29 asserts the regex ^SCREEN [1-6]$ against seeded rows only; nothing in the running system enforces it).
+    is_active                  boolean NOT NULL DEFAULT true,  -- P-ADM-16 · FR-ADR-012 · EP-ADM-16 201 body `is_active: true` · EP-ADM-15 - Withdrawal replaces deletion. A hall created through EP-ADM-16 starts in service; the PRD states the behaviour ('A hall starts empty and in service') but never says whether `true` is a database default or an application-set value — recorded here as a default because P-ADM-13's sibling rule for seat.is_active IS spelled 'default true'. A withdrawn hall keeps every showtime, seat and booking and still appears in reports (P-RPT-02 requires out-of-service halls in the dashboard's screens[]).
+    version                    integer NOT NULL,  -- P-ADM-12 · FR-ADR-035 · S-ADM-14 (the version-column set is exactly movie, showtime, screen, seat_category, cinema) · S-ADM-05 · S-ADM-17 - Required on every PATCH of a screen, including the withdrawal toggle. Increments by exactly 1.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 - Same universal created_at criterion as cinema.
+    PRIMARY KEY (id),
+    CONSTRAINT fk_screen__cinema_id FOREIGN KEY (cinema_id) REFERENCES cinema (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- EXPRESSION index. Scoped to the cinema, not global — two venues may each have a `Hall 1`. A hall name differing only in case is the same name and is refused by the index rather than by a prior read.
+CREATE UNIQUE INDEX uq_screen__name_ci ON screen (cinema_id, (lower(trim(name))));
+
+-- --------------------------------------------------------------------------
 -- users - One row per person who holds an account — customer, manager or admin; the identity every booking, audit row and reset token points at.
 -- P-ACC-01 (E5 S4, 'The complete field list of the user row') · E8 S7.5 · FR-ADR-050
 CREATE TABLE users (
@@ -144,8 +186,18 @@ CREATE TABLE users (
     password_version           integer NOT NULL,  -- P-ACC-05 ('an integer starting at 1 and incremented on every password change') · P-ACC-01 step 5 · P-ACC-08 step 4 - THE SESSION-INVALIDATION COUNTER. It is the JWT's `pv` claim; the authorisation dependency loads the user row by primary key on every authenticated request and rejects the token when `pv` does not match this column (P-ACC-05 exception 4). Written as 1 by the application at insert — no document states a database default. Incremented by P-ACC-08 only: `password_version = password_version + 1`.
     created_at                 timestamptz NOT NULL DEFAULT now(),  -- P-ACC-01 step 5 · FR-ADR-018 ('`created_at` and `updated_at` are `timestamptz` and default to `now()` at the database') · EP-ADM-22 returns it - Required on every table in the schema — S-XCT-09 asserts that no table in `public` other than `alembic_version` lacks a `created_at`.
     last_signed_in_at          timestamptz,  -- P-ACC-01 (field table: timestamptz, UTC, nullable) · P-ACC-02 step 4 · P-ACC-08 step 4 - NULL means the account has never signed in — a real and expected state, not a defect. Written from the INJECTED CLOCK on every successful sign-in (`UPDATE users SET last_signed_in_at = :now WHERE id = :id`) and inside P-ACC-08's reset transaction. NOT written on a failed attempt. `has_signed_in` on EP-ADM-22 is DERIVED as `last_signed_in_at IS NOT NULL` and is never stored (S-ADM-18 asserts no `has_signed_in` column exists in information_schema).
+    display_name               text,  -- CR-008 (owner, 2026-11-22) T6 (profile & settings) - What the account greeting shows. NULL until the customer sets one; the greeting then uses the email's local part.
+    phone                      text,  -- CR-008 (owner, 2026-11-22) T6 - Optional contact number, digits with an optional leading +. Nothing sends to it: there is no SMS in this product.
+    preferred_language_id      bigint,  -- CR-008 (owner, 2026-11-22) T6 (preferred language, from the existing lookups) - A preference only: the listing filter starts from it on the client. It never filters anything server-side.
+    preferred_format_id        bigint,  -- CR-008 (owner, 2026-11-22) T6 (preferred format, from the existing lookups) - A preference only, as preferred_language_id.
+    points_balance             bigint NOT NULL DEFAULT 0,  -- CR-008 (owner, 2026-11-22) T3 (rewards: points per account) - The spendable balance, kept beside the ledger (reward_entry) so a redemption can lock ONE row (the caller's users row, SELECT ... FOR UPDATE inside the booking transaction) and the CHECK below refuses any overdraw outright. Always equals the sum of the caller's earned minus redeemed reward_entry points; both are written in the same transaction.
     PRIMARY KEY (id),
-    CONSTRAINT ck_users__role CHECK (role IN ('customer', 'manager', 'admin'))
+    CONSTRAINT ck_users__role CHECK (role IN ('customer', 'manager', 'admin')),
+    CONSTRAINT ck_users__display_name CHECK (display_name IS NULL OR char_length(btrim(display_name)) BETWEEN 1 AND 60),
+    CONSTRAINT ck_users__phone CHECK (phone IS NULL OR phone ~ '^[+]?[0-9]{7,15}$'),
+    CONSTRAINT ck_users__points_balance CHECK (points_balance >= 0),
+    CONSTRAINT fk_users__preferred_language_id FOREIGN KEY (preferred_language_id) REFERENCES language (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_users__preferred_format_id FOREIGN KEY (preferred_format_id) REFERENCES format (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
 -- Email is the identity, unique case-insensitively. It is an EXPRESSION index, not a column constraint — a second lowercased column is refused by name in S7.5. It is the guard, not a prior read: P-ACC-01 step 6 catches the unique violation and translates it to 409 EMAIL_ALREADY_REGISTERED, and S-ACC-01 asserts 20 simultaneous identical registrations produce exactly 1 success and 19 conflicts with no 500.
 CREATE UNIQUE INDEX uq_users__email_ci ON users ((lower(email)));
@@ -185,61 +237,20 @@ CREATE TABLE audit_log (
 CREATE INDEX ix_audit_log__occurred_at ON audit_log (occurred_at);
 
 -- --------------------------------------------------------------------------
--- movie - One film, typed in by hand by an admin; carries the six details a customer chooses on, the poster key, and the two independent visibility gates (publication and the display window).
--- P-ADM-01 (docs/03 PRD/sections/E6_admin.md S4) + FR-ADR-021 + SRC-001 §5.1.1
-CREATE TABLE movie (
-    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 - NOT uuid. FR-ADR-017 rules bigint identity on EVERY table, database-generated, explicitly rejecting UUIDv4/v7/ULID; the oversell index (showtime_id, seat_id) is named as the deciding reason. Every criterion addresses movies by small integers (GET /api/movies/11; poster key regex ^posters/\d+/[0-9a-f]{32}$; GET /api/movies/abc returns 422). This contradicts the BRIEF's uuid default and the 'application generates ids' default — reporting the source as instructed.
-    title                      text NOT NULL,  -- P-ADM-01 server-side validation table; EP-ADM-02 - 1..200 characters after trimming, enforced at the API (422). DELIBERATELY NOT UNIQUE — FR-ADR-021: 'No natural key. No unique constraint on title.' A re-release is a legitimate second row.
-    synopsis                   text NOT NULL,  -- P-ADM-01 server-side validation table; EP-ADM-02 body - EP-ADM-02 declares it 'string, 0..4000, required' — required on the wire, so NOT NULL, but an empty string is a legal value. Plain text, no markup (P-BRW-02).
-    runtime_minutes            integer NOT NULL,  -- P-ADM-01; SRC-001 §5.1.1 - >= 1, whole minutes. Read by the showtime form to PREFILL ends_at, never to derive it — S-ADM-09 asserts changing runtime_minutes leaves every stored showtime.ends_at byte-identical.
-    certification_id           bigint NOT NULL,  -- P-ADM-01; FR-ADR-021 - FK to the certification lookup table. FR-ADR-021: a lookup table, not free text and not a PostgreSQL enum. P-BRW-02: the wire shape is {id, name} and THERE IS NO code COLUMN — 'No code column is added.'
-    language_id                bigint NOT NULL,  -- P-ADM-01; FR-ADR-021; SRC-001 §5.1.3 - FK to the language lookup table. It is a customer-facing filter facet (P-BRW-04), applied to the movie row and not to a showtime.
-    poster_object_key          text,  -- P-ADM-03; FR-ADR-021; FR-ADR-061 - The S3 OBJECT KEY, never a URL — 'moving buckets does not rewrite every row' (FR-ADR-021). Nullable because a film is drafted before its poster is uploaded; a film cannot be PUBLISHED with a null key, and that is a publish-time check inside the transaction, explicitly NOT a column constraint (P-ADM-05, FR-ADR-021). Key shape asserted by S-ADM-25: ^posters/\d+/[0-9a-f]{32}$, carrying no part of the client's filename. NAME COLLISION — see notes: two Bible stories call this column poster_key.
-    published_at               timestamptz,  -- P-BRW-01; P-ADM-05; FR-ADR-021 - Gate 1 of 2. Null means draft. Server-stamped from the injected clock at publish, never typed by an admin, so it keeps its zone and is serialised as a real instant (EP-ADM-03). The read path tests ONLY 'IS NOT NULL' and NEVER compares it to the clock — a future-dated published_at would duplicate display_from. Unpublish sets it back to null (P-ADM-06). Also the default listing sort key: ORDER BY published_at DESC (P-BRW-03, FR-ADR-021).
-    display_from               timestamptz,  -- P-ADM-04; P-BRW-01; FR-ADR-021 - INCLUSIVE lower bound of gate 2. Stored as a UTC instant converted from the naive local Asia/Kolkata value the admin typed; the server 'adds no day, rounds nothing to midnight and derives neither end from the other'. NULLABLE and a null FAILS the window predicate — 'there is no three-valued subtlety'; the query carries no COALESCE (asserted by S-BRW-01).
-    display_until              timestamptz,  -- P-ADM-04; P-BRW-01; FR-ADR-021 - EXCLUSIVE upper bound. The ADMIN types the exclusive end instant; the server shifts nothing. Nullable, and null fails the predicate. Must be strictly greater than display_from IN THE MERGED ROW (a PATCH sending one half alone is checked against the stored other half). Also carried on the customer listing payload, because the date strip is built from max(display_until) (P-BRW-02, P-BRW-04).
-    version                    integer NOT NULL,  -- P-ADM-02; FR-ADR-035; S-ADM-14 - Optimistic concurrency. Set to 1 by the application on insert; incremented by exactly 1 on every successful mutating write. S-ADM-14 asserts the EXACT set of tables carrying a column named version: movie, showtime, screen, seat_category, cinema — and no others. A no-op write does not increment it. Default is application-set, not database-side, per P-ADM-01 step 4 ('inserts the movie row with ... version = 1').
-    created_at                 timestamptz NOT NULL DEFAULT now(),  -- EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23 - Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' DEFAULT now() at the database (FR-ADR-018: 'created_at and updated_at ... default to now() at the database'; the injected clock governs domain decisions, the database clock governs row metadata).
+-- bookmark - One row per (account, film) the customer has ever bookmarked; `saved` says whether it is on the wishlist now. Un-saving sets saved = false rather than deleting, so frontrow_app needs no DELETE grant here.
+-- CR-008 (owner, 2026-11-22) T4 (bookmarks / wishlist)
+CREATE TABLE bookmark (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T4 - Always the session's user; never taken from a request.
+    movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T4 - The film saved.
+    saved                      boolean NOT NULL,  -- CR-008 (owner, 2026-11-22) T4 - true = on the wishlist. The toggle is one INSERT ... ON CONFLICT DO UPDATE.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 · FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T4 · FR-ADR-018 - Row metadata; the wishlist orders by it, newest first.
     PRIMARY KEY (id),
-    CONSTRAINT fk_movie__certification_id FOREIGN KEY (certification_id) REFERENCES certification (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
-    CONSTRAINT fk_movie__language_id FOREIGN KEY (language_id) REFERENCES language (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+    CONSTRAINT uq_bookmark__user_id_movie_id UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_bookmark__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_bookmark__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
-
--- --------------------------------------------------------------------------
--- password_reset_token - One row per password-reset request: the SHA-256 of a token that is never stored, its expiry, whether it was spent, and the two separate columns that track the worker's send of the reset email.
--- P-ACC-07 step 5 and its two-column table · P-ACC-08 step 4 · E4 P-TKT-12
-CREATE TABLE password_reset_token (
-    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- P-TKT-12 server-side validation — '`reset_token_id`: integer, positive, existing' · S-TKT-15 (`WHERE id=:t`) - The queue message carries this id and NEVER the token. No document states the generation mechanism.
-    user_id                    bigint NOT NULL,  -- P-ACC-07 step 5 ('a `password_reset_token` row holding `user_id` ...') · S-ACC-07 (`WHERE user_id=:id`) - The account the link is for. P-TKT-12 validates that the message's `user_id` matches this column; a mismatch is dead-lettered, never sent.
-    token_sha256               text NOT NULL,  -- P-ACC-07 step 5 ('`token_sha256` (the SHA-256 of the token, hex)') · S-ACC-07 - SHA-256 hex of a 43-character URL-safe token drawn from 32 CSPRNG bytes. ONLY THE HASH IS STORED — 'somebody who can read the table cannot mint a session from it'. P-ACC-08 step 1 looks the row up by this value. S-ACC-07 asserts the 43 characters appear in `SELECT password_reset_token::text`, in the 202 body and in DEBUG-level stdout NOWHERE. DO NOT ADD A PLAINTEXT TOKEN COLUMN: OPEN-RESETTOKEN-01 is RULED by SRC-004 R-3 - the database keeps only token_sha256; the plaintext rides in the queue message only.
-    expires_at                 timestamptz NOT NULL,  -- P-ACC-07 step 5 and its worked example ('`expires_at = created_at + PASSWORD_RESET_TTL_SECONDS`') - PASSWORD_RESET_TTL_SECONDS default 1800 (a [JUDGMENT CALL], configuration, not a ruled number). Compared against the INJECTED clock in UTC (FR-ADR-018). The 1800 must not appear as a literal in a constraint or a message — every customer-visible '30 minutes' is rendered from the variable.
-    used_at                    timestamptz,  -- P-ACC-07 step 5 · P-ACC-08 step 4 · S-SCP-04 ('The password_reset_token.used_at column is explicitly excluded from the check and must still exist') - THE THIRD AND SEPARATE TIMESTAMP: it records the CUSTOMER SPENDING the token and has nothing to do with the send. The single-use guarantee is the conditional update `UPDATE password_reset_token SET used_at = :now WHERE id = :id AND used_at IS NULL` affecting exactly one row inside the password-change transaction — not a prior read. P-ACC-07 step 3 also sets it on every outstanding unused token for that user, so at most one live token exists per account. NOTE THE NEAR-MISS: S-SCP-04's excluded-column sweep bans `used_at` on `booking` and MUST NOT trip over this column.
-    email_claimed_at           timestamptz,  -- P-ACC-07 step 5 and its column table ('a worker is holding this send job') · E4 P-TKT-12 step 2 and exceptions 3a, 4, 6 - A CLAIM, NOT A RECORD OF DELIVERY. Set by the conditional claim; CLEARED BACK TO NULL on an SES refusal or a SES_SEND_TIMEOUT_MS timeout (`UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL`); and overtaken by the age branch `email_claimed_at < now() - :stale_interval` (RECEIPT_CLAIM_STALE_SECONDS, 900) when a worker dies before it can clear anything. These are ONE reclaim mechanism with a fast path, not two.
-    email_sent_at              timestamptz,  -- P-ACC-07 step 5 and its column table ('an email went out … never cleared by anything') · E4 P-TKT-12 step 4 and exception 3 - TERMINAL. Set only after SES accepts, and NEVER CLEARED BY ANYTHING — that is what makes a duplicate credential email impossible even if the queue delete fails and SQS redelivers a day later (S-TKT-15 asserts a redelivery 24 injected hours later makes 0 SES calls).
-    created_at                 timestamptz NOT NULL DEFAULT now(),  -- P-ACC-07 step 5 (the row holds `created_at`) · FR-ADR-018 · S-XCT-09 (every table carries created_at) - DEFAULT now() is FR-ADR-018's row-metadata fallback only; the application supplies created_at from the injected clock, because S-ACC-07 asserts `expires_at = created_at + 1800 seconds FROM THE INJECTED CLOCK`, which the database default alone cannot satisfy under an injected test clock.
-    PRIMARY KEY (id),
-    CONSTRAINT fk_password_reset_token__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT
-);
--- The confirm endpoint's only lookup. DERIVED FROM THE NAMED QUERY — no document declares this index, and no document says whether it is unique (see gaps).
-CREATE INDEX ix_password_reset_token__token_sha256 ON password_reset_token (token_sha256);
--- The per-user sweep that keeps at most one live token per account. DERIVED FROM THE NAMED QUERY, not declared by any document.
-CREATE INDEX ix_password_reset_token__user_id ON password_reset_token (user_id);
-
--- --------------------------------------------------------------------------
--- screen - A hall. Six of them in v1, each belonging to the one cinema; it is the unit manager scope attaches to and the row every seat write takes SELECT ... FOR UPDATE on.
--- P-ADM-13 · P-ADM-16 · FR-ADR-010 · FR-ADR-011 · FR-ADR-022
-CREATE TABLE screen (
-    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- EP-ADM-17 path_params `screen_id: integer, positive`; EP-ADM-16 201 body `{id: integer, ...}` - Integer, as above. Referenced by showtime.screen_id, seat.screen_id and manager_screen_assignment (other clusters).
-    cinema_id                  bigint NOT NULL,  -- P-ADM-25 · FR-ADR-010 · EP-ADM-16 request body `cinema_id: integer, must exist, required` · S-SCP-05 - NOT NULL and never defaulted server-side to the only cinema row — S-ADM-03 asserts POST /api/admin/screens with no cinema_id returns 422 precisely so a second venue costs an insert and not a migration. S-SCP-05 asserts the NOT NULL column and the FK to cinema(id) exist, positively: the test fails if the column is missing, so this column may NOT be optimised away even though the parent table holds one row.
-    name                       text NOT NULL,  -- P-ADM-13 validation table; EP-ADM-16 / EP-ADM-17 request bodies; S-ADM-05 - 1..60 characters after trimming (0 -> 422, 60 -> 201, 61 -> 422), unique on (cinema_id, lower(trim(name))). Renaming stays permitted after showtimes exist — only seat identity freezes. The seed writes `SCREEN 1`..`SCREEN 6` (S-ADM-29 asserts the regex ^SCREEN [1-6]$ against seeded rows only; nothing in the running system enforces it).
-    is_active                  boolean NOT NULL DEFAULT true,  -- P-ADM-16 · FR-ADR-012 · EP-ADM-16 201 body `is_active: true` · EP-ADM-15 - Withdrawal replaces deletion. A hall created through EP-ADM-16 starts in service; the PRD states the behaviour ('A hall starts empty and in service') but never says whether `true` is a database default or an application-set value — recorded here as a default because P-ADM-13's sibling rule for seat.is_active IS spelled 'default true'. A withdrawn hall keeps every showtime, seat and booking and still appears in reports (P-RPT-02 requires out-of-service halls in the dashboard's screens[]).
-    version                    integer NOT NULL,  -- P-ADM-12 · FR-ADR-035 · S-ADM-14 (the version-column set is exactly movie, showtime, screen, seat_category, cinema) · S-ADM-05 · S-ADM-17 - Required on every PATCH of a screen, including the withdrawal toggle. Increments by exactly 1.
-    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 - Same universal created_at criterion as cinema.
-    PRIMARY KEY (id),
-    CONSTRAINT fk_screen__cinema_id FOREIGN KEY (cinema_id) REFERENCES cinema (id) ON DELETE RESTRICT ON UPDATE RESTRICT
-);
--- EXPRESSION index. Scoped to the cinema, not global — two venues may each have a `Hall 1`. A hall name differing only in case is the same name and is refused by the index rather than by a prior read.
-CREATE UNIQUE INDEX uq_screen__name_ci ON screen (cinema_id, (lower(trim(name))));
 
 -- --------------------------------------------------------------------------
 -- manager_screen_assignment - One row per (manager user, screen) pair — the whole of manager scope; the router dependency resolves the caller's screen ids from it and every manager query filters on that set.
@@ -268,6 +279,63 @@ CREATE TABLE movie_genre (
     CONSTRAINT fk_movie_genre__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_movie_genre__genre_id FOREIGN KEY (genre_id) REFERENCES genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+
+-- --------------------------------------------------------------------------
+-- movie_like - One row per (account, film) liked while the film is not yet released; `liked` says whether the like stands now. Un-liking sets liked = false rather than deleting, so frontrow_app needs no DELETE grant here.
+-- CR-008 (owner, 2026-11-22) T12 (ratings and likes)
+CREATE TABLE movie_like (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - Always the session's user; never taken from a request.
+    movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - The film.
+    liked                      boolean NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - true = the like stands. The toggle is one INSERT ... ON CONFLICT DO UPDATE.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018 - Row metadata; set on every change of the value.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_movie_like__user_id_movie_id UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_movie_like__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_movie_like__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The per-film like count is aggregated by movie_id on every listing build.
+CREATE INDEX ix_movie_like__movie_id ON movie_like (movie_id);
+
+-- --------------------------------------------------------------------------
+-- movie_rating - One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.
+-- CR-008 (owner, 2026-11-22) T12 (ratings and likes)
+CREATE TABLE movie_rating (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - Always the session's user; never taken from a request.
+    movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - The film.
+    score                      integer NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - 1 to 10, whole numbers.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018 - Row metadata; set on every change of the value.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_movie_rating__user_id_movie_id UNIQUE (user_id, movie_id),
+    CONSTRAINT ck_movie_rating__score CHECK (score BETWEEN 1 AND 10),
+    CONSTRAINT fk_movie_rating__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_movie_rating__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The per-film average, count and 1-10 breakdown are aggregated by movie_id on every listing build.
+CREATE INDEX ix_movie_rating__movie_id ON movie_rating (movie_id);
+
+-- --------------------------------------------------------------------------
+-- password_reset_token - One row per password-reset request: the SHA-256 of a token that is never stored, its expiry, whether it was spent, and the two separate columns that track the worker's send of the reset email.
+-- P-ACC-07 step 5 and its two-column table · P-ACC-08 step 4 · E4 P-TKT-12
+CREATE TABLE password_reset_token (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- P-TKT-12 server-side validation — '`reset_token_id`: integer, positive, existing' · S-TKT-15 (`WHERE id=:t`) - The queue message carries this id and NEVER the token. No document states the generation mechanism.
+    user_id                    bigint NOT NULL,  -- P-ACC-07 step 5 ('a `password_reset_token` row holding `user_id` ...') · S-ACC-07 (`WHERE user_id=:id`) - The account the link is for. P-TKT-12 validates that the message's `user_id` matches this column; a mismatch is dead-lettered, never sent.
+    token_sha256               text NOT NULL,  -- P-ACC-07 step 5 ('`token_sha256` (the SHA-256 of the token, hex)') · S-ACC-07 - SHA-256 hex of a 43-character URL-safe token drawn from 32 CSPRNG bytes. ONLY THE HASH IS STORED — 'somebody who can read the table cannot mint a session from it'. P-ACC-08 step 1 looks the row up by this value. S-ACC-07 asserts the 43 characters appear in `SELECT password_reset_token::text`, in the 202 body and in DEBUG-level stdout NOWHERE. DO NOT ADD A PLAINTEXT TOKEN COLUMN: OPEN-RESETTOKEN-01 is RULED by SRC-004 R-3 - the database keeps only token_sha256; the plaintext rides in the queue message only.
+    expires_at                 timestamptz NOT NULL,  -- P-ACC-07 step 5 and its worked example ('`expires_at = created_at + PASSWORD_RESET_TTL_SECONDS`') - PASSWORD_RESET_TTL_SECONDS default 1800 (a [JUDGMENT CALL], configuration, not a ruled number). Compared against the INJECTED clock in UTC (FR-ADR-018). The 1800 must not appear as a literal in a constraint or a message — every customer-visible '30 minutes' is rendered from the variable.
+    used_at                    timestamptz,  -- P-ACC-07 step 5 · P-ACC-08 step 4 · S-SCP-04 ('The password_reset_token.used_at column is explicitly excluded from the check and must still exist') - THE THIRD AND SEPARATE TIMESTAMP: it records the CUSTOMER SPENDING the token and has nothing to do with the send. The single-use guarantee is the conditional update `UPDATE password_reset_token SET used_at = :now WHERE id = :id AND used_at IS NULL` affecting exactly one row inside the password-change transaction — not a prior read. P-ACC-07 step 3 also sets it on every outstanding unused token for that user, so at most one live token exists per account. NOTE THE NEAR-MISS: S-SCP-04's excluded-column sweep bans `used_at` on `booking` and MUST NOT trip over this column.
+    email_claimed_at           timestamptz,  -- P-ACC-07 step 5 and its column table ('a worker is holding this send job') · E4 P-TKT-12 step 2 and exceptions 3a, 4, 6 - A CLAIM, NOT A RECORD OF DELIVERY. Set by the conditional claim; CLEARED BACK TO NULL on an SES refusal or a SES_SEND_TIMEOUT_MS timeout (`UPDATE password_reset_token SET email_claimed_at = NULL WHERE id = :id AND email_sent_at IS NULL`); and overtaken by the age branch `email_claimed_at < now() - :stale_interval` (RECEIPT_CLAIM_STALE_SECONDS, 900) when a worker dies before it can clear anything. These are ONE reclaim mechanism with a fast path, not two.
+    email_sent_at              timestamptz,  -- P-ACC-07 step 5 and its column table ('an email went out … never cleared by anything') · E4 P-TKT-12 step 4 and exception 3 - TERMINAL. Set only after SES accepts, and NEVER CLEARED BY ANYTHING — that is what makes a duplicate credential email impossible even if the queue delete fails and SQS redelivers a day later (S-TKT-15 asserts a redelivery 24 injected hours later makes 0 SES calls).
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- P-ACC-07 step 5 (the row holds `created_at`) · FR-ADR-018 · S-XCT-09 (every table carries created_at) - DEFAULT now() is FR-ADR-018's row-metadata fallback only; the application supplies created_at from the injected clock, because S-ACC-07 asserts `expires_at = created_at + 1800 seconds FROM THE INJECTED CLOCK`, which the database default alone cannot satisfy under an injected test clock.
+    PRIMARY KEY (id),
+    CONSTRAINT fk_password_reset_token__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The confirm endpoint's only lookup. DERIVED FROM THE NAMED QUERY — no document declares this index, and no document says whether it is unique (see gaps).
+CREATE INDEX ix_password_reset_token__token_sha256 ON password_reset_token (token_sha256);
+-- The per-user sweep that keeps at most one live token per account. DERIVED FROM THE NAMED QUERY, not declared by any document.
+CREATE INDEX ix_password_reset_token__user_id ON password_reset_token (user_id);
 
 -- --------------------------------------------------------------------------
 -- seat - One row per real, physical, individually sellable seat in a hall — created when the hall is configured, never per showtime; its id is half of the oversell guard's unique key.
@@ -313,6 +381,23 @@ CREATE TABLE showtime (
 CREATE INDEX ix_showtime__starts_at ON showtime (starts_at);
 -- Same criterion. Also serves the admin day list (EP-ADM-09: screen_id + local date) and the P-ADM-08 overlap predicate run inside the screen row lock.
 CREATE INDEX ix_showtime__screen_id_starts_at ON showtime (screen_id, starts_at);
+
+-- --------------------------------------------------------------------------
+-- support_message - A message sent from the Help & support contact form, stored for the operator to read. No email is sent.
+-- CR-008 (owner, 2026-11-22) T8 (help & support: 'a contact form that stores the message')
+CREATE TABLE support_message (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint,  -- CR-008 (owner, 2026-11-22) T8 - The sender's account when signed in; NULL for a guest.
+    email                      text NOT NULL,  -- CR-008 (owner, 2026-11-22) T8 - Where a reply would go: the account's address, or the one a guest typed.
+    topic                      text NOT NULL,  -- CR-008 (owner, 2026-11-22) T8 - One of the form's topics.
+    message                    text NOT NULL,  -- CR-008 (owner, 2026-11-22) T8 - What the person wrote, 1 to 2000 characters after trimming.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 · FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    PRIMARY KEY (id),
+    CONSTRAINT ck_support_message__topic CHECK (topic IN ('booking', 'payment', 'rewards', 'account', 'other')),
+    CONSTRAINT ck_support_message__message CHECK (char_length(btrim(message)) BETWEEN 1 AND 2000),
+    CONSTRAINT ck_support_message__email CHECK (char_length(btrim(email)) BETWEEN 3 AND 254),
+    CONSTRAINT fk_support_message__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
 
 -- --------------------------------------------------------------------------
 -- booking - One confirmed purchase: one user, one showtime, one captured payment, one unique customer-facing reference, and a stored total.
@@ -396,6 +481,27 @@ CREATE TABLE idempotency_record (
 );
 
 -- --------------------------------------------------------------------------
+-- notification - In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them. Nothing schedules or polls them; the unread count is read on navigation.
+-- CR-008 (owner, 2026-11-22) T7 (notifications)
+CREATE TABLE notification (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T7 - The account it is for (the booking's user).
+    booking_id                 bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T7 - The event's booking; the inbox links to it.
+    kind                       text NOT NULL,  -- CR-008 (owner, 2026-11-22) T7 - booking_confirmed, points_earned or points_redeemed.
+    title                      text NOT NULL,  -- CR-008 (owner, 2026-11-22) T7 - The one line the inbox shows, rendered by the server at the event.
+    body                       text NOT NULL,  -- CR-008 (owner, 2026-11-22) T7 - The sentence under it.
+    read_at                    timestamptz,  -- CR-008 (owner, 2026-11-22) T7 (mark-read, mark-all-read) - NULL = unread. Set from the injected clock.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 · FR-ADR-018 - Written from the injected clock with the event; DEFAULT now() as row metadata.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_notification__booking_id_kind UNIQUE (booking_id, kind),
+    CONSTRAINT ck_notification__kind CHECK (kind IN ('booking_confirmed', 'points_earned', 'points_redeemed')),
+    CONSTRAINT fk_notification__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_notification__booking_id FOREIGN KEY (booking_id) REFERENCES booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The inbox and the unread count: the caller's rows, newest first.
+CREATE INDEX ix_notification__user_id_id ON notification (user_id, id);
+
+-- --------------------------------------------------------------------------
 -- receipt_dispatch - One durable claim-and-outcome row per booking recording whether the receipt email was claimed, sent, failed or suppressed — the guard that makes two senders for one booking impossible, and the only record of what SES was asked to do.
 -- FR-ADR-032 Decision; E4 P-TKT-05 'Send exactly one receipt per booking, and retry the ones that fail' Preconditions
 CREATE TABLE receipt_dispatch (
@@ -417,6 +523,28 @@ CREATE TABLE receipt_dispatch (
 );
 
 -- --------------------------------------------------------------------------
+-- reward_entry - The points ledger: one row per points movement, each tied to the booking that caused it. Earned on a paid booking, redeemed as a discount on one. Written only inside the booking-confirm transaction, so a failed payment or an expired hold rolls the redemption back with everything else.
+-- CR-008 (owner, 2026-11-22) T3 (rewards: points and discounts per account)
+CREATE TABLE reward_entry (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T3 - The booking's own user (the session's).
+    booking_id                 bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T3 ('earns points ... once, even if payment is retried') - The booking the movement belongs to; with kind, unique.
+    kind                       text NOT NULL,  -- CR-008 (owner, 2026-11-22) T3 - earned or redeemed.
+    points                     bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T3 - Always positive; kind gives the sign.
+    discount_paise             bigint,  -- CR-008 (owner, 2026-11-22) T3 ('the server computes the discount') - The money a redemption took off, in the minor unit. NULL on an earned row.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T3 · FR-ADR-018 - Written from the injected clock with the booking (the history shows it), DEFAULT now() as row metadata.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_reward_entry__booking_id_kind UNIQUE (booking_id, kind),
+    CONSTRAINT ck_reward_entry__kind CHECK (kind IN ('earned', 'redeemed')),
+    CONSTRAINT ck_reward_entry__points CHECK (points > 0),
+    CONSTRAINT ck_reward_entry__discount CHECK ((kind = 'redeemed') = (discount_paise IS NOT NULL AND discount_paise > 0)),
+    CONSTRAINT fk_reward_entry__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_reward_entry__booking_id FOREIGN KEY (booking_id) REFERENCES booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The Rewards history: the caller's rows, newest first.
+CREATE INDEX ix_reward_entry__user_id_id ON reward_entry (user_id, id);
+
+-- --------------------------------------------------------------------------
 -- Roles.  The application never connects as the owner of these
 -- tables.  Building against the restricted role from the first line
 -- is the only way a missing grant is found here rather than in AWS,
@@ -431,10 +559,12 @@ CREATE TABLE receipt_dispatch (
 -- frontrow_app: the application role. Not a superuser and not the owner. The two-role split is FORCED, not stylistic: S-XCT-07 asserts that table_privileges for audit_log and current_user returns EXACTLY two rows. Observed on PostgreSQL 16.14 - a table's OWNER sees seven (DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE), so a single-role design cannot satisfy that criterion at all. With a separate owner the same query returns exactly INSERT and SELECT.
 -- S-XCT-07; FR-ADR-019 (audit is append-only at the role level, not by convention); E8 S7.11 · least-privilege matrix: checks/roles_local.sql section 3 (each table's privileges cited there; verify_invariants.sql A4 fails on any excess) · CREATED BY THE OPERATOR, NOT BY schema.sql: checks/roles_local.sql locally, the client on RDS (AWS_PREP_QUEUE row 20); schema.sql only GRANTs and fails loudly if the role is absent.
 GRANT USAGE ON SCHEMA public TO frontrow_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app;
 GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app;
 GRANT SELECT, INSERT ON audit_log TO frontrow_app;
 GRANT SELECT, INSERT ON booking TO frontrow_app;
 GRANT SELECT, INSERT ON booking_seat TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON bookmark TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON certification TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON cinema TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON format TO frontrow_app;
@@ -444,15 +574,20 @@ GRANT SELECT, INSERT, UPDATE ON language TO frontrow_app;
 GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app;
 GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON movie_like TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON movie_rating TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app;
+GRANT SELECT, INSERT ON reward_entry TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON showtime TO frontrow_app;
 GRANT SELECT, INSERT ON showtime_seat TO frontrow_app;
+GRANT SELECT, INSERT ON support_message TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON users TO frontrow_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app;
 

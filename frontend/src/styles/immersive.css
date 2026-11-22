@@ -53,6 +53,21 @@
   height: 100%;
   position: relative;
 }
+/* CR-008 T10: the landing scrolls - the hall fills the first screen and the discovery rows follow under it */
+.fr-app:has(.fr-landing) {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+@media (min-width: 56.01rem) {
+  .fr-app:has(.fr-landing) .fr-landing {
+    height: 100dvh;
+  }
+}
+.fr-app:has(.fr-landing) .fr-footer {
+  position: static;
+  pointer-events: auto;
+}
 
 /* ---- the stage (HallStage.tsx): a hall filling its box ---- */
 .fr-stage {
@@ -298,7 +313,7 @@
 /* ---- the seat page: the hall on the left, the panel (heading, 2D map, summary) on the right ---- */
 .fr-seatmap.fr-immersive {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(22rem, 30vw, 30rem);
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 32vw, 32rem); /* CR-008 T16: a little wider, so the fitted map is larger */
 }
 .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) {
   grid-template-columns: minmax(0, 1fr);
@@ -408,7 +423,7 @@
     border: 0;
     overflow: visible;
   }
-  /* phones: the films run sideways under the hall, the middle one is on the screen */
+  /* phones: the films wrap in a grid under the hall (CR-008 T16: nothing scrolls sideways); a tap puts one on screen */
   .fr-rail {
     padding-top: var(--fr-space-4);
     border: 0;
@@ -417,16 +432,18 @@
     padding-inline: var(--fr-space-4);
   }
   .fr-rail-films {
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    padding: var(--fr-space-2) calc(50% - 5rem);
-    mask-image: linear-gradient(90deg, transparent, black 18%, black 82%, transparent);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr));
+    overflow: visible;
+    scroll-snap-type: none;
+    padding: var(--fr-space-2) var(--fr-space-4);
+    mask-image: none;
   }
   .fr-rail-films > li {
-    flex: 0 0 10rem;
-    scroll-snap-align: center;
+    scroll-snap-align: none;
+  }
+  .fr-rail-film .fr-meta {
+    display: none;
   }
   .fr-rail-film {
     grid-template-columns: minmax(0, 1fr);
@@ -447,12 +464,10 @@
     font-size: var(--fr-text-lg);
     flex: 1 0 100%;
   }
-  /* the times scroll sideways in one row; Book tickets takes the full width under them */
+  /* the times wrap (CR-008 T16); Book tickets takes the full width under them */
   .fr-landing-times {
     flex: 1 0 100%;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    flex-wrap: wrap;
   }
   .fr-landing-times .fr-choice {
     flex: none;

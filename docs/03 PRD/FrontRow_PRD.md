@@ -1052,10 +1052,10 @@ exclusion in `S2.4` or an `OPEN` row, and neither may be quietly filled in.
 disagree** — a check added after this table silently went stale at 53 while claiming it could
 not.*
 
-**61 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
+**74 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
 once, under the **narrowest** router that admits it.
 
-**Public — no session required** — 12
+**Public — no session required** — 14
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -1071,8 +1071,10 @@ once, under the **narrowest** router that admits it.
 | `EP-BRW-04` | `GET` | `/api/showtimes` | anyone |
 | `EP-BRW-05` | `GET` | `/api/showtimes/{showtime_id}` | anyone |
 | `EP-BRW-06` | `GET` | `/api/showtimes/{showtime_id}/seatmap` | anyone |
+| `EP-ACC-17` | `POST` | `/api/support/messages` | anyone |
+| `EP-ACC-18` | `GET` | `/api/search` | anyone |
 
-**Customer — a session, and the caller's own resources** — 10
+**Customer — a session, and the caller's own resources** — 21
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -1085,6 +1087,17 @@ once, under the **narrowest** router that admits it.
 | `EP-HLD-03` | `DELETE` | `/api/holds/{hold_token}/seats/{seat_id}` | customer / manager / admin |
 | `EP-ACC-07` | `GET` | `/api/me/bookings` | any signed-in user |
 | `EP-ACC-08` | `GET` | `/api/me/bookings/{reference}` | any signed-in user |
+| `EP-ACC-09` | `GET` | `/api/me/summary` | any signed-in user |
+| `EP-ACC-10` | `GET` | `/api/me/rewards` | any signed-in user |
+| `EP-ACC-11` | `GET` | `/api/me/bookmarks` | any signed-in user |
+| `EP-ACC-12` | `PUT` | `/api/me/bookmarks/{movie_id}` | any signed-in user |
+| `EP-ACC-13` | `GET` | `/api/me/notifications` | any signed-in user |
+| `EP-ACC-14` | `POST` | `/api/me/notifications/read` | any signed-in user |
+| `EP-ACC-15` | `GET` | `/api/me/profile` | any signed-in user |
+| `EP-ACC-16` | `PUT` | `/api/me/profile` | any signed-in user |
+| `EP-ACC-19` | `GET` | `/api/me/movies/{movie_id}` | any signed-in user |
+| `EP-ACC-20` | `PUT` | `/api/me/ratings/{movie_id}` | any signed-in user |
+| `EP-ACC-21` | `PUT` | `/api/me/likes/{movie_id}` | any signed-in user |
 | `EP-HLD-01` | `POST` | `/api/showtimes/{showtime_id}/holds` | customer / manager / admin |
 
 **Reporting — manager and admin, screen-scoped** — 3
@@ -9306,6 +9319,44 @@ two-minute target is not arbitrary against a three-minute hold.**
   attached.**
 
 ---
+
+---
+
+#### `P-ACC-16` · A customer's personal account: points, wishlist, profile, inbox and help · `RULED`
+`[SRC: CR-008 T3-T8 (owner, 2026-11-22), which amends the frozen scope - SRC-001 §6's "no loyalty points" is lifted by the owner's own request]`
+`[BRD: R-ACC-02, R-ACC-03]`
+
+**Behaviour.** A signed-in customer earns points on every paid booking (10 per whole currency unit actually paid,
+once per booking however often the confirm is retried), may choose "use my points" at checkout (100 points = 1.00
+off, capped at 50% of the order, floored, computed by the server against the server's hold), saves films to a
+wishlist, edits a display name, phone and preferred language and format, reads in-app notifications created by
+three events (booking confirmed, points earned, points redeemed), and sends a Help & support message that is stored
+and never emailed. Every rule's numbers live in `backend/app/domain/rewards.py` and nowhere else.
+
+**Who may do it.** Any signed-in account, on its own rows only (`P-ACC-12`). The support form is also open to a guest.
+
+**Exceptions.** A redemption is written inside the booking-confirm transaction, so a failed payment or an expired
+hold leaves the balance as it was. A confirm whose `expected_total_paise` differs from the server's total is refused
+with `TOTAL_CHANGED` and books nothing. Nothing in this row runs on a schedule or a timer.
+
+
+#### `P-ACC-17` · Discovery: search, film details, ratings and likes · `RULED`
+`[SRC: CR-008 T9-T12 (owner, 2026-11-22), which amends the frozen scope: the owner asked for search, landing rows, ratings, likes and full film details]`
+`[BRD: R-ACC-02, R-ACC-03]`
+
+**Behaviour.** Anyone may search the films a customer can see by title or genre (case-insensitive, at most 8
+results, title matches first). Every film in the listing and on its page carries its release date, whether it is
+coming soon (released after the cinema's today), its star average in tenths (an integer, half up; `null` when
+unrated), its rating count and its like count; the film page adds the 1-10 breakdown, the cast and the crew. A
+signed-in customer may rate a film 1 to 10 once a show of it that they booked and paid for has started (one rating per
+customer and film; a second rating replaces the first), and may like a film that is coming soon (a toggle).
+
+**Who may do it.** Search and the details: anyone. Rating and liking: a signed-in account, on its own rows only
+(`P-ACC-12`); the rating gate is checked by the server inside the write's transaction, never by the client.
+
+**Exceptions.** Rating without a started, paid booking is `403 FORBIDDEN` and writes nothing; liking a released film
+is `403 FORBIDDEN`. A score outside 1..10 is `422`. Nothing in this row runs on a schedule or a timer; the listing's
+cached figures are refreshed by the write itself (the listing generation is bumped after it commits).
 
 ## S4 / E6 — Admin: movies, showtimes, pricing, halls
 
@@ -20310,14 +20361,14 @@ detail — which is what stops the list growing into a hundred one-off strings.
 | `HOLD_NOT_OWNED` | 403 | The hold token presented does not match the lock on those seats. | `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-025 |
 | `SEAT_LIMIT_EXCEEDED` | 422 | The request would take the customer past ten seats for this showtime. | `EP-HLD-01` | SRC-003 OPEN-BOOK-01 · FR-ADR-026 |
 | `SALES_CLOSED` | 409 | The showtime is past its sales cut-off. | `EP-HLD-01` | SRC-003 OPEN-BOOK-03 · FR-ADR-042 |
-| `AUTH_REQUIRED` | 401 | The caller is not signed in and the action requires an account. | `EP-ACC-04` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-003 OPEN-BOOK-02 · FR-ADR-014 |
+| `AUTH_REQUIRED` | 401 | The caller is not signed in and the action requires an account. | `EP-ACC-04` `EP-ACC-07` `EP-ACC-08` `EP-ACC-09` `EP-ACC-10` `EP-ACC-11` `EP-ACC-12` `EP-ACC-13` `EP-ACC-14` `EP-ACC-15` `EP-ACC-16` `EP-ACC-19` `EP-ACC-20` `EP-ACC-21` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-003 OPEN-BOOK-02 · FR-ADR-014 |
 | `IDEMPOTENCY_IN_FLIGHT` | 409 | The same Idempotency-Key is still being processed by an earlier request. | `EP-PAY-01` | SRC-002 §8.3.1 · FR-ADR-020 |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | The same Idempotency-Key arrived with a different request body. | `EP-PAY-01` | SRC-002 §8.3.1 · FR-ADR-020 |
 | `PAYMENT_FAILED` | 402 | The simulated payment provider returned the failed state. | `EP-PAY-01` | SRC-003 OPEN-PAY-01 · FR-ADR-041 |
-| `RATE_LIMITED` | 429 | The token bucket for this user or this address is empty. Carries Retry-After. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-08` `EP-BRW-06` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §8.4.1 · SRC-002 §8.4.2 · FR-ADR-058 |
-| `DEPENDENCY_UNAVAILABLE` | 503 | Redis is unreachable on the seat path. The system fails loudly and never falls back to the database for locks. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.9 · FR-ADR-028 |
+| `RATE_LIMITED` | 429 | The token bucket for this user or this address is empty. Carries Retry-After. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-08` `EP-ACC-17` `EP-BRW-06` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §8.4.1 · SRC-002 §8.4.2 · FR-ADR-058 |
+| `DEPENDENCY_UNAVAILABLE` | 503 | Redis is unreachable on the seat path. The system fails loudly and never falls back to the database for locks. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ACC-09` `EP-ACC-10` `EP-ACC-11` `EP-ACC-12` `EP-ACC-13` `EP-ACC-14` `EP-ACC-15` `EP-ACC-16` `EP-ACC-17` `EP-ACC-18` `EP-ACC-19` `EP-ACC-20` `EP-ACC-21` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.9 · FR-ADR-028 |
 | `VERSION_CONFLICT` | 409 | An admin edit lost optimistic concurrency against a concurrent change. | `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-29` | FR-ADR-035 |
-| `INTERNAL_ERROR` | 500 | Anything unhandled. The message is generic and the detail is in the logs against the request id. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.6 · FR-ADR-052 |
+| `INTERNAL_ERROR` | 500 | Anything unhandled. The message is generic and the detail is in the logs against the request id. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-04` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-08` `EP-ACC-09` `EP-ACC-10` `EP-ACC-11` `EP-ACC-12` `EP-ACC-13` `EP-ACC-14` `EP-ACC-15` `EP-ACC-16` `EP-ACC-17` `EP-ACC-18` `EP-ACC-19` `EP-ACC-20` `EP-ACC-21` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-BRW-07` `EP-HLD-01` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` `EP-TKT-01` `EP-TKT-02` | SRC-002 §7.6 · FR-ADR-052 |
 
 ### Extensions adjudicated in the `GOAL_05` merge pass
 
@@ -20328,11 +20379,11 @@ removed rather than left as furniture.
 
 | Code | HTTP | When it is raised | Raised by | Source |
 |---|---|---|---|---|
-| `REQUEST_INVALID` | 400 | A required header is missing or malformed, the body does not parse, or it carries a property the endpoint does not define. Unknown fields are rejected, never ignored. | `EP-ADM-02` `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-19` `EP-ADM-20` `EP-ADM-23` `EP-ADM-24` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-052 (extension) · FR-ADR-020 (which requires a missing Idempotency-Key to be 400) |
-| `VALIDATION_FAILED` | 422 | A well-formed request field failed server-side validation. `details` names the field and the bound it broke. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-HLD-03` `EP-RPT-01` `EP-RPT-02` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-002 §7.1 |
+| `REQUEST_INVALID` | 400 | A required header is missing or malformed, the body does not parse, or it carries a property the endpoint does not define. Unknown fields are rejected, never ignored. | `EP-ACC-12` `EP-ACC-14` `EP-ACC-16` `EP-ACC-17` `EP-ACC-20` `EP-ACC-21` `EP-ADM-02` `EP-ADM-04` `EP-ADM-05` `EP-ADM-07` `EP-ADM-08` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-19` `EP-ADM-20` `EP-ADM-23` `EP-ADM-24` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-HLD-02` `EP-HLD-03` `EP-HLD-04` `EP-PAY-01` | FR-ADR-052 (extension) · FR-ADR-020 (which requires a missing Idempotency-Key to be 400) |
+| `VALIDATION_FAILED` | 422 | A well-formed request field failed server-side validation. `details` names the field and the bound it broke. | `EP-ACC-01` `EP-ACC-02` `EP-ACC-05` `EP-ACC-06` `EP-ACC-07` `EP-ACC-10` `EP-ACC-12` `EP-ACC-16` `EP-ACC-17` `EP-ACC-18` `EP-ACC-20` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-13` `EP-ADM-14` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-31` `EP-ADM-32` `EP-BRW-01` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-HLD-03` `EP-RPT-01` `EP-RPT-02` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-002 §7.1 |
 | `CREDENTIALS_INVALID` | 401 | The email address and password did not match. The identical response is returned whether or not the address is registered, so the endpoint does not disclose which accounts exist. | `EP-ACC-02` | FR-ADR-052 (extension) · FR-ADR-050 |
-| `FORBIDDEN` | 403 | The caller is signed in and their role does not permit this action. Raised by the router dependency, never by a handler. | `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-009 |
-| `NOT_FOUND` | 404 | The addressed resource does not exist, or exists and is not visible to this caller. The two are deliberately indistinguishable, so no endpoint becomes an enumeration oracle. | `EP-ACC-08` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-32` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-RPT-01` `EP-RPT-02` `EP-TKT-01` `EP-TKT-02` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-015 |
+| `FORBIDDEN` | 403 | The caller is signed in and their role does not permit this action. Raised by the router dependency, never by a handler. | `EP-ACC-20` `EP-ACC-21` `EP-ADM-01` `EP-ADM-02` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-12` `EP-ADM-13` `EP-ADM-14` `EP-ADM-15` `EP-ADM-16` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-22` `EP-ADM-23` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-28` `EP-ADM-29` `EP-ADM-30` `EP-ADM-31` `EP-ADM-32` `EP-RPT-01` `EP-RPT-02` `EP-RPT-03` `EP-RPT-04` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-009 |
+| `NOT_FOUND` | 404 | The addressed resource does not exist, or exists and is not visible to this caller. The two are deliberately indistinguishable, so no endpoint becomes an enumeration oracle. | `EP-ACC-08` `EP-ACC-12` `EP-ACC-19` `EP-ACC-20` `EP-ACC-21` `EP-ADM-03` `EP-ADM-04` `EP-ADM-05` `EP-ADM-06` `EP-ADM-07` `EP-ADM-08` `EP-ADM-09` `EP-ADM-10` `EP-ADM-11` `EP-ADM-14` `EP-ADM-17` `EP-ADM-18` `EP-ADM-19` `EP-ADM-20` `EP-ADM-21` `EP-ADM-24` `EP-ADM-25` `EP-ADM-26` `EP-ADM-27` `EP-ADM-29` `EP-ADM-32` `EP-BRW-02` `EP-BRW-03` `EP-BRW-04` `EP-BRW-05` `EP-BRW-06` `EP-HLD-01` `EP-RPT-01` `EP-RPT-02` `EP-TKT-01` `EP-TKT-02` | FR-ADR-052 (extension) · SRC-001 §7.4 · FR-ADR-015 |
 | `EMAIL_ALREADY_REGISTERED` | 409 | Registration was attempted with an address that already has an account. Nothing is ever deleted, so an address stays taken permanently. | `EP-ACC-01` | FR-ADR-052 (extension) · FR-ADR-050 · FR-ADR-012 |
 | `RESET_TOKEN_INVALID` | 400 | A password-reset token is unknown, already used, or past its lifetime. | `EP-ACC-06` | FR-ADR-052 (extension) · FR-ADR-050 |
 | `HOLD_LOCKED` | 409 | A release was attempted against a hold whose booking confirmation is already in flight. Without it the ordering of release against re-validation is non-deterministic. | — | FR-ADR-052 (extension) · FR-ADR-029 · raised by E2, which recorded its own doubt — see S8.5 |
@@ -20343,6 +20394,7 @@ removed rather than left as furniture.
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | A poster upload failed its content-type, magic-byte or decode check. Three checks, one remedy: send a real JPEG, PNG or WebP. | `EP-ADM-05` | FR-ADR-052 (extension) · FR-ADR-061 |
 | `METHOD_NOT_ALLOWED` | 405 | A request used an HTTP method mounted on no route at that path, while the path is mounted for at least one other method. In practice a `DELETE` at one of the never-deleted entities — movie, showtime, screen, cinema and the four lookup vocabularies. **Raised by a global handler, not by any endpoint**, so it appears in no endpoint's `errors` array and carries no information about which entity was addressed. | — | FR-ADR-052 (extension) · FR-ADR-012 · raised by E8 in the iteration-7 fix pass |
 | `RECEIPT_SUPPRESSED` | 409 | A receipt resend was requested against a dispatch row in state `suppressed` — a booking the seed script created, on an address that can never receive mail. The state is terminal and no retry can move it, which is why this is not RATE_LIMITED: that code promises the caller that waiting helps. | `EP-TKT-02` | FR-ADR-052 (extension) · FR-ADR-060 · FR-ADR-067 · raised by E4 in the iteration-6 fix pass |
+| `TOTAL_CHANGED` | 409 | A booking confirm carried the total the checkout showed and the server's total for the hold, after any points discount, differs. Nothing was booked or charged; `details.total_paise` is the server's figure. | `EP-PAY-01` | FR-ADR-052 (extension) · CR-008 (raised with T3, the checkout-shows-the-server's-hold fix) |
 
 ### Codes raised by a handler and not by any endpoint
 
@@ -20403,7 +20455,7 @@ seconds per filter combination.
       "description": "The visible movies, ordered by published_at DESC then id DESC. A movie is returned only when it matches language_id (a movie attribute) AND has at least one showtime satisfying every supplied showtime filter — date, cinema_id and format_id — simultaneously, per P-BRW-04. One EXISTS over the showtimes, never one per filter.",
       "body": {
         "count": "integer",
-        "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
+        "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until, release_date (YYYY-MM-DD or null), coming_soon (boolean), rating:{average_tenths (integer or null), count}, likes (integer) - CR-008 T10-T12 (P-ACC-17)}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
       }
     },
     "422": {"description": "A query parameter failed validation"},
@@ -20450,7 +20502,13 @@ existed.
         "language": "{id, name}",
         "genres": "array of {id, name}",
         "poster_url": "string",
-        "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip"
+        "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip",
+        "release_date": "string YYYY-MM-DD or null (CR-008 T12, P-ACC-17)",
+        "coming_soon": "boolean, released after the cinema's today",
+        "rating": "{average_tenths integer or null, count, breakdown: 10 integers, scores 1..10}",
+        "likes": "integer",
+        "cast": "array of {name, role or null}",
+        "crew": "array of {name, role or null}"
       }
     },
     "404": {"description": "No visible movie with that id"},
@@ -20898,7 +20956,7 @@ never held or a price it was never quoted.
     "path_params": {},
     "query": {},
     "headers": {"Idempotency-Key": "string, 1..255, REQUIRED — a missing header is 400 REQUEST_INVALID. GENERATED BY THE CLIENT, never by the server: crypto.randomUUID()'s canonical 36-character form, 122 random bits from a CSPRNG, one per CONFIRM ATTEMPT (not one per hold). It is written to sessionStorage before the request is sent and re-sent unchanged on any repeat of the same attempt, including one whose outcome the client never learned. A fresh key is minted only when there is no stored key, when the stored key was minted against a different hold_token, or when the previous attempt returned 402 PAYMENT_FAILED — the one outcome specified to have committed nothing (P-PAY-09)"},
-    "body": {"hold_token": "string, opaque, exactly 43 characters from the URL-safe base64 alphabet, required", "showtime_id": "integer, positive, required, must match the showtime the hold was taken on"}
+    "body": {"hold_token": "string, opaque, exactly 43 characters from the URL-safe base64 alphabet, required", "showtime_id": "integer, positive, required, must match the showtime the hold was taken on", "use_points": "boolean, optional, default false (CR-008 T3) - the customer chose to spend points; the server decides how many", "expected_total_paise": "integer, optional (CR-008) - the total the checkout showed, after any discount; a different server total is 409 TOTAL_CHANGED"}
   },
   "responses": {
     "201": {"description": "The booking was created. The simulated payment reached captured before the booking row was inserted.", "body": {"booking_id": "integer", "booking_reference": "string, the PRESENTATION FORM FR-XXXX-XXXX including its hyphens - the same shape EP-TKT-01 and every other endpoint returning a reference carries. It is re-formatted at serialisation from the 8 characters stored on the booking row; the 8-character stored form is never what crosses the wire (P-TKT-01)", "showtime_id": "integer", "movie_title": "string", "screen_name": "string", "starts_at": "string, ISO-8601 instant serialised WITH THE CINEMA'S UTC OFFSET taken from the cinema row, e.g. 2026-08-20T14:00:00+05:30 - never UTC, never a hardcoded offset. The client renders the wall-clock part as given and CONVERTS NOTHING (P-BRW-06, FR-ADR-018, P-ADM-26)", "seats": "array of objects: {seat_id, seat_label, seat_category_name, price_paise, base_price_paise_applied, uplift_basis_points_applied}", "total_paise": "integer, the sum of the already-rounded per-seat prices, never itself rounded", "currency_code": "string, INR", "payment_status": "string, captured", "created_at": "string, ISO-8601 instant serialised with the cinema's UTC offset, exactly as starts_at - it is shown to the customer as the time they booked, so it is a wall-clock instant and the client converts nothing"}},
@@ -20906,13 +20964,13 @@ never held or a price it was never quoted.
     "401": {"description": "No valid token. A guest cannot reach this endpoint."},
     "402": {"description": "The simulated provider returned failed. The transaction rolled back in full, taking its idempotency record with it, so nothing was booked and nothing was captured. The hold is untouched by this endpoint and survives if it has not expired. The published message makes no claim about which, because the confirm re-validates the hold at step 2 and the capture is step 6 and Redis is not read again before commit — it names what the server knows and points the customer at the countdown for the rest (P-PAY-01 exception 4). This is the only response after which the client mints a fresh Idempotency-Key."},
     "403": {"description": "The hold token exists but was issued to a different user."},
-    "409": {"description": "The hold has expired, one or more seats were taken by another customer, or the same idempotency key is still in flight."},
+    "409": {"description": "The hold has expired, one or more seats were taken by another customer, the same idempotency key is still in flight, or (CR-008) expected_total_paise is not the server's total - details.total_paise carries the server's."},
     "422": {"description": "The same idempotency key was sent with a different request fingerprint."},
     "429": {"description": "Over the token bucket. Carries Retry-After in seconds."},
     "500": {"description": "Unhandled. The transaction rolled back and the request id is returned to the customer."},
     "503": {"description": "Redis is unreachable. The confirm path never falls back to PostgreSQL for the hold check."}
   },
-  "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "HOLD_EXPIRED", "HOLD_NOT_OWNED", "SEAT_UNAVAILABLE", "IDEMPOTENCY_IN_FLIGHT", "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
+  "errors": ["REQUEST_INVALID", "AUTH_REQUIRED", "HOLD_EXPIRED", "HOLD_NOT_OWNED", "SEAT_UNAVAILABLE", "IDEMPOTENCY_IN_FLIGHT", "IDEMPOTENCY_KEY_REUSED", "PAYMENT_FAILED", "TOTAL_CHANGED", "RATE_LIMITED", "DEPENDENCY_UNAVAILABLE", "INTERNAL_ERROR"],
   "errors_deliberately_absent": "SALES_CLOSED is NOT in the array above and cannot be raised by this endpoint. The sales cut-off is enforced once, at hold acquisition (P-HLD-06), and never re-checked at confirm - SRC-003 OPEN-BOOK-03 rules that anyone already holding seats may finish checking out, and a client ruling outranks FR-ADR-029 step 4, which reads otherwise (see this lane's contradiction 1). A customer whose cut-off passes mid-checkout completes normally: P-PAY-10 step 4 reads the showtime and does not gate on it. The absence is therefore a decision, not an omission, and it is recorded here because four sections discuss the cut-off at confirm and a reader who finds none of them conclusive would otherwise add the code.",
   "idempotency": "Required. The record is inserted in Postgres in the same transaction, before any work, unique on (user_id, idempotency_key). A repeat with the same key and the same request fingerprint returns the winner's stored response body and status code when the winner is completed, and 409 IDEMPOTENCY_IN_FLIGHT with Retry-After while the winner is still running. A repeat with the same key and a different fingerprint is 422 IDEMPOTENCY_KEY_REUSED. A key whose transaction rolled back is free to be used again. The record is never expired and never deleted. On 409 IDEMPOTENCY_IN_FLIGHT the client re-sends the identical request automatically after Retry-After seconds, at most three times, and keeps its busy state while it does; every one of those re-sends spends a rate-limit token, which is why the count is bounded rather than a poll (P-PAY-09).",
   "rate_limit": "Redis token bucket, two independent buckets and both must have a token: 10 per minute per user id, 30 per minute per real client IP. The real IP is the rightmost-but-one X-Forwarded-For entry with exactly one trusted proxy. The limiter fails closed with 503 when Redis is unreachable. A retry carrying an already-seen Idempotency-Key still consumes a token.",
@@ -21349,6 +21407,713 @@ to adjudicate rather than invented inline.
 
 ---
 
+---
+
+CR-008 T3-T8 (`P-ACC-16`): the personal account. Every `/api/me/` route below carries the same caller rule as
+`EP-ACC-07`; the support form is public.
+
+```endpoint
+{
+  "id": "EP-ACC-09",
+  "method": "GET",
+  "path": "/api/me/summary",
+  "summary": "The account sidebar's one read: greeting, points balance, unread notification count",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The caller's summary",
+      "body": {
+        "display_name": "string or null",
+        "email": "string",
+        "points_balance": "integer",
+        "unread_notifications": "integer"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none - read on navigation like EP-ACC-04, never on a timer (CR-008 T7)",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-10",
+  "method": "GET",
+  "path": "/api/me/rewards",
+  "summary": "The caller's points balance, the rules, the newest 100 ledger movements, and optionally a quote",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "query": {
+      "quote_paise": "integer, 0..bigint max, optional - an order total; the response then carries what 'use my points' would do to it, from the same function the confirm uses"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Balance and history",
+      "body": {
+        "points_balance": "integer",
+        "rules": "object {earn_points_per_unit, redeem_points_per_unit, redeem_cap_percent}",
+        "history": "array of {kind earned|redeemed, points, discount_paise or null, created_at, booking_reference}",
+        "quote": "object {points, discount_paise, total_paise}, present only with quote_paise"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "422": {
+      "description": "quote_paise is not a non-negative integer"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-11",
+  "method": "GET",
+  "path": "/api/me/bookmarks",
+  "summary": "The caller's wishlist: saved films a customer can currently see, newest first",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "Saved films",
+      "body": {
+        "items": "array of {movie_id, title, runtime_minutes, poster_url}"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-12",
+  "method": "PUT",
+  "path": "/api/me/bookmarks/{movie_id}",
+  "summary": "Save or un-save one film on the caller's wishlist",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "saved": "boolean, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The new state",
+      "body": {
+        "movie_id": "integer",
+        "saved": "boolean"
+      }
+    },
+    "400": {
+      "description": "The body does not parse or carries another property"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id); the same body twice leaves the same state and one row. Un-saving is an UPDATE, never a DELETE.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-13",
+  "method": "GET",
+  "path": "/api/me/notifications",
+  "summary": "The caller's in-app notifications, newest 100, and the unread count",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The inbox",
+      "body": {
+        "unread": "integer",
+        "items": "array of {id, kind booking_confirmed|points_earned|points_redeemed, title, body, read, created_at, booking_reference}"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-14",
+  "method": "POST",
+  "path": "/api/me/notifications/read",
+  "summary": "Mark some or all of the caller's notifications read",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "ids": "array of integer, 1..100, optional",
+      "all": "boolean true, optional - exactly one of ids and all"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The unread count afterwards",
+      "body": {
+        "unread": "integer"
+      }
+    },
+    "400": {
+      "description": "Neither or both of ids and all, or another property"
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: only unread rows of the caller's are set read; a repeat changes nothing.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-15",
+  "method": "GET",
+  "path": "/api/me/profile",
+  "summary": "The caller's profile and settings",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {},
+  "responses": {
+    "200": {
+      "description": "The profile",
+      "body": {
+        "email": "string",
+        "display_name": "string or null",
+        "phone": "string or null",
+        "preferred_language_id": "integer or null",
+        "preferred_format_id": "integer or null"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-16",
+  "method": "PUT",
+  "path": "/api/me/profile",
+  "summary": "Replace the caller's profile and settings",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "display_name": "string or null, 1..60 after trimming",
+      "phone": "string or null, 7..15 digits with an optional leading +, after removing spaces and dashes",
+      "preferred_language_id": "integer or null, an active language",
+      "preferred_format_id": "integer or null, an active format"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The saved profile, as EP-ACC-15"
+    },
+    "400": {
+      "description": "A field is missing, mistyped, or unknown"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "422": {
+      "description": "A value is out of bounds; details.fields names every failing field with its sentence, for inline display"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: a PUT of the same body leaves the same row.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-16",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-17",
+  "method": "POST",
+  "path": "/api/support/messages",
+  "summary": "Store a Help & support contact message (no email is sent)",
+  "auth": "public",
+  "roles": [
+    "guest",
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "body": {
+      "topic": "string, one of booking, payment, rewards, account, other",
+      "message": "string, 1..2000 after trimming",
+      "email": "string, required for a guest; ignored for a signed-in caller, whose account address is used"
+    }
+  },
+  "responses": {
+    "201": {
+      "description": "Stored",
+      "body": {
+        "id": "integer",
+        "message": "string"
+      }
+    },
+    "400": {
+      "description": "The body does not parse, carries another property, or names another topic"
+    },
+    "422": {
+      "description": "No usable reply address, or a message out of bounds; details.fields names them"
+    },
+    "429": {
+      "description": "Over the per-IP bucket; carries Retry-After"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "VALIDATION_FAILED",
+    "RATE_LIMITED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Not idempotent: each accepted request stores one row. Bounded by the rate limit.",
+  "rate_limit": "5 per hour per real client IP, in Redis, failing closed (the register bucket's capacity setting under its own key)",
+  "authorisation_rule": "Public. When a valid session is present the row is filed under that user and that user's own address; a body cannot file a message under another account.",
+  "satisfies": [
+    "P-ACC-16"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
+
+```endpoint
+{
+  "id": "EP-ACC-18",
+  "method": "GET",
+  "path": "/api/search",
+  "summary": "Search the visible films by title or genre, as the customer types",
+  "auth": "public",
+  "roles": [
+    "guest",
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "query": {
+      "q": "string, 0..100 characters; fewer than 2 non-space characters finds nothing"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "At most 8 films, title matches first",
+      "body": {
+        "items": "array of {id, title, genres [{id, name}], poster_url, matched title|genre}"
+      }
+    },
+    "422": {
+      "description": "q is longer than 100 characters"
+    },
+    "503": {
+      "description": "Postgres is unreachable"
+    }
+  },
+  "errors": [
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none, as the listing: the client debounces (250 ms) and aborts the previous request",
+  "authorisation_rule": "Public. The visibility predicate (app/domain/visibility.py) is applied in the query, so a draft or a film outside its window is never found.",
+  "satisfies": [
+    "P-ACC-17"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-19",
+  "method": "GET",
+  "path": "/api/me/movies/{movie_id}",
+  "summary": "The film page's per-viewer half: my score, whether I may rate, whether I liked it",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The caller's view",
+      "body": {
+        "movie_id": "integer",
+        "score": "integer 1..10 or null",
+        "can_rate": "boolean",
+        "liked": "boolean",
+        "coming_soon": "boolean"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "NOT_FOUND",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-20",
+  "method": "PUT",
+  "path": "/api/me/ratings/{movie_id}",
+  "summary": "Rate a film 1 to 10 after a show of it that the caller booked has started",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "score": "integer 1..10, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Saved; the film's new figures",
+      "body": {
+        "movie_id": "integer",
+        "score": "integer",
+        "rating": "object {average_tenths integer or null, count, breakdown [10 integers, scores 1..10]}"
+      }
+    },
+    "400": {
+      "description": "The body does not parse, carries another property, or score is not an integer"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    },
+    "422": {
+      "description": "score is outside 1..10"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id); the same body twice leaves the same state and one row.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12). The gate is an EXISTS over the caller's own bookings, in the write's transaction.",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-21",
+  "method": "PUT",
+  "path": "/api/me/likes/{movie_id}",
+  "summary": "Like or un-like a film that is coming soon",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "liked": "boolean, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The new state and the film's like count",
+      "body": {
+        "movie_id": "integer",
+        "liked": "boolean",
+        "likes": "integer"
+      }
+    },
+    "400": {
+      "description": "The body does not parse or carries another property"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The film is already released"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id). Un-liking is an UPDATE, never a DELETE.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```newerrorcode
+{"code":"TOTAL_CHANGED","http":409,"when":"A booking confirm carried expected_total_paise and the server's total for the hold (after any points discount) is different","raised_by":["EP-PAY-01"],"why_needed":"CR-008: one hold per customer and showtime can grow from another tab, so a checkout could show fewer seats than Pay books. The client sends the total it showed; a mismatch must be its own code because the remedy - re-read the hold and show the new total - differs from every other 409."}
+```
+
 ## S6 / E6 — Admin: movies, showtimes, pricing, halls
 
 Every endpoint below is mounted under `/api/admin` and carries the **single router dependency** of
@@ -21421,7 +22186,10 @@ Creating a film. The row is a draft: no poster, not published, invisible to ever
       "runtime_minutes": "integer, 1 or more, required",
       "certification_id": "integer, must exist, required",
       "language_id": "integer, must exist, required",
-      "genre_ids": "array of integer, 1..10, unique, each must exist, required"
+      "genre_ids": "array of integer, 1..10, unique, each must exist, required",
+      "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+      "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+      "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'"
     }
   },
   "responses": {
@@ -21490,6 +22258,9 @@ one form; they write two different audit actions.
       "certification_id": "integer, must exist, optional",
       "language_id": "integer, must exist, optional",
       "genre_ids": "array of integer, 1..10, unique, each must exist, optional",
+      "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+      "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+      "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'",
       "display_from": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
       "display_until": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07). Strictly after display_from IN THE MERGED ROW - this is a partial update and every bound is evaluated against the row as it would be after the patch, so sending either half alone is checked against the stored other half and can fail 422 (P-ADM-04)"
     }

@@ -57,7 +57,9 @@ def test_only_seeded_demonstration_data_is_loaded(seeded):
 
 def test_no_token_rides_in_a_query_string_and_no_second_session_mechanism_exists():
     assert rg(r"\?token=|access_token=|Authorization: Bearer", "backend/app", "frontend/src") == []
-    assert rg(r"localStorage", "frontend/src") == []
+    # CR-008 T13d: the one amended exception is the Recently viewed list of film ids (discover.ts recentStore); no session
+    # material is ever stored there, and S-XCT-13 counts its uses
+    assert [h for h in rg(r"localStorage", "frontend/src") if h[0] != "frontend/src/features/discover/discover.ts"] == []
 
 
 def test_no_self_made_certificate_and_no_key_material_in_the_tree():

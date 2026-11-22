@@ -12,7 +12,8 @@ from tests.brw.kit import SetClock, api, flush_redis, make_cinema, make_lookup, 
 
 pytestmark = pytest.mark.anyio
 
-KEYS = {"id", "title", "synopsis", "runtime_minutes", "certification", "language", "genres", "poster_url", "display_until"}
+KEYS = {"id", "title", "synopsis", "runtime_minutes", "certification", "language", "genres", "poster_url", "display_until",
+        "release_date", "coming_soon", "rating", "likes"}  # the last four: CR-008 T10-T12 (P-ACC-17), on every card
 
 
 @pytest.fixture

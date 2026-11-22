@@ -45,7 +45,8 @@ async def test_the_key_is_compared_as_exact_bytes(world):
             h = await hold(c, u, [F7])
             r = await confirm(c, u, h["hold_token"], key=key)
             assert r.status_code == 201, (key, r.text)
-            owner_sql(db, "TRUNCATE booking_seat, receipt_dispatch, outbox_message RESTART IDENTITY")  # free the seat again
+            # free the seat again (reward_entry and notification: CR-008 rows that reference the booking)
+            owner_sql(db, "TRUNCATE booking_seat, receipt_dispatch, outbox_message, reward_entry, notification RESTART IDENTITY")
             owner_sql(db, "UPDATE idempotency_record SET booking_id = NULL")
             owner_sql(db, "DELETE FROM booking")
     assert count(db, "SELECT count(*) FROM idempotency_record WHERE user_id = %s", (u,)) == 3

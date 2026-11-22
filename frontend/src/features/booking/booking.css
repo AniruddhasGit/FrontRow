@@ -231,3 +231,7 @@
 .fr-hall-view { margin: var(--fr-space-6) 0 0; }
 .fr-hall-view img { display: block; width: 100%; height: auto; border-radius: var(--fr-radius-lg); border: var(--fr-stroke-hair) solid var(--fr-rule-quiet); }
 .fr-hall-view figcaption { margin-top: var(--fr-space-2); font-size: var(--fr-text-sm); color: var(--fr-ink-muted); }
+
+/* CR-008 T13b/c: Add to calendar and Share on the confirmation */
+.fr-ticket-extras { display: flex; flex-wrap: wrap; gap: var(--fr-space-3); align-items: center; margin: var(--fr-space-4) 0; }
+.fr-calendar { display: inline-flex; align-items: center; gap: var(--fr-space-2); text-decoration: none; }

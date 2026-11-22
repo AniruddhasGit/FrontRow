@@ -5,10 +5,14 @@
 import { useEffect, useRef, useState } from "react";
 import { formatPaise } from "../admin/money";
 import { Link, navigate } from "../../router";
-import { get, query, type Film, type Showtime } from "./api";
+import { get, query, type FilmDetail, type Showtime } from "./api";
 import { DayStrip } from "./DayStrip";
 import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logic";
 import { Poster } from "./Poster";
+import { BookmarkToggle, useSaved } from "../account/Bookmark";
+import { Genres, RatingBadge, releaseLabel, ShareButton } from "../discover/Bits";
+import { pushRecent, recentStore } from "../discover/discover";
+import { FilmDetails } from "../discover/FilmDetails";
 import "./browse.css";
 
 // The one place these screens read the clock; tests and a harness pass their own `now`. Module-level, so it is
@@ -18,19 +22,23 @@ const wallClock = () => Date.now();
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
 
 // The first state, for the render harness (react-dom/server runs no effect). Production passes no seed.
-type Seed = { film?: Film | "missing"; date?: string | null; listed?: Listed; failed?: boolean };
+type Seed = { film?: FilmDetail | "missing"; date?: string | null; listed?: Listed; failed?: boolean };
 
 export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: string; now?: () => number; seed?: Seed }) {
-  const [film, setFilm] = useState<Film | null | "missing">(seed?.film ?? null);
+  const [film, setFilm] = useState<FilmDetail | null | "missing">(seed?.film ?? null);
   const [date, setDate] = useState<string | null>(() => (seed ? seed.date ?? null : new URLSearchParams(window.location.search).get("date")));
   const [listed, setListed] = useState<Listed | null>(seed?.listed ?? null);
   const [failed, setFailed] = useState(seed?.failed ?? false);
   const [attempt, setAttempt] = useState(0);
   const [announce, setAnnounce] = useState("");
+  const [saved, toggle] = useSaved(); // CR-008 T4
   const first = useRef(true);
 
   useEffect(() => {
-    get<Film>(`/api/movies/${encodeURIComponent(movieId)}`).then((r) => setFilm(r.ok ? r.body : "missing"));
+    get<FilmDetail>(`/api/movies/${encodeURIComponent(movieId)}`).then((r) => {
+      setFilm(r.ok ? r.body : "missing");
+      if (r.ok) pushRecent(recentStore(), r.body.id); // CR-008 T13d: this browser's Recently viewed
+    });
   }, [movieId]);
 
   useEffect(() => {
@@ -73,14 +81,22 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
         <header className="fr-movie-head">
           <Poster src={film.poster_url} title={film.title} />
           <div>
-            <h1>{film.title}</h1>
+            {film.coming_soon && film.release_date ? <p className="fr-opens">Opens {releaseLabel(film.release_date)}</p> : null}
+            <div className="fr-title-row">
+              <h1>{film.title}</h1>
+              {film.coming_soon ? null : <RatingBadge rating={film.rating} />}
+            </div>
+            <Genres film={film} />
             <p className="fr-meta">
               <span className="fr-mono">{film.runtime_minutes} min</span>
               <span className="fr-chip">{film.certification.name}</span>
               <span>{film.language.name}</span>
-              {film.genres.length > 0 ? <span>{film.genres.map((g) => g.name).join(", ")}</span> : null}
             </p>
             <p className="fr-movie-synopsis">{film.synopsis}</p>
+            <div className="fr-movie-actions">
+              <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
+              <ShareButton title={film.title} text={`${film.title} at FrontRow`} path={`/movies/${film.id}`} />
+            </div>
           </div>
         </header>
       ) : null}
@@ -123,6 +139,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
           ) : null}
         </>
       )}
+      {film && film.rating.breakdown ? <FilmDetails film={film} onChanged={setFilm} /> : null}
     </section>
   );
 }

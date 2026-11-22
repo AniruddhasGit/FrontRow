@@ -428,9 +428,61 @@ async def read(redis, token: str, user_id: int) -> dict:
     return hold.body()
 
 
+CONFIRMING_TTL_MS = 60000  # a ceiling only: the confirm clears it on every exit; a crashed confirm's mark ends here
+PAYING = "Your payment for these seats is being processed. Wait a moment for it to finish."
+
+
+def confirming_key(token: str) -> str:
+    return f"{record_key(token)}:confirming"
+
+
+async def mark_confirming(redis, token: str) -> None:
+    """CR-008 T14 (#4): set by the confirm before the payment runs. Give up and seat removal refuse while it stands, so
+    a customer cannot free seats that a payment in flight is about to book."""
+    await redis.set(confirming_key(token), "1", px=CONFIRMING_TTL_MS)
+
+
+async def clear_confirming(redis, token: str) -> None:
+    await redis.execute_command("DEL", confirming_key(token))
+
+
+async def _refuse_while_paying(redis, token: str) -> None:
+    if await redis.exists(confirming_key(token)):
+        raise ApiError(409, "IDEMPOTENCY_IN_FLIGHT", PAYING)
+
+
+@contextlib.asynccontextmanager
+async def _serialised(redis, user_id: int, showtime_id: int):
+    """CR-008 T14 (#8): the releases take acquire's per-customer, per-showtime mutex, with acquire's failure rules, so a
+    release and an extend from another tab never interleave into a half-written record."""
+    mutex, mine = mutex_key(user_id, showtime_id), secrets.token_urlsafe(16)
+    for _ in range(int(MUTEX_TTL_MS / 1000 / MUTEX_POLL_S) + 10):
+        if await locks.acquire(redis, mutex, mine, MUTEX_TTL_MS):
+            break
+        await asyncio.sleep(MUTEX_POLL_S)
+    else:
+        raise ApiError(503, "DEPENDENCY_UNAVAILABLE", UNAVAILABLE)
+    try:
+        yield
+    except (RedisError, OSError):
+        raise  # Redis failing: send it nothing more; the mutex expires on its own
+    except BaseException:
+        with contextlib.suppress(RedisError, OSError):
+            await locks.release(redis, mutex, mine)
+        raise
+    await locks.release(redis, mutex, mine)
+
+
 async def release_seat(redis, token: str, user_id: int, seat_id: int) -> dict:
     """P-HLD-08's per-seat procedure. The rest of the hold keeps its expires_at."""
-    hold = await owned(redis, token, user_id)
+    first = await owned(redis, token, user_id)
+    async with _serialised(redis, user_id, first.showtime_id):
+        return await _release_seat_locked(redis, token, user_id, seat_id)
+
+
+async def _release_seat_locked(redis, token: str, user_id: int, seat_id: int) -> dict:
+    hold = await owned(redis, token, user_id)  # re-read under the mutex
+    await _refuse_while_paying(redis, token)
     entry = hold.seats.get(seat_id)
     if entry is None:
         raise ApiError(422, "VALIDATION_FAILED", NOT_IN_HOLD, {"field": "seat_id"})
@@ -462,7 +514,11 @@ async def release_all(redis, hold: Hold) -> None:
 
 
 async def release(redis, token: str, user_id: int) -> None:
-    await release_all(redis, await owned(redis, token, user_id))
+    first = await owned(redis, token, user_id)
+    async with _serialised(redis, user_id, first.showtime_id):
+        hold = await owned(redis, token, user_id)  # re-read under the mutex
+        await _refuse_while_paying(redis, token)
+        await release_all(redis, hold)
 
 
 # ---- SIGTERM (P-HLD-12, FR-ADR-033) ----------------------------------------------------------------------------

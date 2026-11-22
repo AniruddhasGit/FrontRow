@@ -157,6 +157,12 @@ REVOKE CREATE ON SCHEMA public FROM frontrow_app;
 --                                        manager_screen_assignment row")
 --    admin_grant               S I D     SRC-008 ROLE-1 ADDENDUM, S-ADM-30: an admin adds a granted email and
 --                                        removing one deletes that grant row
+--    bookmark                  S I U     CR-008 T4: the wishlist toggle is an upsert on saved; no DELETE
+--    notification              S I U     CR-008 T7: written by a booking event; mark-read sets read_at
+--    reward_entry              S I       CR-008 T3: the points ledger is append-only
+--    support_message           S I       CR-008 T8: the contact form stores a message; nothing edits it
+--    movie_rating              S I U     CR-008 T12: one score per customer and film; re-rating updates it
+--    movie_like                S I U     CR-008 T12: the like toggle is an upsert on liked; no DELETE
 --
 --    No table:  TRUNCATE, REFERENCES, TRIGGER - nothing in the product needs
 --    them, and TRUNCATE on audit_log would defeat FR-ADR-019 outright.

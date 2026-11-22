@@ -175,6 +175,20 @@ async def get_poster(request: Request, movie_id: Id) -> Response:
                             headers={"Cache-Control": f"max-age={settings.POSTER_REDIRECT_CACHE_SECONDS}"})
 
 
+SEARCH_TOO_LONG = "Search for at most 100 characters."
+
+
+@router.get("/search")
+async def search(request: Request, q: str = Query("")) -> Response:
+    """CR-008 T9: the header's search as you type. Uncached (every query is new) and unlimited like the listing; the
+    client waits for a pause in typing and aborts the previous request, so only the latest answer is ever shown."""
+    if len(q) > 100:
+        raise ApiError(422, "VALIDATION_FAILED", SEARCH_TOO_LONG, {"field": "q"})
+    async with _db(request) as conn:
+        found = await catalogue.search(conn, request.app.state.clock.now(), q)
+    return Response(_json(found), media_type="application/json")
+
+
 @router.get("/showtimes")
 async def list_showtimes(request: Request, movie_id: str | None = Query(None), date: str | None = Query(None),
                          cinema_id: str | None = Query(None), format_id: str | None = Query(None)) -> Response:

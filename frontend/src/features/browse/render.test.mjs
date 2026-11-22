@@ -16,7 +16,10 @@ const NOW = Date.parse("2026-08-14T10:00:00+05:30");
 const now = () => NOW;
 const film = (id, display_until, over = {}) => ({
   id, title: `Film ${id}`, synopsis: "A synopsis.", runtime_minutes: 120, certification: { id: 1, name: "UA" },
-  language: { id: 1, name: "Hindi" }, genres: [{ id: 1, name: "Drama" }], poster_url: `/api/movies/${id}/poster`, display_until, ...over,
+  language: { id: 1, name: "Hindi" }, genres: [{ id: 1, name: "Drama" }], poster_url: `/api/movies/${id}/poster`, display_until,
+  // CR-008 T10-T12: every film the API returns carries these; the film page adds the breakdown, cast and crew
+  release_date: null, coming_soon: false, rating: { average_tenths: null, count: 0, breakdown: Array(10).fill(0) }, likes: 0,
+  cast: [], crew: [], ...over,
 });
 const lookups = (n, word) => Array.from({ length: n }, (_, i) => ({ id: i + 1, name: `${word} ${i + 1}` }));
 const ref = (languages, formats, cinemas) => ({ languages: lookups(languages, "L"), formats: lookups(formats, "F"), cinemas: lookups(cinemas, "C"), certifications: lookups(2, "U") });

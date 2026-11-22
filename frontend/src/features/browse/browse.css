@@ -17,12 +17,54 @@
   gap: var(--fr-space-3);
   margin-bottom: var(--fr-space-4);
 }
+/* CR-008 T16: no horizontal scroll anywhere - a row of choices wraps onto the next line instead of sliding sideways */
 .fr-strip,
 .fr-pick {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--fr-space-2);
-  overflow-x: auto;
   padding: var(--fr-space-1) 2px;
+}
+/* The date grid (DayStrip.tsx): "Any date", then rows of 7 equal day cells that shrink with the page and never scroll. */
+.fr-days {
+  display: grid;
+  gap: var(--fr-space-2);
+  max-width: 40rem;
+  padding: var(--fr-space-1) 2px;
+}
+.fr-day-any {
+  justify-self: start;
+}
+.fr-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--fr-space-1);
+}
+.fr-choice.fr-day {
+  min-width: 0;
+  padding: var(--fr-space-1) 0;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  line-height: 1.1;
+}
+.fr-day-month {
+  font-size: 0.625rem;
+  min-height: 0.75rem;
+  letter-spacing: var(--fr-track-caps);
+  text-transform: uppercase;
+  color: var(--fr-screen-ink);
+}
+.fr-day[aria-pressed="true"] .fr-day-month {
+  color: inherit;
+}
+.fr-day-weekday {
+  font-size: var(--fr-text-xs);
+  opacity: 0.8;
+}
+.fr-day-date {
+  font-size: var(--fr-text-md);
+  font-weight: var(--fr-weight-bold);
 }
 .fr-choice,
 .fr-clear {

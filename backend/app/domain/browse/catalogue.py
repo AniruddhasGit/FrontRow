@@ -23,12 +23,13 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, exists, false, or_, select
+from sqlalchemy import BigInteger, and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 # THE visibility predicate (P-BRW-01, P-ADM-05) lives in one module; every movie-addressed query here applies it.
 from app.domain.visibility import visible
-from app.models import certification, cinema, format, genre, language, movie, movie_genre, screen, showtime
+from app.models import (certification, cinema, format, genre, language, movie, movie_genre, movie_like, movie_rating, screen,
+                        showtime)
 
 
 class SortOption(str, enum.Enum):
@@ -98,6 +99,7 @@ def listing_statement(t: datetime, f: ListingFilters, zones: dict[int, str]):
     """EP-BRW-01. The film matches language_id, and ONE showtime matches every supplied showtime filter at once:
     a single EXISTS, never one per filter (P-BRW-04)."""
     stmt = (select(movie.c.id, movie.c.title, movie.c.synopsis, movie.c.runtime_minutes, movie.c.display_until,
+                   movie.c.release_date, movie.c.cast_members, movie.c.crew_members,
                    certification.c.id.label("certification_id"), certification.c.name.label("certification_name"),
                    language.c.id.label("language_id"), language.c.name.label("language_name"))
             .select_from(movie.join(certification, movie.c.certification_id == certification.c.id)
@@ -131,27 +133,103 @@ async def _genres(conn: AsyncConnection, movie_ids: list[int]) -> dict[int, list
     return out
 
 
-def _film(row: Any, genres: list[dict], zone: str) -> dict:
+def coming_soon(release_date: date | None, t: datetime, zone: str) -> bool:
+    """CR-008 T10/T12: released after the cinema's today. No release date counts as released (it is optional)."""
+    return release_date is not None and release_date > local_today(t, zone)
+
+
+def average_tenths(total: int, n: int) -> int | None:
+    """The mean score x10, half up, in integers (no float on the wire): scores 7 and 8 -> 75."""
+    return None if n == 0 else (20 * total + n) // (2 * n)
+
+
+async def _ratings(conn: AsyncConnection, movie_ids: list[int]) -> dict[int, dict]:
+    """CR-008 T12: {movie_id: {rating: {average_tenths, count}, likes}}, aggregated on each listing build (the listing
+    cache holds the result; a rating or like write bumps the listing generation)."""
+    out = {m: {"rating": {"average_tenths": None, "count": 0}, "likes": 0} for m in movie_ids}
+    if movie_ids:
+        for m, n, total in (await conn.execute(
+                select(movie_rating.c.movie_id, func.count(), func.sum(movie_rating.c.score).cast(BigInteger))
+                .where(movie_rating.c.movie_id.in_(movie_ids)).group_by(movie_rating.c.movie_id))).all():
+            out[m]["rating"] = {"average_tenths": average_tenths(total, n), "count": n}
+        for m, n in (await conn.execute(select(movie_like.c.movie_id, func.count())
+                                         .where(movie_like.c.movie_id.in_(movie_ids), movie_like.c.liked)
+                                         .group_by(movie_like.c.movie_id))).all():
+            out[m]["likes"] = n
+    return out
+
+
+async def rating_breakdown(conn: AsyncConnection, movie_id: int) -> dict:
+    """The film page's rating block: average, count, and how many gave each score 1..10 (CR-008 T12)."""
+    counts = dict((await conn.execute(select(movie_rating.c.score, func.count()).where(movie_rating.c.movie_id == movie_id)
+                                      .group_by(movie_rating.c.score))).all())
+    n, total = sum(counts.values()), sum(s * c for s, c in counts.items())
+    return {"average_tenths": average_tenths(total, n), "count": n, "breakdown": [counts.get(s, 0) for s in range(1, 11)]}
+
+
+def people(text: str | None) -> list[dict]:
+    """cast_members / crew_members: one person per line, 'Name: role' (the role is optional)."""
+    out = []
+    for line in (text or "").splitlines():
+        name, _, role = line.partition(":")
+        if name.strip():
+            out.append({"name": name.strip(), "role": role.strip() or None})
+    return out
+
+
+def _film(row: Any, genres: list[dict], zone: str, t: datetime, stats: dict) -> dict:
     return {"id": row.id, "title": row.title, "synopsis": row.synopsis, "runtime_minutes": row.runtime_minutes,
             "certification": {"id": row.certification_id, "name": row.certification_name},
             "language": {"id": row.language_id, "name": row.language_name},
-            "genres": genres, "poster_url": f"/api/movies/{row.id}/poster", "display_until": local_iso(row.display_until, zone)}
+            "genres": genres, "poster_url": f"/api/movies/{row.id}/poster", "display_until": local_iso(row.display_until, zone),
+            # CR-008 T10-T12: the release date, Coming soon, the star average and the like count, on every card
+            "release_date": row.release_date.isoformat() if row.release_date else None,
+            "coming_soon": coming_soon(row.release_date, t, zone), **stats}
 
 
 async def list_movies(conn: AsyncConnection, t: datetime, f: ListingFilters, zones: dict[int, str], zone: str) -> dict:
     rows = (await conn.execute(listing_statement(t, f, zones))).all()
-    genres = await _genres(conn, [r.id for r in rows])
-    films = [_film(r, genres[r.id], zone) for r in rows]
+    ids = [r.id for r in rows]
+    genres, stats = await _genres(conn, ids), await _ratings(conn, ids)
+    films = [_film(r, genres[r.id], zone, t, stats[r.id]) for r in rows]
     return {"count": len(films), "movies": films}
 
 
 async def get_movie(conn: AsyncConnection, t: datetime, movie_id: int, zone: str) -> dict | None:
     """EP-BRW-02. None for a film failing a gate AND for one that never existed: one answer, so a draft id
-    cannot be told from a missing one."""
+    cannot be told from a missing one. CR-008 T12: plus the full details (cast, crew) and the 1-10 breakdown."""
     row = (await conn.execute(listing_statement(t, ListingFilters(), {}).where(movie.c.id == movie_id))).first()
     if row is None:
         return None
-    return _film(row, (await _genres(conn, [row.id]))[row.id], zone)
+    film = _film(row, (await _genres(conn, [row.id]))[row.id], zone, t, (await _ratings(conn, [row.id]))[row.id])
+    return {**film, "rating": await rating_breakdown(conn, row.id), "cast": people(row.cast_members),
+            "crew": people(row.crew_members)}
+
+
+SEARCH_LIMIT = 8
+
+
+def _like_pattern(words: str) -> str:
+    """LIKE's own wildcards in the typed text are escaped, so '%' finds a literal percent sign."""
+    return "%" + words.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+async def search(conn: AsyncConnection, t: datetime, q: str) -> dict:
+    """CR-008 T9: visible films whose title, or one of whose genres, contains `q` (case-insensitive); title matches
+    first, then by title; at most SEARCH_LIMIT. Fewer than 2 characters finds nothing (every film has an 'e')."""
+    words = " ".join(q.split())
+    if len(words) < 2:
+        return {"items": []}
+    pattern = _like_pattern(words)
+    by_title = movie.c.title.ilike(pattern, escape="\\")
+    by_genre = exists(select(movie_genre.c.movie_id).select_from(movie_genre.join(genre, movie_genre.c.genre_id == genre.c.id))
+                      .where(movie_genre.c.movie_id == movie.c.id, genre.c.name.ilike(pattern, escape="\\")))
+    rows = (await conn.execute(select(movie.c.id, movie.c.title, by_title.label("by_title"))
+                               .where(visible(t), or_(by_title, by_genre))
+                               .order_by(by_title.desc(), movie.c.title, movie.c.id).limit(SEARCH_LIMIT))).all()
+    genres = await _genres(conn, [r.id for r in rows])
+    return {"items": [{"id": r.id, "title": r.title, "genres": genres[r.id], "poster_url": f"/api/movies/{r.id}/poster",
+                       "matched": "title" if r.by_title else "genre"} for r in rows]}
 
 
 def _sales(starts_at: datetime, now: datetime, cutoff: timedelta, zone: str) -> dict:

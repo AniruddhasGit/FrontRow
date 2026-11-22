@@ -20,6 +20,7 @@ import {
   HOLD_KEY, LEGEND, SELECTION_KEY, TREATMENT, bands, capNote, changedSeats, goneBanner, mapBanner,
   parseSeatMap, recheck, seatLabel, seatName, selectable, toggle, total, visualOf, type Seat, type SeatMap, type Visual,
 } from "./model";
+import { layout, partName, type Fit } from "./fit";
 import { createPoller } from "./poller";
 import "./seatmap.css";
 
@@ -425,15 +426,6 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   );
 }
 
-/** The least horizontal scroll that brings `el` fully inside `box`, clear of the pinned row gutter (scroll-padding). */
-function sideways(box: HTMLElement, el: HTMLElement): number {
-  const b = box.getBoundingClientRect();
-  const r = el.getBoundingClientRect();
-  const start = b.left + box.clientLeft + (Number.parseFloat(getComputedStyle(box).scrollPaddingInlineStart) || 0);
-  const end = b.left + box.clientLeft + box.clientWidth;
-  return r.right > end ? r.right - end : r.left < start ? r.left - start : 0;
-}
-
 export function firstLoadError(r: { status: number; message: string; requestId: string | null }): LoadError {
   if (r.status === 404) return { message: "That showtime could not be found.", requestId: null };
   if (r.status === 503 && r.message) return { message: r.message, requestId: null };
@@ -450,33 +442,62 @@ function SeatMapHeading({ header }: { header: Header | null }) {
   );
 }
 
+/** The box's content width, kept current by a ResizeObserver (an event, never a timer). 0 until measured. */
+function useWidth(ref: { current: HTMLElement | null }): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const seen = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)));
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [ref]);
+  return width;
+}
+
 function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
   map: SeatMap; mine: ReadonlySet<number>; changed: ReadonlySet<number>; categoryName: ReadonlyMap<number, string>;
   onTap: (seat: Seat, visual: Visual) => void; reveal?: { id: number } | null;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  // CR-008 T16: the map fits its box - the cells scale to the width; too narrow to tap, it zooms into one block.
+  const width = useWidth(container);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  const columns = useMemo(() => map.seats.map((s) => s.gc), [map]);
+  const fit: Fit = layout(width, columns, map.screen.cols, coarse, zoom);
+  const part = fit.kind === "zoomed" ? fit.parts[fit.part] : null;
+  const partOf = (seat: Seat) => (fit.kind === "full" ? -1 : fit.parts.findIndex((p) => seat.gc >= p.from && seat.gc <= p.to));
   useEffect(() => {
-    const box = container.current;
-    const el = reveal && box?.querySelector<HTMLElement>(`[data-seat-id="${reveal.id}"]`);
-    if (box && el) box.scrollLeft += sideways(box, el); // the map's own box only: the page itself does not move
-  }, [reveal]);
+    // a seat to show (restored, or named by a 409): open its block when the map is zoomed
+    const seat = reveal && map.seats.find((s) => s.id === reveal.id);
+    if (seat && fit.kind !== "full") setZoom(partOf(seat));
+  }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusId, setFocusId] = useState<number | null>(null);
+  const from = part?.from, to = part?.to;
+  const shownSeats = useMemo(() => (from !== undefined && to !== undefined ? map.seats.filter((s) => s.gc >= from && s.gc <= to) : map.seats),
+                             [map, from, to]);
   const rows = useMemo(() => {
     const byRow = new Map<number, Seat[]>();
-    for (const s of map.seats) {
+    for (const s of shownSeats) {
       if (!byRow.has(s.gr)) byRow.set(s.gr, []);
       byRow.get(s.gr)!.push(s);
     }
     return byRow;
-  }, [map]);
+  }, [shownSeats]);
+  const labels = useMemo(() => new Map(map.seats.map((s) => [s.gr, s.row])), [map]);
   const runs = useMemo(() => bands(map), [map]);
   // CR-007: the screen sits over the seat block's own columns (a recliner takes two), centred where the 3D hall
-  // centres it, and scrolls with the seats.
-  const over = useMemo(() => {
+  // centres it. Zoomed, it is the part of the screen in front of this block (or only its label, when it is off to a side).
+  const screenCols = useMemo(() => {
     const { halfWidth } = computeHall(map.seats);
     const start = Math.min(...map.seats.map((s) => s.gc)) + 1;
-    return `${start} / ${start + Math.round((2 * halfWidth) / PITCH_X)}`;
+    return [start, start + Math.round((2 * halfWidth) / PITCH_X)];
   }, [map]);
+  const shift = part ? part.from - 1 : 0; // zoomed: the block's first column becomes column 1
+  const cols = part ? part.to - part.from + 1 : map.screen.cols;
+  const lo = Math.max(screenCols[0] - shift, 2), hi = Math.min(screenCols[1] - shift, cols + 2);
+  const over = hi > lo ? `${lo} / ${hi}` : null;
   const bandOf = useMemo(() => {
     const out = new Map<number, number>();
     for (const b of runs) for (let gr = b.from; gr <= b.to; gr++) if (rows.has(gr)) out.set(gr, b.cat);
@@ -492,7 +513,8 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     }
     return out;
   }, [runs, rows]);
-  const tabbable = focusId !== null && map.seats.some((s) => s.id === focusId) ? focusId : map.seats[0]?.id;
+  const tabbable = focusId !== null && shownSeats.some((s) => s.id === focusId) ? focusId : shownSeats[0]?.id;
+  const overview = fit.kind === "overview";
 
   const move = (from: Seat, key: string): Seat | null => {
     if (key === "ArrowLeft" || key === "ArrowRight") {
@@ -519,8 +541,7 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     setFocusId(next.id);
     const el = container.current?.querySelector<HTMLElement>(`[data-seat-id="${next.id}"]`);
     el?.focus({ preventScroll: true });
-    // The minimum movement that brings the cell fully into view; scroll-padding keeps it clear of the gutter.
-    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" }); // the panel scrolls up or down; nothing is wider than it
   };
 
   const gridRows = [];
@@ -528,11 +549,16 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     const seats = rows.get(gr);
     if (ruleBefore.has(gr)) gridRows.push(<div key={`rule-${gr}`} className="fr-band-rule" data-band-rule="" aria-hidden="true" />);
     gridRows.push(
-      <div key={gr} role="row" className="fr-grid-row" data-band={bandOf.has(gr) ? String(bandOf.get(gr)) : undefined}>
-        <span role="rowheader" className="fr-gutter">{seats ? seats[0].row : ""}</span>
+      <div key={gr} role={overview ? undefined : "row"} className="fr-grid-row" data-band={bandOf.has(gr) ? String(bandOf.get(gr)) : undefined}>
+        <span role={overview ? undefined : "rowheader"} className="fr-gutter">{seats ? seats[0].row : part ? labels.get(gr) ?? "" : ""}</span>
         {(seats ?? []).map((s) => {
           const visual = visualOf(s, mine);
           const t = TREATMENT[visual];
+          if (overview) {
+            // the overview is a picture of the hall: a tap zooms into the block it falls in
+            return <span key={s.id} className="fr-seat" data-visual={s.is_active ? visual : "out_of_service"} data-glyph={t.glyph}
+                         style={{ gridColumn: s.gc + 1 }} onClick={() => setZoom(partOf(s))} />;
+          }
           return (
             <span
               key={s.id}
@@ -546,7 +572,7 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
               aria-disabled={!selectable(s, visual, map.showtime.sales_closed)}
               tabIndex={s.id === tabbable ? 0 : -1}
               className="fr-seat"
-              style={{ gridColumn: s.gc + 1 }}
+              style={{ gridColumn: s.gc - shift + 1 }}
               onClick={() => { setFocusId(s.id); if (selectable(s, visual, map.showtime.sales_closed)) onTap(s, visual); }}
               onKeyDown={(e) => onKey(e, s, visual)}
             >
@@ -558,12 +584,32 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
     );
   }
 
+  const sized = fit.cell ? { ["--fr-seat-size" as string]: `${fit.cell}px`, ["--fr-seat-gap" as string]: `${fit.gap}px` } : {};
   return (
     <>
       {runs.length === 0 ? <p className="fr-mixed-note">Seat categories are mixed within rows. Each seat's category is in the legend and in its label.</p> : null}
-      <div ref={container} className="fr-grid-scroll">
-        <Screen cols={map.screen.cols} over={over} />
-        <div role="grid" aria-label="Seat map" className="fr-grid" style={{ ["--fr-grid-cols" as string]: String(map.screen.cols) }}>
+      {fit.kind === "overview" ? (
+        <div role="group" aria-label="Choose a block of seats" className="fr-zoom-bar">
+          <p>Choose a block to pick your seats in it.</p>
+          {fit.parts.map((p, i) => (
+            <button key={p.from} type="button" className="fr-choice" onClick={() => setZoom(i)}>{partName(i, fit.parts.length)}</button>
+          ))}
+        </div>
+      ) : fit.kind === "zoomed" ? (
+        <div className="fr-zoom-bar">
+          <button type="button" className="fr-choice" onClick={() => setZoom(null)}><span aria-hidden="true">⤢</span> Whole hall</button>
+          <button type="button" className="fr-choice" aria-label="Previous block" disabled={fit.part === 0}
+                  onClick={() => setZoom(fit.part - 1)}>←</button>
+          <p aria-live="polite">{partName(fit.part, fit.parts.length)}</p>
+          <button type="button" className="fr-choice" aria-label="Next block" disabled={fit.part === fit.parts.length - 1}
+                  onClick={() => setZoom(fit.part + 1)}>→</button>
+        </div>
+      ) : null}
+      <div ref={container} className="fr-grid-box" data-fit={fit.kind} data-small={fit.cell !== null && fit.cell < 18 ? "" : undefined}
+           style={sized}>
+        <Screen cols={cols} over={over} />
+        <div role={overview ? undefined : "grid"} aria-label={overview ? undefined : "Seat map"} aria-hidden={overview || undefined}
+             className="fr-grid" style={{ ["--fr-grid-cols" as string]: String(cols) }}>
           {gridRows}
         </div>
       </div>
@@ -572,10 +618,10 @@ function Grid({ map, mine, changed, categoryName, onTap, reveal = null }: {
 }
 
 /** The screen as drawn on the 2D map. Before the map arrives it spans the field, holding its height. */
-function Screen({ cols, over }: { cols?: number; over?: string }) {
+function Screen({ cols, over }: { cols?: number; over?: string | null }) {
   return (
     <div className={cols ? "fr-screen fr-screen-placed" : "fr-screen"} aria-hidden="true"
-         style={cols ? { ["--fr-grid-cols" as string]: String(cols), ["--fr-screen-over" as string]: over } : undefined}>
+         style={cols ? { ["--fr-grid-cols" as string]: String(cols), ["--fr-screen-over" as string]: over ?? "2 / -1" } : undefined}>
       <div className="fr-screen-bar" />
       <p className="fr-screen-label">SCREEN</p>
     </div>

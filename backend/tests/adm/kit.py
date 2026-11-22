@@ -170,7 +170,9 @@ def new_film(client, **over) -> dict:
 
 
 def movie_row(db, movie_id: int) -> tuple:
-    return owner_sql(db, "SELECT * FROM movie WHERE id = %s", (movie_id,))[0]
+    # CR-008 T12 appended release_date, cast_members, crew_members: SELECT * plus those last, so callers indexing from the
+    # end of the original column list (row[-2] = version) still read the same column
+    return owner_sql(db, "SELECT m.*, m.version, m.created_at FROM movie m WHERE id = %s", (movie_id,))[0]
 
 
 def png(width: int, height: int, size: int | None = None) -> bytes:

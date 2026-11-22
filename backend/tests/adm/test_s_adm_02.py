@@ -169,7 +169,8 @@ def test_user_rows_have_seven_fields_and_no_credential_ever_enters_an_audit_row(
     sign_in(client)
     assert client.post("/api/admin/managers", json={"email": "audit.mgr@example.invalid", "screen_ids": []}).status_code == 201
     cols = {r[0] for r in owner_sql(client.db, "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'")}
-    assert cols == {"id", "email", "password_hash", "role", "password_version", "created_at", "last_signed_in_at"}
+    assert cols == {"id", "email", "password_hash", "role", "password_version", "created_at", "last_signed_in_at",
+            "display_name", "phone", "preferred_language_id", "preferred_format_id", "points_balance"}  # + CR-008 T3/T6
     assert count(client.db, "audit_log", "entity_type = 'user' AND (before ?| array['password_hash','password_version'] "
                                          "OR after ?| array['password_hash','password_version'])") == 0
     keys = owner_sql(client.db, "SELECT DISTINCT k FROM audit_log, LATERAL (SELECT jsonb_object_keys(coalesce(before, '{}')) "

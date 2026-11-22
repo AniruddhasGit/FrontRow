@@ -7,20 +7,22 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "5f793714f9fe99f51d07b536677936d7ff55e880befe0f479c2589535b58ca80",
-    "TRACEABILITY.tsv": "900068c34f7ef7d7616d6c33b85cf26599f18ce0922aa8269b47beb2923a30f7",
-    "schema.sql": "651d703ee122b5c88e99df19b60fcbfd391d48b3f46cc2caa9be2664fd3c9cf1",
-    "seed/expected_summary.json": "23ddcf9dae3e57448e8c6366c960ac18285a55b6da6e7cc857eb38f6c3283624"
+    "datamodel.json": "4074e393f77e4633457f4a613e1b6286ef924a491f4a99b486c5bef985b760f0",
+    "TRACEABILITY.tsv": "46e42ce42bd4cd44284af5a6eca55428dd3b8f63f8332f3f312e0efd32140df1",
+    "schema.sql": "901c0e6397fe476c8e7fd2fe46a29ba51d39f0119455d864b3e92d6129238841",
+    "seed/expected_summary.json": "cf989bcb5528c41925b16af31e7c2d2a7719a9d30cca8479a29030924c798964"
   },
-  "schema_structure_sha256": "f4fcc217a2637823507387337e134aa0e857fa08fb361d047a62fd976cd54346",
+  "schema_structure_sha256": "bb730f78188d31e2cbee7d249146526942ebd1b012bf684fb7c69d7019c71a38",
   "roles_and_grants": [
     "role frontrow_owner",
     "role frontrow_app",
     "grant GRANT USAGE ON SCHEMA public TO frontrow_app",
+    "grant GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app",
     "grant GRANT SELECT, INSERT, DELETE ON admin_grant TO frontrow_app",
     "grant GRANT SELECT, INSERT ON audit_log TO frontrow_app",
     "grant GRANT SELECT, INSERT ON booking TO frontrow_app",
     "grant GRANT SELECT, INSERT ON booking_seat TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON bookmark TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON certification TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON cinema TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON format TO frontrow_app",
@@ -30,15 +32,20 @@
     "grant GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app",
     "grant GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON movie_like TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON movie_rating TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON payment TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON receipt_dispatch TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON reward_entry TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON screen TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE, DELETE ON seat TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON seat_category TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON showtime TO frontrow_app",
     "grant GRANT SELECT, INSERT ON showtime_seat TO frontrow_app",
+    "grant GRANT SELECT, INSERT ON support_message TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON users TO frontrow_app",
     "grant GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO frontrow_app"
   ],
@@ -118,6 +125,22 @@
         "index ix_booking_seat__booking_id (booking_id)",
         "primary_key (id)",
         "unique uq_booking_seat__showtime_id_seat_id (showtime_id, seat_id)"
+      ]
+    },
+    "bookmark": {
+      "sha256": "24394072dc9310e20c3b0d97a56892a7db5e14c8e211062196515927216ba7c8",
+      "columns": 6,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column movie_id bigint NOT NULL",
+        "column saved boolean NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_bookmark__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_bookmark__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)",
+        "unique uq_bookmark__user_id_movie_id (user_id, movie_id)"
       ]
     },
     "certification": {
@@ -225,17 +248,22 @@
       ]
     },
     "movie": {
-      "sha256": "07d13351282b7f7c3766cb8006f1e52d5809b0c5944b6a5bf1a891649d872651",
-      "columns": 12,
+      "sha256": "dfd409588a47a56a41c7cf511a3d84fd987fa41238ff46398b41772daced6cee",
+      "columns": 15,
       "signature": [
+        "check ck_movie__cast_members (cast_members IS NULL OR char_length(cast_members) <= 4000)",
+        "check ck_movie__crew_members (crew_members IS NULL OR char_length(crew_members) <= 4000)",
+        "column cast_members text NULL",
         "column certification_id bigint NOT NULL",
         "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column crew_members text NULL",
         "column display_from timestamptz NULL",
         "column display_until timestamptz NULL",
         "column id bigint NOT NULL IDENTITY",
         "column language_id bigint NOT NULL",
         "column poster_object_key text NULL",
         "column published_at timestamptz NULL",
+        "column release_date date NULL",
         "column runtime_minutes integer NOT NULL",
         "column synopsis text NOT NULL",
         "column title text NOT NULL",
@@ -255,6 +283,61 @@
         "foreign_key fk_movie_genre__genre_id (genre_id) -> genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "foreign_key fk_movie_genre__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "primary_key (movie_id, genre_id)"
+      ]
+    },
+    "movie_like": {
+      "sha256": "ee436468537048cbdcee5479cc4ae879170034dc26a457c119bc131bdd7c625f",
+      "columns": 6,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column liked boolean NOT NULL",
+        "column movie_id bigint NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_movie_like__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie_like__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_movie_like__movie_id (movie_id)",
+        "primary_key (id)",
+        "unique uq_movie_like__user_id_movie_id (user_id, movie_id)"
+      ]
+    },
+    "movie_rating": {
+      "sha256": "bf116e771eae4e008b82453bb228ade90ddd95dff973a51a103405706a12082c",
+      "columns": 6,
+      "signature": [
+        "check ck_movie_rating__score (score BETWEEN 1 AND 10)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column movie_id bigint NOT NULL",
+        "column score integer NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_movie_rating__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie_rating__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_movie_rating__movie_id (movie_id)",
+        "primary_key (id)",
+        "unique uq_movie_rating__user_id_movie_id (user_id, movie_id)"
+      ]
+    },
+    "notification": {
+      "sha256": "34488f5478f5720799a8686c21fa53d1bd92be8a88573b6c2b100d7f1763d47f",
+      "columns": 8,
+      "signature": [
+        "check ck_notification__kind (kind IN ('booking_confirmed', 'points_earned', 'points_redeemed'))",
+        "column body text NOT NULL",
+        "column booking_id bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column kind text NOT NULL",
+        "column read_at timestamptz NULL",
+        "column title text NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_notification__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_notification__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_notification__user_id_id (user_id, id)",
+        "primary_key (id)",
+        "unique uq_notification__booking_id_kind (booking_id, kind)"
       ]
     },
     "outbox_message": {
@@ -330,6 +413,27 @@
         "foreign_key fk_receipt_dispatch__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "primary_key (id)",
         "unique uq_receipt_dispatch__booking_id (booking_id)"
+      ]
+    },
+    "reward_entry": {
+      "sha256": "51607c686a7a1eda4d94c27a6f2adb72225c64d8a1c7faa29c303a83345844e0",
+      "columns": 7,
+      "signature": [
+        "check ck_reward_entry__discount ((kind = 'redeemed') = (discount_paise IS NOT NULL AND discount_paise > 0))",
+        "check ck_reward_entry__kind (kind IN ('earned', 'redeemed'))",
+        "check ck_reward_entry__points (points > 0)",
+        "column booking_id bigint NOT NULL",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column discount_paise bigint NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column kind text NOT NULL",
+        "column points bigint NOT NULL",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_reward_entry__booking_id (booking_id) -> booking (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_reward_entry__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_reward_entry__user_id_id (user_id, id)",
+        "primary_key (id)",
+        "unique uq_reward_entry__booking_id_kind (booking_id, kind)"
       ]
     },
     "screen": {
@@ -419,18 +523,45 @@
         "unique uq_showtime_seat__showtime_id_seat_id (showtime_id, seat_id)"
       ]
     },
-    "users": {
-      "sha256": "9fa4b5b3808f8f321d206f19a26f9190d18b9a986d0ee21390cb84e4e4fb8df3",
-      "columns": 7,
+    "support_message": {
+      "sha256": "96683a92ffb154d1d081c9bb1d282309abcde823a371450729c370bcf0c85992",
+      "columns": 6,
       "signature": [
+        "check ck_support_message__email (char_length(btrim(email)) BETWEEN 3 AND 254)",
+        "check ck_support_message__message (char_length(btrim(message)) BETWEEN 1 AND 2000)",
+        "check ck_support_message__topic (topic IN ('booking', 'payment', 'rewards', 'account', 'other'))",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column email text NOT NULL",
+        "column id bigint NOT NULL IDENTITY",
+        "column message text NOT NULL",
+        "column topic text NOT NULL",
+        "column user_id bigint NULL",
+        "foreign_key fk_support_message__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "primary_key (id)"
+      ]
+    },
+    "users": {
+      "sha256": "8352b37cc228a551e7c31b68863d10d1bfd45eaadc3aad0346dd75026f993b1a",
+      "columns": 12,
+      "signature": [
+        "check ck_users__display_name (display_name IS NULL OR char_length(btrim(display_name)) BETWEEN 1 AND 60)",
+        "check ck_users__phone (phone IS NULL OR phone ~ '^[+]?[0-9]{7,15}$')",
+        "check ck_users__points_balance (points_balance >= 0)",
         "check ck_users__role (role IN ('customer', 'manager', 'admin'))",
         "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column display_name text NULL",
         "column email text NOT NULL",
         "column id bigint NOT NULL IDENTITY",
         "column last_signed_in_at timestamptz NULL",
         "column password_hash text NOT NULL",
         "column password_version integer NOT NULL",
+        "column phone text NULL",
+        "column points_balance bigint NOT NULL DEFAULT 0",
+        "column preferred_format_id bigint NULL",
+        "column preferred_language_id bigint NULL",
         "column role text NOT NULL",
+        "foreign_key fk_users__preferred_format_id (preferred_format_id) -> format (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_users__preferred_language_id (preferred_language_id) -> language (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "primary_key (id)",
         "unique uq_users__email_ci (lower(email))"
       ]

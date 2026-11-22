@@ -2,6 +2,7 @@
 // Times are naive local in the venue's zone, both ways; nothing here converts a time (E6 S4).
 // The base price is typed in dollars and sent as integer cents (money.ts).
 // The film is chosen by id until the admin film list exists (EP-ADM-01, Phase 6).
+import { useOnce } from "./busy";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, errorText } from "./api";
 import { formatPaise, paiseToRupeesText, showtimeBody } from "./money";
@@ -102,6 +103,7 @@ export function ShowtimesScreen({ seed }: { seed?: Seed }) {
 }
 
 function ShowtimeForm({ hallId, editing, onDone, onError }: { hallId: string; editing: Showtime | null; onDone: () => void; onError: (m: string) => void }) {
+  const { busy, guard } = useOnce(); // CR-008 T14 (#15)
   const [form, setForm] = useState({
     movie_id: editing ? String(editing.movie_id) : "",
     screen_id: hallId,
@@ -126,7 +128,7 @@ function ShowtimeForm({ hallId, editing, onDone, onError }: { hallId: string; ed
     }
   };
   return (
-    <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={guard(submit)}>
       <h2>{editing ? "Edit showtime" : "New showtime"}</h2>
       <label>
         Film <input {...set("movie_id")} inputMode="numeric" required />
@@ -140,7 +142,7 @@ function ShowtimeForm({ hallId, editing, onDone, onError }: { hallId: string; ed
       <label>
         Base price <input {...set("rupees")} inputMode="decimal" required />
       </label>
-      <button type="submit">{editing ? "Save changes" : "Create showtime"}</button>{" "}
+      <button type="submit" disabled={busy}>{editing ? "Save changes" : "Create showtime"}</button>{" "}
       {editing ? (
         <button type="button" onClick={onDone}>
           Discard this form

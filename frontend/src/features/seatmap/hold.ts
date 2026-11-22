@@ -118,6 +118,7 @@ export async function send<T>(method: "POST" | "GET" | "DELETE", path: string, b
       method, credentials: "same-origin",
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(15000), // CR-008 T14 (#7): a hold call that never answers ends as NETWORK, buttons come back
     });
   } catch {
     return { ok: false, status: 0, code: "NETWORK", message: "", details: null, requestId: null };

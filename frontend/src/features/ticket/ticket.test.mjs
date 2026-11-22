@@ -28,9 +28,16 @@ test("the policy line sits directly beneath the entry line on the first render a
 
 test("the receipt sentence renders on the first render only", () => {
   assert.ok(render("name@example.invalid").includes(receiptLine("name@example.invalid")));
-  // S-TKT-04: a later visit says nothing about the email in any form (the resend control's own label aside).
+  // S-TKT-04: a later visit says nothing about the email in any form.
   const later = render(null).replace(/<[^>]+>/g, " ");
   for (const p of ["on its way", "has been sent", "was sent", "delayed"]) assert.ok(!later.includes(p), p);
+});
+
+test("CR-009: the page has no resend control; Copy reference is its only button", () => {
+  for (const html of [render("name@example.invalid"), render(null)]) {
+    assert.deepEqual([...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map((m) => m[1]), ["Copy reference"]);
+    assert.ok(!/receipt again|resend/i.test(html));
+  }
 });
 
 test("the fact list is exactly FILM, HALL, SHOWTIME, SEATS, PAID, and PAID is the only money on the page", () => {

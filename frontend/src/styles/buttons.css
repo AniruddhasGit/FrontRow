@@ -136,20 +136,3 @@
     background: color-mix(in srgb, var(--fr-ink-on-ticket) 8%, transparent);
   }
 }
-
-/* the resend control sits on the page, not the paper: after the entry and policy lines, in the page's brass, as a
-   secondary button (the ticket lays itself out with `order`; a child without one jumped to the top) */
-.fr-ticket > .fr-link-action {
-  order: 4;
-  justify-self: start;
-  margin-inline: 0;
-  min-height: var(--fr-tap-min);
-  padding: 0 var(--fr-space-5);
-  border: var(--fr-stroke-hair) solid color-mix(in srgb, var(--fr-control-edge) 70%, transparent);
-  background: color-mix(in srgb, var(--fr-surface-raised) 88%, transparent);
-  color: var(--fr-ink-strong);
-  text-decoration: none;
-}
-.fr-ticket > .fr-ticket-resent {
-  order: 5;
-}

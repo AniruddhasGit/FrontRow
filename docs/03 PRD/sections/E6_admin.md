@@ -4422,7 +4422,10 @@ Creating a film. The row is a draft: no poster, not published, invisible to ever
       "runtime_minutes": "integer, 1 or more, required",
       "certification_id": "integer, must exist, required",
       "language_id": "integer, must exist, required",
-      "genre_ids": "array of integer, 1..10, unique, each must exist, required"
+      "genre_ids": "array of integer, 1..10, unique, each must exist, required",
+      "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+      "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+      "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'"
     }
   },
   "responses": {
@@ -4491,6 +4494,9 @@ one form; they write two different audit actions.
       "certification_id": "integer, must exist, optional",
       "language_id": "integer, must exist, optional",
       "genre_ids": "array of integer, 1..10, unique, each must exist, optional",
+      "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+      "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+      "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'",
       "display_from": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
       "display_until": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07). Strictly after display_from IN THE MERGED ROW - this is a partial update and every bound is evaluated against the row as it would be after the patch, so sending either half alone is checked against the stored other half and can fail 422 (P-ADM-04)"
     }

@@ -271,3 +271,16 @@ test("the return delay after 0:00 is the published constant", () => {
 test("no control in the product names the failure prefix", () => {
   assert.deepEqual(hits(new RegExp("FAIL" + "_|PAYMENT_SIMULATOR_" + "FAIL")), []);
 });
+
+// CR-008 T14 (state-machine review #6): a dropped connection or a gateway error page leaves the outcome unknown. The
+// banner must say so and point at Pay again (the stored Idempotency-Key makes the retry safe), never claim "no
+// payment was taken" without the server's own JSON answer.
+test("an unknown outcome says so and offers a safe retry", () => {
+  for (const [code, requestId] of [["NETWORK", null], ["INTERNAL_ERROR", null]]) {
+    const text = bannerText(code, "", requestId);
+    assert.match(text, /may or may not have gone through/);
+    assert.match(text, /Pay again/);
+    assert.doesNotMatch(text, /No payment was taken/);
+  }
+  assert.match(bannerText("INTERNAL_ERROR", "x", "a1b2c3d4"), /No payment was taken/); // the server answered: it knows
+});

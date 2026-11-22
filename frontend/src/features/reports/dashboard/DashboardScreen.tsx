@@ -165,12 +165,12 @@ function FilmTable({ films, sort, manager, onSort }: { films: Dashboard["films"]
         <tbody>
           {sortFilms(films, sort).map((f) => (
             <tr key={f.movie_id} data-movie-id={f.movie_id}>
-              <td>{f.title}</td>
-              <td className="rpt-num">{f.shows}</td>
-              <td className="rpt-num">{f.seats_sold}</td>
-              <td className="rpt-num">{f.capacity}</td>
-              <td className="rpt-num">{pctText(f.occupancy_pct)}</td>
-              <td className="rpt-num">{formatPaise(f.takings_paise)}</td>
+              <td data-label="Film">{f.title}</td>
+              <td data-label="Shows" className="rpt-num">{f.shows}</td>
+              <td data-label="Seats sold" className="rpt-num">{f.seats_sold}</td>
+              <td data-label="Capacity" className="rpt-num">{f.capacity}</td>
+              <td data-label="Occupancy" className="rpt-num">{pctText(f.occupancy_pct)}</td>
+              <td data-label="Takings" className="rpt-num">{formatPaise(f.takings_paise)}</td>
             </tr>
           ))}
         </tbody>
@@ -193,13 +193,13 @@ function ShowTable({ shows, onPage }: { shows: Shows; onPage: (offset: number) =
           <tbody>
             {shows.rows.map((r) => (
               <tr key={r.showtime_id}>
-                <td>{whenText(r.starts_at)}{r.has_started ? null : <span className="rpt-marker">Still selling</span>}</td>
-                <td>{r.screen_name}</td>
-                <td>{r.title}</td>
-                <td className="rpt-num">{r.seats_sold}</td>
-                <td className="rpt-num">{r.capacity}</td>
-                <td className="rpt-num">{pctText(r.occupancy_pct)}</td>
-                <td className="rpt-num">{formatPaise(r.takings_paise)}</td>
+                <td data-label="Start">{whenText(r.starts_at)}{r.has_started ? null : <span className="rpt-marker">Still selling</span>}</td>
+                <td data-label="Hall">{r.screen_name}</td>
+                <td data-label="Film">{r.title}</td>
+                <td data-label="Seats sold" className="rpt-num">{r.seats_sold}</td>
+                <td data-label="Capacity" className="rpt-num">{r.capacity}</td>
+                <td data-label="Occupancy" className="rpt-num">{pctText(r.occupancy_pct)}</td>
+                <td data-label="Takings" className="rpt-num">{formatPaise(r.takings_paise)}</td>
               </tr>
             ))}
           </tbody>
