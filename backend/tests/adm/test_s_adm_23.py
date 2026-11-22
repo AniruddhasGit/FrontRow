@@ -132,5 +132,6 @@ def test_nothing_imports_schedules_or_upserts_a_film():
 def test_only_the_admin_path_and_the_seed_insert_a_movie_row():
     # The AC's literal pattern plus the SQLAlchemy Core spelling it cannot see (see the module docstring).
     hits = {h[0] for h in rg(r"INSERT INTO movie\b|Movie[(]|insert[(]movie[)]", "backend/app", "backend/migrations", "scripts")}
-    assert hits == {"backend/app/domain/admin/films.py", "scripts/seed.py"}
+    # CR-006: scripts/demo_films.py is the owner's demo-catalogue writer, run by hand like seed.py (never by the app)
+    assert hits == {"backend/app/domain/admin/films.py", "scripts/seed.py", "scripts/demo_films.py"}
     assert rg(r"INSERT INTO movie\b|insert[(]movie[)]", "backend/app/workers", "backend/app/jobs") == []
