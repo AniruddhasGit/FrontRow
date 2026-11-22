@@ -48,3 +48,21 @@ The top-up and the deletion have no actor, and S-ADM-02 forbids an audit row wit
   - `demo_delete_history` is the only `SECURITY DEFINER` function;
   - it is called only from `schedule.py`;
   - there is no DELETE grant on the booking tables.
+
+## Addendum, 2026-11-22: the owner's nine demo films
+
+The owner supplied nine AI-generated films, each with a poster and a widescreen still. The names and faces are invented.
+The films are: Outpost 77, The Iron Garden, Echoes of the Desolate, Deep Sea Reckoning, The First Chronicle,
+Neon Reverie, The Last Stage, Apartment 4B and Voidbound.
+
+- **Images:** posters are 1000×1500 WebP, about 210–370 KB. Stills are cropped to the screen's 2.39:1 and are
+  1920×803 WebP, about 90–240 KB. Both ship with the website under `frontend/public/art/films/`.
+- **Posters:** a film's `poster_object_key` of `/art/films/<slug>.webp` makes the poster route redirect there.
+- **Screen stills:** the 3D screen follows that redirect and loads `<slug>-still.webp`. Any other poster has no
+  still, and the screen keeps the title card.
+- **Loading the films:** `scripts/demo_films.py` was run once on each database, as the owner role. It is idempotent.
+  - It upserts the nine films with English, PG/PG-13/R and real genres.
+  - It renames the two formats to 2D and IMAX and withdraws the DEMO vocabulary.
+  - It unpublishes the four DEMO MOVIE placeholders, which are kept so that past bookings still name their film.
+  - It deals every future unbooked showtime across the nine films in turn, so each plays daily.
+- **Afterwards:** the schedule top-up keeps rotating the published films.

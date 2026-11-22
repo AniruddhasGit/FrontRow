@@ -335,10 +335,16 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
     void Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
       .catch(() => null).then(() => show(titleCard(title, tone), false));
     if (film) {
-      new TextureLoader().load(`/art/screen_${film.id}.jpg`, (t) => {
-        t.colorSpace = SRGBColorSpace;
-        show(t, true);
-      }, undefined, () => null); // no still deployed: the title card stays
+      // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
+      // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
+      void fetch(`/api/movies/${film.id}/poster`, { method: "HEAD" }).then((r) => {
+        const path = new URL(r.url).pathname;
+        if (!/^\/art\/films\/[a-z0-9-]+\.webp$/.test(path)) return;
+        new TextureLoader().load(path.replace(/\.webp$/, "-still.webp"), (t) => {
+          t.colorSpace = SRGBColorSpace;
+          show(t, true);
+        }, undefined, () => null);
+      }).catch(() => null);
     }
     return () => {
       live = false;
