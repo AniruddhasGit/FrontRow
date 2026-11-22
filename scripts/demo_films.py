@@ -1,13 +1,13 @@
-"""CR-006 addendum (owner, 2026-11-22): put the owner's nine demo films on a running database, in one go.
+"""CR-006 addendum (owner, 2026-11-22): put the owner's demo films on a running database, in one go.
 
   DATABASE_URL=<owner url> python scripts/demo_films.py
 
 Idempotent: a film is found by title and updated, never duplicated. What it does:
   1. adds the films' vocabulary (certifications, a language, genres) if missing;
-  2. upserts the nine films, published, with posters that ship with the website (/art/films/<slug>.webp; the poster
+  2. upserts the films, published, with posters that ship with the website (/art/films/<slug>.webp; the poster
      route redirects there, and the 3D screen loads <slug>-still.webp beside it);
   3. renames the two formats (2D, IMAX), withdraws the DEMO vocabulary, unpublishes the four DEMO MOVIE placeholders (kept, so every past booking still names its film);
-  4. re-assigns every FUTURE showtime that nobody has booked across the nine films in turn (each plays daily), with
+  4. re-assigns every FUTURE showtime that nobody has booked across the films in turn (each plays daily), with
      ends_at = starts_at + the new runtime + 15 minutes; from then on the schedule top-up keeps rotating them.
 No audit row: there is no actor, as with the seed. The owner's AI-generated art; names and faces are invented.
 """
@@ -47,6 +47,12 @@ FILMS = [
     ("Voidbound", "voidbound", 121, "PG-13", ["Sci-Fi", "Action"],
      "When the deep-space freighter Ares-IV breaks apart, two survivors have hours to repair it before the silence "
      "takes them."),
+    ("Aria and the Star Whales", "aria-and-the-star-whales", 96, "PG", ["Animation", "Family"],
+     "A young musician sails a sky-ship above the clouds to follow the song of the star whales and find her way "
+     "home."),
+    ("Echoes of the Steppe", "echoes-of-the-steppe", 133, "PG-13", ["Drama", "Adventure"],
+     "On the endless grasslands, a young eagle hunter and her grandfather ride to save their herd and the old ways "
+     "of their people."),
 ]
 LANGUAGE = "English"
 CHANGEOVER = timedelta(minutes=15)
