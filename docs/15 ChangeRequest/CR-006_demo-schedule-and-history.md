@@ -55,6 +55,10 @@ The owner supplied eleven AI-generated films, each with a poster and a widescree
 The films are: Outpost 77, The Iron Garden, Echoes of the Desolate, Deep Sea Reckoning, The First Chronicle,
 Neon Reverie, The Last Stage, Apartment 4B, Voidbound, Aria and the Star Whales and Echoes of the Steppe.
 
+A second batch of nine followed the same day (20 films in all): The Dragon's Oath, The Astral Grimoire, The Redwood
+Covenant, The Marigold Reunion, The Edge of the Map, Paws & Claws: The Great Alley Caper, Caldera, Iron Horizon and
+Silent Sky. `demo_films.py` was run on Neon again: 20 published, 486 future showtimes rotated across them.
+
 - **Images:** posters are 1000×1500 WebP, about 210–370 KB. Stills are cropped to the screen's 2.39:1 and are
   1920×803 WebP, about 90–240 KB. Both ship with the website under `frontend/public/art/films/`.
 - **Posters:** a film's `poster_object_key` of `/art/films/<slug>.webp` makes the poster route redirect there.
