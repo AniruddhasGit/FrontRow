@@ -31,6 +31,7 @@ THREE OPTIONAL PORTS on app.state, absent in production unless a later phase ins
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -208,6 +209,7 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
             if redeemed:
                 await rewards.spend(conn, user.id, redeemed["points"])
             observe("payment capture")
+            await holds.mark_confirming(redis, body.hold_token)  # CR-008 T14 (#4): Give up waits this out
             payment_id = await pay.take(conn, amount_paise=total, idempotency_key=key, fail_prefix=settings.PAYMENT_SIMULATOR_FAIL_KEY_PREFIX,
                                         delay_ms=settings.PAYMENT_SIMULATED_DELAY_MS, sleep=sleep, now=clock.now)
             observe("booking insert")
@@ -274,6 +276,10 @@ async def confirm(request: Request, conn: AsyncConnection = Depends(db)) -> Resp
             raise ApiError(503, ErrorCode.DEPENDENCY_UNAVAILABLE, bk.UNAVAILABLE) from None
         log.error("confirm failed", exc_info=True)
         raise ApiError(500, ErrorCode.INTERNAL_ERROR, bk.FAILED) from None
+    finally:
+        if hold is not None:  # CR-008 T14 (#4): the payment is over, whatever its outcome; Give up works again
+            with contextlib.suppress(Exception):
+                await holds.clear_confirming(redis, body.hold_token)
 
 
 async def send_receipt(state, settings: Settings, clock: Clock, conn: AsyncConnection, outbox_id: int, payload: dict) -> None:

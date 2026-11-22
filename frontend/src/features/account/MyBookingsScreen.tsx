@@ -44,11 +44,16 @@ export function MyBookingsScreen() {
   const [data, setData] = useState<Page | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
+    let live = true; // CR-008 T14 (#14): a slow answer for an earlier page never replaces the page now asked for
     get<Page>(`/api/me/bookings${query({ page })}`).then((r) => {
+      if (!live) return;
       if (r.ok) return setData(r.body);
       if (r.status === 401) return navigate(`/sign-in?next=${encodeURIComponent("/bookings")}`);
       setError(r.message || "Your bookings cannot be loaded right now. Try again shortly.");
     });
+    return () => {
+      live = false;
+    };
   }, [page]);
   const nothing = data && data.total_upcoming === 0 && data.total_past === 0;
   return (

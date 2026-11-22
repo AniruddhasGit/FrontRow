@@ -44,7 +44,7 @@ export function SignInScreen({ initial }: { initial: Tab }) {
     }).catch(() => null);
     setBusy(false);
     if (r && r.ok) {
-      navigate(destination(window.location.search, store(), Date.now()));
+      navigate(destination(window.location.search, store(), Date.now()), undefined, { replace: true }); // CR-008 T14 (#12): Back never shows the form again
       return;
     }
     const error = r ? ((await r.json().catch(() => null))?.error ?? {}) : {};

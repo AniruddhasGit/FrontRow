@@ -1,6 +1,7 @@
 // SCR-ADM-05 - the hall list, hall configuration and the seat editor (P-ADM-13 to P-ADM-16).
 // What the server refuses, the server says: the freeze, duplicates and service toggles answer with
 // their own sentences and this screen shows them as they arrive.
+import { useOnce } from "./busy";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, errorText } from "./api";
 
@@ -74,6 +75,7 @@ export function HallsScreen() {
 }
 
 function NewHall({ cinemas, onCreated, onError }: { cinemas: Cinema[]; onCreated: () => void; onError: (m: string) => void }) {
+  const { busy, guard } = useOnce(); // CR-008 T14 (#15)
   const [name, setName] = useState("");
   const [cinemaId, setCinemaId] = useState("");
   if (cinemas.length === 0) return <p>There is no venue yet. A hall cannot be created until one exists.</p>;
@@ -90,7 +92,7 @@ function NewHall({ cinemas, onCreated, onError }: { cinemas: Cinema[]; onCreated
     }
   };
   return (
-    <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={guard(submit)}>
       <h2>New hall</h2>
       <label>
         Venue
@@ -110,12 +112,13 @@ function NewHall({ cinemas, onCreated, onError }: { cinemas: Cinema[]; onCreated
         Hall name
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
       </label>
-      <button type="submit">Create hall</button>
+      <button type="submit" disabled={busy}>Create hall</button>
     </form>
   );
 }
 
 function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () => void; onError: (m: string) => void }) {
+  const { busy, guard } = useOnce(); // CR-008 T14 (#15)
   const [name, setName] = useState(hall.name);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -137,14 +140,14 @@ function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () =>
     }
   };
   const patchHall = (body: Record<string, unknown>) => run(api("PATCH", `/api/admin/screens/${hall.id}`, { version: hall.version, ...body }), onChanged);
-  const rename = (e: FormEvent) => {
+  const rename = async (e: FormEvent) => {
     e.preventDefault();
-    void patchHall({ name });
+    await patchHall({ name });
   };
   const withdraw = () => {
     if (window.confirm(HALL_WITHDRAWAL_CONFIRMATION)) void patchHall({ is_active: false });
   };
-  const addSeat = (e: FormEvent) => {
+  const addSeat = async (e: FormEvent) => {
     e.preventDefault();
     const seat = {
       row_label: draft.row_label,
@@ -153,7 +156,7 @@ function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () =>
       grid_col: Number(draft.grid_col),
       seat_category_id: Number(draft.seat_category_id),
     };
-    void run(api("POST", `/api/admin/screens/${hall.id}/seats`, { seats: [seat] }), () => {
+    await run(api("POST", `/api/admin/screens/${hall.id}/seats`, { seats: [seat] }), () => {
       void loadSeats();
       onChanged();
     });
@@ -172,12 +175,12 @@ function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () =>
           ? "This hall has showtimes. You can add seats, move where a seat is drawn, and take a seat in or out of service. You cannot renumber a seat, move it to another category, or remove it."
           : "This hall has no showtimes yet, so its layout can be changed freely. Once you create the first showtime, seat numbers and categories are fixed permanently. Check every seat number now."}
       </p>
-      <form className="admin-form" onSubmit={rename}>
+      <form className="admin-form" onSubmit={guard(rename)}>
         <label>
           Hall name
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
         </label>
-        <button type="submit">Save hall</button>
+        <button type="submit" disabled={busy}>Save hall</button>
       </form>
       {hall.is_active ? (
         <p>
@@ -217,7 +220,7 @@ function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () =>
         already booked stays booked.
       </p>
       {hall.has_showtimes ? <p className="admin-note">Seats are never deleted once this hall has a showtime. Take a seat out of service instead.</p> : null}
-      <form className="admin-form" onSubmit={addSeat}>
+      <form className="admin-form" onSubmit={guard(addSeat)}>
         <label>
           Row <input {...field("row_label")} maxLength={4} required />
         </label>
@@ -241,7 +244,7 @@ function HallEditor({ hall, onChanged, onError }: { hall: Hall; onChanged: () =>
             ))}
           </select>
         </label>
-        <button type="submit">{seats.length === 0 ? "Add the first seat" : "Add seat"}</button>
+        <button type="submit" disabled={busy}>{seats.length === 0 ? "Add the first seat" : "Add seat"}</button>
       </form>
     </div>
   );

@@ -84,8 +84,8 @@ export function CheckoutScreen({ showtimeId }: { showtimeId: string }) {
 
   useEffect(() => {
     // Decided from stored values alone, with no request (SCR-PAY-01).
-    if (route.kind === "confirmed") navigate(`/bookings/${encodeURIComponent(route.reference)}`);
-    else if (route.kind === "seatmap") navigate(`/showtimes/${id}`);
+    if (route.kind === "confirmed") navigate(`/bookings/${encodeURIComponent(route.reference)}`, undefined, { replace: true });
+    else if (route.kind === "seatmap") navigate(`/showtimes/${id}`, undefined, { replace: true });
     else get<Header>(`/api/showtimes/${id}`).then((r) => r.ok && setHeader(r.body));
   }, [route, id]);
 
@@ -112,7 +112,7 @@ export function CheckoutScreen({ showtimeId }: { showtimeId: string }) {
       } catch {
         // storage refused: the map opens with no selection
       }
-      navigate(`/showtimes/${id}`);
+      navigate(`/showtimes/${id}`, undefined, { replace: true });
     }, CHECKOUT_EXPIRY_RETURN_DELAY_MS);
     return () => window.clearTimeout(t);
   }, [hold, expired, inFlight, id]);
@@ -130,7 +130,7 @@ export function CheckoutScreen({ showtimeId }: { showtimeId: string }) {
     setInFlight(false);
     if (out.ok) {
       handOver(out.body.booking_reference);
-      navigate(`/bookings/${encodeURIComponent(out.body.booking_reference)}`);
+      navigate(`/bookings/${encodeURIComponent(out.body.booking_reference)}`, undefined, { replace: true });
       return;
     }
     if (out.code === "TOTAL_CHANGED") setReread((n) => n + 1); // read the server's hold again and show what Pay would book

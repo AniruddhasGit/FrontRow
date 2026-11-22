@@ -160,9 +160,14 @@ const OWN: Record<string, string> = {
   TOTAL_CHANGED: "The seats or the total in this checkout have changed. Check the new total, then pay again.",
 };
 
-/** The banner for a failure, chosen by code. `null` means no banner (a dropped connection publishes no sentence). */
+// CR-008 T14 (#6): no answer, or a gateway's error page instead of ours: the booking may have committed. Pay again
+// replays the stored Idempotency-Key, so it either returns the booking or makes it - never a second charge.
+const UNKNOWN = "We lost the connection before the answer came back, so your payment may or may not have gone through. " +
+  "Press Pay again to check: it is safe and you will not be charged twice.";
+
+/** The banner for a failure, chosen by code. */
 export function bannerText(code: string, message: string, requestId: string | null): string | null {
-  if (code === "NETWORK") return null;
+  if (code === "NETWORK" || (code === "INTERNAL_ERROR" && requestId === null)) return UNKNOWN;
   if (code === "INTERNAL_ERROR") {
     return `Something went wrong and your booking was not completed. No payment was taken. If you need help, quote ${requestId ?? ""}.`;
   }
@@ -187,12 +192,15 @@ export type Outcome =
   | { ok: true; body: Confirmed }
   | { ok: false; status: number; code: string; message: string; requestId: string | null; details: unknown };
 
-type Fetch = (url: string, init: { method: string; credentials: "same-origin"; headers: Record<string, string>; body: string }) => Promise<{
+type Fetch = (url: string, init: { method: string; credentials: "same-origin"; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
   status: number; ok: boolean; headers: { get(name: string): string | null }; json(): Promise<unknown>;
 }>;
 
 /** CR-008: the two optional confirm fields - the points choice and the total this screen showed. */
 export interface PayExtras { use_points: boolean; expected_total_paise: number }
+
+/** Well past the confirm's own work (about 1.5 s of simulated payment); the proxies cut at about 60 s. */
+export const CONFIRM_TIMEOUT_MS = 30000;
 
 async function post(fetchFn: Fetch, key: string, hold: HeldHold, extras?: PayExtras): Promise<Outcome & { retryAfter?: number }> {
   let r;
@@ -201,6 +209,7 @@ async function post(fetchFn: Fetch, key: string, hold: HeldHold, extras?: PayExt
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json", "Idempotency-Key": key },
       body: JSON.stringify({ hold_token: hold.hold_token, showtime_id: hold.showtime_id, ...extras }),
+      signal: AbortSignal.timeout(CONFIRM_TIMEOUT_MS), // CR-008 T14 (#7): a confirm that never answers ends as NETWORK
     });
   } catch {
     return { ok: false, status: 0, code: "NETWORK", message: "", requestId: null, details: null };

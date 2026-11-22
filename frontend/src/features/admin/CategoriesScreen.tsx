@@ -1,5 +1,6 @@
 // SCR-ADM-04 - seat categories and pricing (P-ADM-11). The confirmation states the server's own
 // affected_future_showtimes figure, never one this screen counted itself.
+import { useOnce } from "./busy";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, errorText } from "./api";
 import { formatPaise } from "./money";
@@ -53,6 +54,7 @@ export function CategoriesScreen() {
 }
 
 function CategoryForm({ category, affected, onSaved, onError }: { category: Category; affected: number; onSaved: () => void; onError: (m: string) => void }) {
+  const { busy, guard } = useOnce(); // CR-008 T14 (#15)
   const [name, setName] = useState(category.name);
   const [uplift, setUplift] = useState(String(category.uplift_basis_points));
   const submit = async (e: FormEvent) => {
@@ -75,7 +77,7 @@ function CategoryForm({ category, affected, onSaved, onError }: { category: Cate
     }
   };
   return (
-    <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={guard(submit)}>
       <label>
         Category name
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required />
@@ -87,12 +89,13 @@ function CategoryForm({ category, affected, onSaved, onError }: { category: Cate
       <p className="admin-help">
         {Number(uplift)} basis points is {Number(uplift) / 100} percent · {category.seat_count} seats
       </p>
-      <button type="submit">Save pricing</button>
+      <button type="submit" disabled={busy}>Save pricing</button>
     </form>
   );
 }
 
 function NewCategory({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
+  const { busy, guard } = useOnce(); // CR-008 T14 (#15)
   const [name, setName] = useState("");
   const [uplift, setUplift] = useState("");
   const submit = async (e: FormEvent) => {
@@ -108,7 +111,7 @@ function NewCategory({ onCreated, onError }: { onCreated: () => void; onError: (
     }
   };
   return (
-    <form className="admin-form" onSubmit={submit}>
+    <form className="admin-form" onSubmit={guard(submit)}>
       <h2>New seat category</h2>
       <label>
         Category name
@@ -121,7 +124,7 @@ function NewCategory({ onCreated, onError }: { onCreated: () => void; onError: (
       <p className="admin-help">
         100 basis points is 1 percent. A base price of {formatPaise(25000)} with an uplift of 1250 gives a seat price of {formatPaise(28125)}.
       </p>
-      <button type="submit">Create category</button>
+      <button type="submit" disabled={busy}>Create category</button>
     </form>
   );
 }

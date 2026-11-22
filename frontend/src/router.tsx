@@ -24,8 +24,10 @@ const NAVIGATE_EVENT = "fr:navigate";
 
 /** `hold`, when given, keeps the old page's last frame on screen until it settles (CR-005: the landing's hall stays
  *  up until the seat page's hall has drawn), capped by the promise itself. */
-export function navigate(to: string, hold?: Promise<void>): void {
-  window.history.pushState({ frDepth: depth() + 1 }, "", to);
+export function navigate(to: string, hold?: Promise<void>, opts?: { replace?: boolean }): void {
+  // CR-008 T14 (#3): a redirect replaces the current entry, so Back skips it instead of bouncing straight back.
+  if (opts?.replace) window.history.replaceState({ frDepth: depth() }, "", to);
+  else window.history.pushState({ frDepth: depth() + 1 }, "", to);
   transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)), hold);
 }
 
