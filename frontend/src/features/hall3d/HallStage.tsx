@@ -61,6 +61,7 @@ export function HallStage({ hallNo, film, map: real = null, fallback = null, pan
         <Guard key={hallNo} onFail={() => setMeta(null)}>
           <Suspense fallback={null}>
             <HallScene map={map} film={film} mine={NONE} mode={pan ? "all" : "seat"} seatId={null} locked
+                       houseDown={!pan} /* watching: lights down; Book tickets brings them up for choosing seats */
                        onTap={() => undefined} onLook={() => undefined} onHover={() => undefined}
                        onMoving={onMoving} meta={meta} hallNo={hallNo} />
           </Suspense>
