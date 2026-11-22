@@ -81,3 +81,56 @@ T3-T8 file - `S-ADM-23` (failed on the untouched baseline run too), `S-PAY-11` (
 250 points + 2 notifications; sidebar at 360 px (Esc closes, focus returns, Tab stays inside); mark-all-read cleared the
 badge; second booking A8 with points: $12.99 - $2.50 = **$10.49** charged (payment row 1049), balance 250 -> 0 -> +100;
 profile saved and shown on reload (bad phone shown inline first); Help message stored. Screenshots: `e2e/evidence/cr008/`.
+
+## T9-T13, T16: what was built
+
+Built 2026-11-22 (local commit only). One migration (`0006_film_details_ratings_likes`), regenerated from
+`docs/06 DataModel/datamodel.json` (29 tables; `generate.py --check` PASS, `consistency_check.py` 15/15 PASS); four new
+endpoints `EP-ACC-18..21` under the new row `P-ACC-17` (E5), regenerated into `contract.json` (74 endpoints,
+`generate_api.py --all` PASS); `EP-BRW-01/02` and `EP-ADM-02/04` bodies amended. No new dependency, no polling.
+
+| Task | Behaviour | Where |
+|---|---|---|
+| T9 Search | Header combobox on every page (ARIA 1.2 combobox + listbox). `GET /api/search?q=` finds visible films whose title or a genre contains `q` (case-insensitive, LIKE wildcards escaped, under 2 characters finds nothing, over 100 is 422, at most 8, title matches first). The request waits for a 250 ms pause in typing, aborts the previous one, and an answer is kept only for the query it was asked for (one `Search` status union). Arrows move, Enter opens the active (or first) film, Escape closes then clears; "No films match" state; a 10 s ceiling ends a never-answering search as an error. | `features/discover/Search.tsx`, `discover.ts`, `api/browse.py`, `domain/browse/catalogue.py` |
+| T10 Landing rows | Under the hall (the landing now scrolls; the hall still fills the first screen): the featured hero, **Top rated**, Now showing, Coming soon, Recently viewed - each a wrapping poster grid (6 shown) with "See all" to `/films` or `/films#coming-soon` (the listing now has its own Coming soon section). The rail lists only films that are out. | `features/discover/Rows.tsx`, `Landing.tsx`, `ListingScreen.tsx` |
+| T11 Genres | Every card (listing, landing tiles, hero, film page) shows its genres on their own line under the title; nothing for a film with none. | `discover/Bits.tsx` `Genres` |
+| T12 Ratings, likes, details | `movie_rating` (score 1-10, `UNIQUE(user_id, movie_id)`, re-rating updates) and `movie_like` (`liked` flag, no DELETE grant). `PUT /api/me/ratings/{id}` is refused 403 unless the caller has a confirmed booking with a captured payment for a showtime of that film that has **started** (an EXISTS in the write's transaction); `PUT /api/me/likes/{id}` only while the film is coming soon (`release_date` after the cinema's today, else 403); `GET /api/me/movies/{id}` is the viewer's half (score, can_rate, liked). Every listing film carries `release_date`, `coming_soon`, `rating {average_tenths, count}` (integer tenths, half up: 7 and 8 -> 75) and `likes`; the film page adds the 1-10 `breakdown`, `cast` and `crew`. Both writes bump the listing generation. The star badge sits beside the title on every card ("New" when unrated). The film page shows the details grid, cast, crew, average, count, bars, and the viewer's 1-10 control or Like. New `movie` columns `release_date date`, `cast_members text`, `crew_members text` (one person per line, `Name: role`, CHECK <= 4000), editable in the admin film editor, validated and audited. `scripts/demo_films.py` fills all 20 demo films with a release date and an invented cast and crew (fictional people for fictional films); three are released 9/16/23 days after the run (Coming soon) and get no show before their release day (the demo top-up skips them the same way, `domain/schedule.py`). | `api/account.py`, `domain/browse/catalogue.py`, `discover/FilmDetails.tsx`, `admin/FilmEditor.tsx`, `domain/admin/films.py` |
+| T13a Hero | Up to 5 films (top rated, then showing), cross-faded inside a clipped box (no sideways movement). Turns every 7 s only while nothing holds it - pointer over it, focus inside, tab hidden, off-screen (IntersectionObserver) - never under reduced motion; Pause/Play, prev/next and dots. One reducer (`carousel`). | `Rows.tsx`, `discover.ts` |
+| T13b Calendar | "Add to calendar" on the confirmation: an `.ics` (VEVENT) whose DTSTART/DTEND are the show's instants in UTC, so every calendar shows the right local time. Checked: 21:30 IST show -> `DTSTART:20261122T160000Z`. | `ticket/ConfirmationScreen.tsx`, `bookingIcs` |
+| T13c Share | Film page and confirmation: Web Share, else clipboard ("Link copied"), else the link in a field to copy. A share sheet that never answers does not trap the button (a second press copies instead). The confirmation shares the film and time, never the reference. | `Bits.tsx` `ShareButton`, `shareLink` |
+| T13d Recently viewed | `fr.recent` in localStorage (12, newest first, every access in try/catch); a row on the landing. | `discover.ts`, `MovieScreen.tsx` |
+| T16 No sideways scroll | The date strip is a wrapping week grid (7 a row, weekday over date, month named where it changes, "Any date" chip; one tab stop, arrows step a day, up/down a week). The 2D seat map fits its panel: cells sized from the box width (ResizeObserver); when a seat would be under 22 px on a touch screen it shows the hall as an overview and a tap zooms into one block (aisles split blocks; a block too wide is cut in equal pieces), with Whole hall / previous / next; the screen bar stays over its columns (CR-007), row labels stay. Also: landing rail on phones is a grid, show times wrap, header nav wraps, report tables stack as label/value cards under 48rem (the 44rem minimum is gone), admin fieldsets and file inputs shrink. | `browse/DayStrip.tsx`, `seatmap/fit.ts`, `SeatMapScreen.tsx`, CSS |
+
+**"Top rated", not "Recommended".** The owner's row is "Recommended (top rated)". The word *recommend* is banned from
+`frontend/src` and `backend/app` by two scope guards (`S-XCT-47`, `S-SCP-10`: no recommendation machinery). The row is
+the same order for everyone, from customers' stars, so it is labelled **Top rated**; renaming it needs those two tests
+amended by the owner.
+
+**The sweep** `e2e/checks/no_sideways.test.mjs` visits every route as guest, customer and admin at 360, 768 and 1440 px
+(plus the open search list and the open account sidebar) and fails on a document wider than the window or any
+`overflow-x: auto|scroll` element with `scrollWidth > clientWidth`. Result: **3 / 3 pass** (first run found the
+dashboard tables, the audit table, an admin file input and a fieldset; fixed).
+
+**Tests.** `backend/tests/cr8/test_discovery.py` (6: session required; rating refused before the show starts, refused for
+a non-viewer, then counted and updated in place; half-up average and a failed payment is no ticket; likes only before
+release, toggle, count; search by title and genre, hidden films never found, wildcard escaped; full details on the film
+page) and `test_film_details_admin.py` (1). Frontend: `discover/discover.test.mjs` (10), `seatmap/fit.test.mjs` (3).
+Amended with CR-008 citations: `S-BRW-02` published keys (+4), table counts 27 -> 29 (`S-XCT-04`, seed kit), contract
+70 -> 74 (`S-SCP-01`, `S-ACC-10`), `scripts/seed.py` wipe list (+2). Fixed by rewording only: `S-PAY-11` (films.py
+docstring) and `S-TKT-13` (HallScene.tsx comment; also "debounces" in a new docstring). Browser walkthrough
+(`e2e/walk_cr008_discovery.mjs`, account `e2e-sweep-1`): search "thri" -> 6 options, arrows + Enter opened the film,
+"zzqx" -> no-results; liked Iron Horizon 0 -> 1; seat map 1440 fitted, 360 overview -> zoomed block at 32 px seats ->
+tapped a seat -> held -> booked FR-7CNJ-2K5J; calendar times correct; Share copied the link; after 21:30 IST the
+verified viewer rated Outpost 77: count 0 -> 1, average 8.0 on every card and in Top rated; a non-viewer got 403.
+Screenshots: `e2e/evidence/cr008/t9-*`, `t10-*`, `t12-*`, `t13-*`, `t16-*`.
+
+**Two more amended guards.** `S-XCT-13` and `S-XCT-43` forbid `localStorage` (no second session mechanism). Recently
+viewed is per browser by the owner's request, so the one exception is `discover.ts` `recentStore` (film ids under
+`fr.recent`, nothing about the session); S-XCT-13 counts its uses. `tests/adm/kit.py` `movie_row` keeps `version` at
+`[-2]` now that `movie` has three more columns (S-ADM-24/25).
+
+**Results (2026-11-22, local stack).** Full backend suite once: 1403 passed, 13 failed; the 12 caused by this work
+(the `movie_row` column position, a "recommend" in a comment, the `localStorage` guards, the word "weeks" matching
+S-XCT-37's `eks`) were fixed and re-run green; the remaining failure is **S-ADM-23**, which predates this work:
+`scripts/demo_films.py` (CR-006) inserts movie rows, and the test allows only the admin path and `seed.py`. `S-PAY-11`
+and `S-TKT-13` now pass. Frontend `node --test`: 188 / 188. `tsc -b`: clean. Sweep: 3 / 3.

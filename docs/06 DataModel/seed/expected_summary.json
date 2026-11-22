@@ -92,6 +92,16 @@
       "basis": "derived by generate.py from the rule cited",
       "cite": "P-XCT-30 'genres = {genre[i mod 4], genre[(i + 1) mod 4]} two per film, always distinct'"
     },
+    "movie_like": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) T12 - the seed writes no rating or like; customers write them"
+    },
+    "movie_rating": {
+      "rows": 0,
+      "basis": "stated by the document cited",
+      "cite": "CR-008 (owner, 2026-11-22) T12 - the seed writes no rating or like; customers write them"
+    },
     "notification": {
       "rows": 0,
       "basis": "stated by the document cited",

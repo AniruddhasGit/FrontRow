@@ -3,6 +3,7 @@
 // are the account lane's and slot in through `nav` and `account`. The nav is never the authorisation
 // boundary - the server's routers are.
 import type { ReactNode } from "react";
+import { Search } from "./features/discover/Search";
 import "./layout.css";
 import { goBack, Link, usePathname } from "./router";
 
@@ -24,6 +25,8 @@ export function Layout({ children, nav, account }: { children: ReactNode; nav?: 
           <Link to="/" className="fr-brand">
             FrontRow
           </Link>
+          {/* CR-008 T9: search films by title or genre, on every page */}
+          <Search />
           {nav ? (
             <nav aria-label="Main" className="fr-nav">
               {nav}

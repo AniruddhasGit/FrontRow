@@ -606,7 +606,7 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown }: {
       seatLight.current.color.copy(c).multiplyScalar(1 / Math.max(c.r, c.g, c.b, 0.05));
       seatLight.current.intensity = 30 * (0.45 + 1.1 * SCREEN_LIGHT.luma);
     }
-    // the room's soft fill is mostly light bounced off the screen: half house-warm, half the picture's hue
+    // the room's soft fill is mostly light reflected off the screen: half house-warm, half the picture's hue
     if (fill.current) {
       fill.current.color.copy(WARM_FILL).lerp(seatLight.current?.color ?? WARM_FILL, 0.5);
       fill.current.intensity = 0.35 * (0.6 + 0.9 * SCREEN_LIGHT.luma) * (0.5 + 0.5 * glowU.uHouse.value);

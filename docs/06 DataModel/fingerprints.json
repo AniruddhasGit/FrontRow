@@ -7,12 +7,12 @@
     "checks/verify_invariants.sql and every other hand-written file - not generated"
   ],
   "files": {
-    "datamodel.json": "a3b210ea5b6c36841eb973f0253bf53a31800030f6d8aa4989d893489a57867e",
-    "TRACEABILITY.tsv": "8afa281def7d31b2b59a9df6c6b07cf628e6e4e6893eb98e01e5ccfd57533c68",
-    "schema.sql": "b82df9be18f212f3c650bab85523a7a716aa7524c896bc7c71453a6fd3f3c9b8",
-    "seed/expected_summary.json": "02a75a1adb86757b75dbf672341ed56adce2ae6de012a5f9c9314b7e79d17105"
+    "datamodel.json": "4074e393f77e4633457f4a613e1b6286ef924a491f4a99b486c5bef985b760f0",
+    "TRACEABILITY.tsv": "46e42ce42bd4cd44284af5a6eca55428dd3b8f63f8332f3f312e0efd32140df1",
+    "schema.sql": "901c0e6397fe476c8e7fd2fe46a29ba51d39f0119455d864b3e92d6129238841",
+    "seed/expected_summary.json": "cf989bcb5528c41925b16af31e7c2d2a7719a9d30cca8479a29030924c798964"
   },
-  "schema_structure_sha256": "67e1d9d319bfc6f1fadde80ed4a2b15057c392c76fab40d4caeda1a192a9791e",
+  "schema_structure_sha256": "bb730f78188d31e2cbee7d249146526942ebd1b012bf684fb7c69d7019c71a38",
   "roles_and_grants": [
     "role frontrow_owner",
     "role frontrow_app",
@@ -32,6 +32,8 @@
     "grant GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app",
     "grant GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON movie_like TO frontrow_app",
+    "grant GRANT SELECT, INSERT, UPDATE ON movie_rating TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app",
     "grant GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app",
@@ -246,17 +248,22 @@
       ]
     },
     "movie": {
-      "sha256": "07d13351282b7f7c3766cb8006f1e52d5809b0c5944b6a5bf1a891649d872651",
-      "columns": 12,
+      "sha256": "dfd409588a47a56a41c7cf511a3d84fd987fa41238ff46398b41772daced6cee",
+      "columns": 15,
       "signature": [
+        "check ck_movie__cast_members (cast_members IS NULL OR char_length(cast_members) <= 4000)",
+        "check ck_movie__crew_members (crew_members IS NULL OR char_length(crew_members) <= 4000)",
+        "column cast_members text NULL",
         "column certification_id bigint NOT NULL",
         "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column crew_members text NULL",
         "column display_from timestamptz NULL",
         "column display_until timestamptz NULL",
         "column id bigint NOT NULL IDENTITY",
         "column language_id bigint NOT NULL",
         "column poster_object_key text NULL",
         "column published_at timestamptz NULL",
+        "column release_date date NULL",
         "column runtime_minutes integer NOT NULL",
         "column synopsis text NOT NULL",
         "column title text NOT NULL",
@@ -276,6 +283,41 @@
         "foreign_key fk_movie_genre__genre_id (genre_id) -> genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "foreign_key fk_movie_genre__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
         "primary_key (movie_id, genre_id)"
+      ]
+    },
+    "movie_like": {
+      "sha256": "ee436468537048cbdcee5479cc4ae879170034dc26a457c119bc131bdd7c625f",
+      "columns": 6,
+      "signature": [
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column liked boolean NOT NULL",
+        "column movie_id bigint NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_movie_like__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie_like__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_movie_like__movie_id (movie_id)",
+        "primary_key (id)",
+        "unique uq_movie_like__user_id_movie_id (user_id, movie_id)"
+      ]
+    },
+    "movie_rating": {
+      "sha256": "bf116e771eae4e008b82453bb228ade90ddd95dff973a51a103405706a12082c",
+      "columns": 6,
+      "signature": [
+        "check ck_movie_rating__score (score BETWEEN 1 AND 10)",
+        "column created_at timestamptz NOT NULL DEFAULT now()",
+        "column id bigint NOT NULL IDENTITY",
+        "column movie_id bigint NOT NULL",
+        "column score integer NOT NULL",
+        "column updated_at timestamptz NULL DEFAULT now()",
+        "column user_id bigint NOT NULL",
+        "foreign_key fk_movie_rating__movie_id (movie_id) -> movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "foreign_key fk_movie_rating__user_id (user_id) -> users (id) ON DELETE RESTRICT ON UPDATE RESTRICT",
+        "index ix_movie_rating__movie_id (movie_id)",
+        "primary_key (id)",
+        "unique uq_movie_rating__user_id_movie_id (user_id, movie_id)"
       ]
     },
     "notification": {

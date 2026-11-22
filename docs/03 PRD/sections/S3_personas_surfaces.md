@@ -179,10 +179,10 @@ exclusion in `S2.4` or an `OPEN` row, and neither may be quietly filled in.
 disagree** — a check added after this table silently went stale at 53 while claiming it could
 not.*
 
-**70 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
+**74 endpoints**, grouped by the router each sits behind (`S3.5`). An endpoint appears
 once, under the **narrowest** router that admits it.
 
-**Public — no session required** — 13
+**Public — no session required** — 14
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -199,8 +199,9 @@ once, under the **narrowest** router that admits it.
 | `EP-BRW-05` | `GET` | `/api/showtimes/{showtime_id}` | anyone |
 | `EP-BRW-06` | `GET` | `/api/showtimes/{showtime_id}/seatmap` | anyone |
 | `EP-ACC-17` | `POST` | `/api/support/messages` | anyone |
+| `EP-ACC-18` | `GET` | `/api/search` | anyone |
 
-**Customer — a session, and the caller's own resources** — 18
+**Customer — a session, and the caller's own resources** — 21
 
 | Id | Method | Path | Who |
 |---|---|---|---|
@@ -221,6 +222,9 @@ once, under the **narrowest** router that admits it.
 | `EP-ACC-14` | `POST` | `/api/me/notifications/read` | any signed-in user |
 | `EP-ACC-15` | `GET` | `/api/me/profile` | any signed-in user |
 | `EP-ACC-16` | `PUT` | `/api/me/profile` | any signed-in user |
+| `EP-ACC-19` | `GET` | `/api/me/movies/{movie_id}` | any signed-in user |
+| `EP-ACC-20` | `PUT` | `/api/me/ratings/{movie_id}` | any signed-in user |
+| `EP-ACC-21` | `PUT` | `/api/me/likes/{movie_id}` | any signed-in user |
 | `EP-HLD-01` | `POST` | `/api/showtimes/{showtime_id}/holds` | customer / manager / admin |
 
 **Reporting — manager and admin, screen-scoped** — 3

@@ -21,7 +21,23 @@
 .rpt-bar { height: 8px; background: var(--fr-surface-inset); border-radius: var(--fr-radius-pill); overflow: hidden; }
 .rpt-bar-fill { height: 100%; background: var(--fr-countdown-fill); }
 .rpt-state, .rpt-figures > .rpt-state { grid-column: 1 / -1; }
-.rpt-scroll { overflow-x: auto; max-width: 100%; }
+/* CR-008 T16 (no horizontal scroll anywhere): the tables fit; on a narrow screen each row becomes a card of
+   label / value lines (the label from data-label), and the column headings - the sort buttons - wrap as a row of chips. */
+.rpt-scroll { max-width: 100%; }
+.rpt-panel { grid-template-columns: minmax(0, 1fr); }
+.rpt-panel > * { min-width: 0; }
+.rpt-table td { overflow-wrap: anywhere; }
+@media (max-width: 48rem) {
+  .rpt-table, .rpt-table tbody, .rpt-table tr, .rpt-table td { display: block; }
+  .rpt-table thead tr { display: flex; flex-wrap: wrap; gap: var(--fr-space-1) var(--fr-space-3); }
+  .rpt-table thead th { border: 0; }
+  .rpt-table tbody tr { border: 1px solid var(--fr-rule-quiet); border-radius: var(--fr-radius-md); margin-block: var(--fr-space-2);
+    padding: var(--fr-space-2); }
+  .rpt-table td { display: grid; grid-template-columns: minmax(6rem, 40%) minmax(0, 1fr); gap: var(--fr-space-2);
+    border: 0; padding: var(--fr-space-1) 0; }
+  .rpt-table td::before { content: attr(data-label); color: var(--fr-ink-muted); font-family: var(--fr-font-body);
+    font-size: var(--fr-text-xs); letter-spacing: var(--fr-track-caps); }
+}
 .rpt-table { border-collapse: collapse; width: 100%; }
 .rpt-table caption { text-align: start; font-weight: var(--fr-weight-black); padding-block: var(--fr-space-2); }
 .rpt-table th { text-align: start; border-bottom: 1px solid var(--fr-rule); }
@@ -44,6 +60,5 @@
 .rpt-table tbody tr:hover td { background: var(--fr-surface-inset); }
 /* the hall picker keeps a control's width */
 .rpt-panel select { max-width: 22rem; }
-/* phones: wide tables scroll in their own box instead of being crushed into a column of wrapped words */
-.rpt-scroll > .rpt-table { min-width: 44rem; }
+/* phones: CR-008 T16 removed the 44rem minimum that made these tables scroll sideways; they stack as cards instead */
 .rpt-figures { padding: var(--fr-space-4); border-radius: var(--fr-radius-lg); background: var(--fr-surface-inset); }

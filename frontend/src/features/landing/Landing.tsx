@@ -15,6 +15,7 @@ import { get, query, type Film, type Showtime } from "../browse/api";
 import { runtimeName, showtimeName, timeLabel } from "../browse/logic";
 import { Poster } from "../browse/Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
+import { Discover } from "../discover/Rows";
 import { FLOWN } from "../hall3d/Hall3D";
 import { screenNumber } from "../hall3d/hall";
 import { nextHallDrawn } from "../hall3d/hallReady";
@@ -28,7 +29,8 @@ type Leaving = null | "book" | "films";
 const EXPAND_MS = 600; // the rail's ground wiping across the page (immersive.css .fr-landing::after), before /films takes over
 
 export function Landing() {
-  const [films, setFilms] = useState<Film[] | null>(null);
+  const [films, setFilms] = useState<Film[] | null>(null); // the rail: what is showing
+  const [all, setAll] = useState<Film[]>([]); // CR-008 T10: every listed film, coming soon included, for the rows below
   const [failed, setFailed] = useState(false);
   const [filmId, setFilmId] = useState<number | null>(null);
   const [listed, setListed] = useState<Listed | null>(null);
@@ -49,8 +51,10 @@ export function Landing() {
   useEffect(() => {
     get<{ movies: Film[] }>("/api/movies").then((r) => {
       if (!r.ok) return setFailed(true);
-      setFilms(r.body.movies);
-      setFilmId((id) => id ?? r.body.movies[0]?.id ?? null);
+      const showing = r.body.movies.filter((m) => !m.coming_soon);
+      setAll(r.body.movies);
+      setFilms(showing);
+      setFilmId((id) => id ?? showing[0]?.id ?? null);
     });
   }, []);
   useEffect(() => {
@@ -76,7 +80,8 @@ export function Landing() {
     return () => ctl.abort();
   }, [st]);
 
-  // The film at the head of the rail (phones: in the middle of the strip) is the one on the screen. Read once the scrolling settles, so a fast flick through
+  // The film at the head of the rail is the one on the screen (desktop; on phones the rail is a wrapping grid that
+  // does not scroll - CR-008 T16 - and a tap chooses). Read once the scrolling settles, so a fast flick through
   // the list does not load every hall on the way.
   useEffect(() => {
     const ul = rail.current;
@@ -86,12 +91,11 @@ export function Landing() {
       clearTimeout(t);
       t = window.setTimeout(() => {
         const box = ul.getBoundingClientRect();
-        const across = ul.scrollWidth > ul.clientWidth + 1; // phones: the rail scrolls sideways
         const head = box.top + parseFloat(getComputedStyle(ul).paddingTop); // where a snapped film's top sits
         let best: HTMLElement | null = null, gap = Infinity;
         for (const li of ul.children as HTMLCollectionOf<HTMLElement>) {
           const r = li.getBoundingClientRect();
-          const d = across ? Math.abs(r.left + r.width / 2 - (box.left + box.width / 2)) : Math.abs(r.top - head);
+          const d = Math.abs(r.top - head);
           if (d < gap) [best, gap] = [li, d];
         }
         const id = Number(best?.dataset.film);
@@ -106,7 +110,12 @@ export function Landing() {
   }, [films]);
   const centre = (id: number) => {
     setFilmId(id);
-    rail.current?.querySelector<HTMLElement>(`[data-film="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start", inline: "center" });
+    const ul = rail.current;
+    // only the rail's own scroll moves (desktop); a phone's grid does not scroll, and the page must not jump
+    if (ul && ul.scrollHeight > ul.clientHeight + 1) {
+      const li = ul.querySelector<HTMLElement>(`[data-film="${id}"]`);
+      if (li) ul.scrollTo({ top: li.offsetTop - ul.offsetTop - parseFloat(getComputedStyle(ul).paddingTop), behavior: "smooth" });
+    }
   };
 
   const book = async () => {
@@ -141,6 +150,7 @@ export function Landing() {
 
   const film = films?.find((f) => f.id === filmId) ?? null;
   return (
+    <>
     <section className="fr-immersive fr-landing" data-leaving={leaving ?? undefined}>
       <aside className="fr-rail" aria-label="Films">
         <h1>Now showing</h1>
@@ -196,5 +206,8 @@ export function Landing() {
         ) : null}
       </div>
     </section>
+    {/* CR-008 T10/T13: under the hall - the featured films, the rows, Recently viewed */}
+    {all.length ? <Discover films={all} /> : null}
+    </>
   );
 }

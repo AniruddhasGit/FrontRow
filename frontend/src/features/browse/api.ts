@@ -56,6 +56,18 @@ export interface Film {
   genres: { id: number; name: string }[];
   poster_url: string;
   display_until: string;
+  // CR-008 T10-T12: on every card
+  release_date: string | null;
+  coming_soon: boolean;
+  rating: { average_tenths: number | null; count: number };
+  likes: number;
+}
+
+/** EP-BRW-02 adds the film page's full details (CR-008 T12). */
+export interface FilmDetail extends Film {
+  rating: { average_tenths: number | null; count: number; breakdown: number[] };
+  cast: { name: string; role: string | null }[];
+  crew: { name: string; role: string | null }[];
 }
 
 export interface Showtime {

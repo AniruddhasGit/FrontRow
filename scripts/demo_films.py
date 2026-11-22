@@ -10,12 +10,17 @@ Idempotent: a film is found by title and updated, never duplicated. What it does
   4. re-assigns every FUTURE showtime that nobody has booked across the films in turn (each plays daily), with
      ends_at = starts_at + the new runtime + 15 minutes; from then on the schedule top-up keeps rotating them.
 No audit row: there is no actor, as with the seed. The owner's AI-generated art; names and faces are invented.
+CR-008 T12: every film also gets a release date, a cast and a crew (DETAILS below: invented people for invented films,
+not facts about any real film). Three are released in the future (SOON: days from the run), so the landing has a
+"Coming soon" row; a film gets no show before its release day.
 """
 
 from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
+
+from zoneinfo import ZoneInfo
 
 import psycopg
 
@@ -80,6 +85,52 @@ FILMS = [
 ]
 LANGUAGE = "English"
 CHANGEOVER = timedelta(minutes=15)
+ZONE = ZoneInfo("Asia/Kolkata")  # the demo cinema's zone: a release date is a day on its calendar
+
+# CR-008 T12: title -> (cast "Name: character" lines, crew "Name: job" lines). Every name is invented.
+DETAILS = {
+    "Outpost 77": ("Maren Solvik: Dr. Ilse Brandt\nDev Achari: Tomas Rook\nKeiko Hanley: Station Chief Ward\nOren Vass: The Signal",
+                   "Halvard Ness: Director\nPriya Venn: Writer\nJonas Ekberg: Cinematographer\nLuz Arana: Composer"),
+    "The Iron Garden": ("Tilly Marsh: Wren Cogsworth\nAmbrose Kell: Professor Ashby Vane\nNoor Halabi: The Gardener",
+                        "Corin Blackwood: Director\nEsme Thorn: Writer\nRafael Duarte: Production Designer\nMina Sato: Composer"),
+    "Echoes of the Desolate": ("Sasha Okoro: Rae\nGideon Hale: K-9 (voice)\nLena Voss: The Warden\nMarco Quill: Ezra",
+                               "Ida Faraday: Director\nNils Okafor: Writer\nTeo Banerjee: Cinematographer\nJuno Albright: Composer"),
+    "Deep Sea Reckoning": ("Callum Brandt: Captain Joel Harker\nAnika Rao: Dr. Mae Lindqvist\nPavel Orsk: Sergei\nTess Monroe: Fin",
+                           "Rowan Achterberg: Director\nDalia Kurt: Writer\nIvo Santangelo: Cinematographer\nHugo Lerner: Composer"),
+    "The First Chronicle": ("Elodie Fenn: Ama the Cartographer\nBartholomew Crane: Old Saro\nKiran Dutta: Prince Edrin",
+                            "Leopold Marsh: Director\nWilla Kestrel: Writer\nAnders Holm: Cinematographer\nSiri Navarro: Composer"),
+    "Neon Reverie": ("Ravi Castell: Detective Jun Okada\nVera Lindt: Mnemo\nSol Ibarra: Dax Reyner\nHana Brixton: Kit",
+                     "Theo Varga: Director\nMarisol Pike: Writer\nKenji Arden: Cinematographer\nNadia Frost: Composer"),
+    "The Last Stage": ("Jed Harlan: Eli Cutter\nMaisie Cole: June Cutter\nWalt Brenner: Sheriff Pruitt\nRosa Delmar: Inez",
+                       "August Lowry: Director\nCora Whitfield: Writer\nDean Okumu: Cinematographer\nFelix Amari: Composer"),
+    "Apartment 4B": ("Nina Ashgrove: Clara Bell\nOtto Grimsby: Mr. Feld, the landlord\nJoy Carrow: Dana from 4A",
+                     "Silas Wren: Director\nOdette Ralls: Writer\nMilo Varan: Cinematographer\nGreta Lum: Composer"),
+    "Voidbound": ("Idris Kane: Commander Rhea Sato\nLucas Vey: Engineer Bram Holt\nAlma Ferro: ARES (voice)",
+                  "Petra Lund: Director\nAsher Cole: Writer\nYuki Brann: Cinematographer\nOmar Teague: Composer"),
+    "Aria and the Star Whales": ("Poppy Lark: Aria (voice)\nGus Merriweather: Captain Bellows (voice)\nIris Dunmore: The Old Whale (voice)",
+                                 "Hazel Quinlan: Director\nBenji Arlo: Writer\nMara Velloso: Art Director\nCasper Wynn: Composer"),
+    "Echoes of the Steppe": ("Saran Tuya: Altan\nBatu Oyun: Grandfather Khasar\nNomin Erel: Solongo",
+                             "Dashi Morrow: Director\nTemuge Hart: Writer\nIlya Brask: Cinematographer\nAyla Senn: Composer"),
+    "The Dragon's Oath": ("Rowena Hart: Queen Ysolde\nBram Ellery: Corwin the Oathbreaker\nTala Moreau: Sefa\nGrim Haldor: The Dragon (voice)",
+                          "Magnus Ferre: Director\nLyra Castellan: Writer\nOwen Brightwater: Cinematographer\nElin Saar: Composer"),
+    "The Astral Grimoire": ("Fern Abernathy: Lyra Quill\nCedric Moss: Master Orrin\nZadie Pell: Nix",
+                            "Imogen Hale: Director\nRupert Lowe: Writer\nSana Kirsch: Production Designer\nTobias Fenwick: Composer"),
+    "The Redwood Covenant": ("Jonah Pryce: Sam\nDelia Moore: Ruth\nAbel Strand: The Warden of the Grove",
+                             "Mira Calloway: Director\nEthan Rook: Writer\nPilar Ostrander: Cinematographer\nNico Hask: Composer"),
+    "The Marigold Reunion": ("Lucia Bellini: Nonna Rosa\nPeter Ashcombe: Uncle Frank\nAmara Diallo: Gia\nTommy Reece: Leo",
+                             "Clara Montague: Director\nDev Malhotra: Writer\nSofia Lind: Cinematographer\nRemy Laurent: Composer"),
+    "The Edge of the Map": ("Hollis Grant: Dr. Ada Wren\nMateo Cruz: Tomas\nIngrid Falk: Professor Lorne",
+                            "Victor Ashdown: Director\nNell Hargrove: Writer\nKai Moreno: Cinematographer\nLena Adair: Composer"),
+    "Paws & Claws: The Great Alley Caper": ("Ziggy Bloom: Mittens (voice)\nHank Puddle: Rufus (voice)\nDot Kim: Madame Whiskers (voice)",
+                                            "Benny Okafor: Director\nTilda Swain: Writer\nArlo Pemberton: Animation Director\nMax Ferrante: Composer"),
+    "Caldera": ("Rena Castillo: Dr. Mara Quint\nJack Holloway: Deacon\nSuki Tanaka: Ivy\nBen Adeyemi: Colonel Hart",
+                "Garrett Lyle: Director\nPhoebe Danvers: Writer\nAnton Vire: Visual Effects Supervisor\nOrla Brennan: Composer"),
+    "Iron Horizon": ("Wes Callahan: Sergeant Dale Mercer\nOwen Pike: Private Lewis\nJulien Morel: Lieutenant Arnaud",
+                     "Hector Valdane: Director\nRuth Elling: Writer\nTomasz Wilk: Cinematographer\nAda Brightman: Composer"),
+    "Silent Sky": ("Kara Lindqvist: Nadia Ross\nEli Marsden: Jonah Ross\nPriya Sethi: Commander Hale",
+                   "Damon Rourke: Director\nIsla Fairweather: Writer\nLeon Takeda: Cinematographer\nVesna Kral: Composer"),
+}
+SOON = {"The Dragon's Oath": 9, "Caldera": 16, "Iron Horizon": 23}  # days after today; the rest came out before it
 
 
 def lookup(cur, table: str, name: str) -> int:
@@ -95,22 +146,28 @@ def main() -> None:
     with psycopg.connect(url) as conn, conn.cursor() as cur:
         last = cur.execute("SELECT max(starts_at) FROM showtime").fetchone()[0] or now
         language = lookup(cur, "language", LANGUAGE)
-        ids, runtime = [], {}
-        for title, slug, minutes, cert, genres, synopsis in FILMS:
+        ids, runtime, released = [], {}, {}
+        today = now.astimezone(ZONE).date()
+        for k, (title, slug, minutes, cert, genres, synopsis) in enumerate(FILMS):
             cert_id = lookup(cur, "certification", cert)
             row = cur.execute("SELECT id FROM movie WHERE title = %s", (title,)).fetchone()
+            # released 2..59 days ago in list order, or SOON days ahead
+            release = today + timedelta(days=SOON[title]) if title in SOON else today - timedelta(days=2 + 3 * k)
+            cast, crew = DETAILS[title]
             values = (synopsis, minutes, cert_id, language, f"/art/films/{slug}.webp", now - timedelta(days=1),
-                      last + timedelta(days=1))
+                      last + timedelta(days=1), release, cast, crew)
             if row:
                 mid = row[0]
                 cur.execute("UPDATE movie SET synopsis = %s, runtime_minutes = %s, certification_id = %s, language_id = %s, "
                             "poster_object_key = %s, published_at = coalesce(published_at, now()), display_from = %s, "
-                            "display_until = greatest(display_until, %s), version = version + 1 WHERE id = %s", (*values, mid))
+                            "display_until = greatest(display_until, %s), release_date = %s, cast_members = %s, "
+                            "crew_members = %s, version = version + 1 WHERE id = %s", (*values, mid))
             else:
                 mid = cur.execute(
                     "INSERT INTO movie (title, synopsis, runtime_minutes, certification_id, language_id, poster_object_key, "
-                    "published_at, display_from, display_until, version) VALUES (%s, %s, %s, %s, %s, %s, now(), %s, %s, 1) "
-                    "RETURNING id", (title, *values)).fetchone()[0]
+                    "published_at, display_from, display_until, release_date, cast_members, crew_members, version) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, now(), %s, %s, %s, %s, %s, 1) RETURNING id", (title, *values)).fetchone()[0]
+            released[mid] = release
             for g in genres:
                 cur.execute("INSERT INTO movie_genre (movie_id, genre_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                             (mid, lookup(cur, "genre", g)))
@@ -127,9 +184,15 @@ def main() -> None:
             "SELECT s.id, s.screen_id, s.starts_at FROM showtime s WHERE s.starts_at > %s "
             "AND NOT EXISTS (SELECT 1 FROM booking b WHERE b.showtime_id = s.id) ORDER BY s.starts_at, s.screen_id",
             (now,)).fetchall()
-        # every day's shows (24: 4 slots x 6 halls) are dealt across all the films in turn (20 films: most play daily)
-        for k, (sid, screen, starts) in enumerate(future):
-            film = ids[k % len(ids)]
+        # every day's shows (24: 4 slots x 6 halls) are dealt across the films in turn (20 films: most play daily);
+        # a film coming soon is skipped until its release day (CR-008 T10)
+        turn = 0
+        for sid, screen, starts in future:
+            day = starts.astimezone(ZONE).date()
+            while released[ids[turn % len(ids)]] > day:
+                turn += 1
+            film = ids[turn % len(ids)]
+            turn += 1
             cur.execute("UPDATE showtime SET movie_id = %s, ends_at = %s, version = version + 1 WHERE id = %s",
                         (film, starts + timedelta(minutes=runtime[film]) + CHANGEOVER, sid))
         print(f"demo films: {len(ids)} published, {len(future)} future showtimes rotated across them")

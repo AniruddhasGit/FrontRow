@@ -15,17 +15,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import db
 from app.api.errors import ApiError
 from app.api.me import UNAVAILABLE, _bounded, _down, caller
+from app.core import cache
 from app.domain import rewards
+from app.domain.browse import catalogue
 from app.domain.money import BIGINT_MAX
 from app.domain.visibility import visible
-from app.models import bookmark, format as format_t, language, movie, users
+from app.models import (booking, bookmark, format as format_t, language, movie, movie_like, movie_rating, payment, showtime,
+                        users)
 
 router = APIRouter(prefix="/api/me", dependencies=[Depends(caller)])
 
@@ -117,6 +120,107 @@ async def set_bookmark(request: Request, movie_id: Id, conn: AsyncConnection = D
                                .on_conflict_do_update(index_elements=["user_id", "movie_id"],
                                                       set_={"saved": body.saved, "updated_at": now}))
         return {"movie_id": movie_id, "saved": body.saved}
+
+    return await _guard(write())
+
+
+# ---- T12: ratings and likes ---------------------------------------------------------------------------------------
+# A rating needs a paid booking of the caller's for that film whose showtime has STARTED (checked in the write's own
+# transaction, never from the client); one row per caller and film, re-rating updates it. A like is for a film that
+# is not out yet (release_date after the cinema's today). Both bump the listing generation, so every card's average
+# and like count is fresh on the next read.
+
+RATE_REFUSED = "You can rate a film once a show of it that you booked has started."
+LIKE_REFUSED = "Likes are for films that are not out yet. Once it is out, see it and rate it."
+BAD_SCORE = "Choose a score from 1 to 10."
+
+
+class Score(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    score: StrictInt
+
+
+class Liked(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    liked: StrictBool
+
+
+def _watched(user_id: int, movie_id: int, now):
+    """The rating gate: a confirmed, captured booking of the caller's for a showtime of this film that has started."""
+    return exists(select(booking.c.id)
+                  .select_from(booking.join(showtime, booking.c.showtime_id == showtime.c.id)
+                               .join(payment, booking.c.payment_id == payment.c.id))
+                  .where(booking.c.user_id == user_id, showtime.c.movie_id == movie_id, booking.c.status == "confirmed",
+                         payment.c.state == "captured", showtime.c.starts_at <= now))
+
+
+async def _visible_film(conn: AsyncConnection, movie_id: int, now) -> bool:
+    """Whether the film is coming soon, or 404 - the bookmark's gate, plus the release date read in the cinema's zone."""
+    row = (await conn.execute(select(movie.c.release_date).where(movie.c.id == movie_id, visible(now)))).first()
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", NO_FILM)
+    return catalogue.coming_soon(row.release_date, now, catalogue.default_zone(await catalogue.load_zones(conn)))
+
+
+@router.get("/movies/{movie_id}")
+async def my_film(request: Request, movie_id: Id, conn: AsyncConnection = Depends(db)) -> dict:
+    """The film page's per-viewer half: my score, whether I may rate, whether I liked it."""
+    me, now = request.state.caller.id, request.app.state.clock.now()
+
+    async def read():
+        soon = await _visible_film(conn, movie_id, now)
+        score = (await conn.execute(select(movie_rating.c.score).where(movie_rating.c.user_id == me,
+                                                                      movie_rating.c.movie_id == movie_id))).scalar()
+        liked = (await conn.execute(select(movie_like.c.liked).where(movie_like.c.user_id == me,
+                                                                    movie_like.c.movie_id == movie_id))).scalar()
+        can_rate = bool((await conn.execute(select(_watched(me, movie_id, now)))).scalar())
+        await conn.rollback()
+        return {"movie_id": movie_id, "score": score, "can_rate": can_rate, "liked": bool(liked), "coming_soon": soon}
+
+    return await _guard(read())
+
+
+@router.put("/ratings/{movie_id}")
+async def rate_film(request: Request, movie_id: Id, conn: AsyncConnection = Depends(db)) -> dict:
+    body = await _json(request, Score)
+    if not 1 <= body.score <= 10:
+        raise ApiError(422, "VALIDATION_FAILED", BAD_SCORE, {"field": "score"})
+    me, now = request.state.caller.id, request.app.state.clock.now()
+
+    async def write():
+        async with conn.begin():
+            await _visible_film(conn, movie_id, now)
+            if not (await conn.execute(select(_watched(me, movie_id, now)))).scalar():
+                raise ApiError(403, "FORBIDDEN", RATE_REFUSED)
+            await conn.execute(pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score,
+                                                              created_at=now, updated_at=now)
+                               .on_conflict_do_update(index_elements=["user_id", "movie_id"],
+                                                      set_={"score": body.score, "updated_at": now}))
+            rating = await catalogue.rating_breakdown(conn, movie_id)
+        await cache.bump_listing_generation(request.app.state.redis)
+        return {"movie_id": movie_id, "score": body.score, "rating": rating}
+
+    return await _guard(write())
+
+
+@router.put("/likes/{movie_id}")
+async def like_film(request: Request, movie_id: Id, conn: AsyncConnection = Depends(db)) -> dict:
+    body = await _json(request, Liked)
+    me, now = request.state.caller.id, request.app.state.clock.now()
+
+    async def write():
+        async with conn.begin():
+            soon = await _visible_film(conn, movie_id, now)
+            if not soon:
+                raise ApiError(403, "FORBIDDEN", LIKE_REFUSED)
+            await conn.execute(pg_insert(movie_like).values(user_id=me, movie_id=movie_id, liked=body.liked,
+                                                            created_at=now, updated_at=now)
+                               .on_conflict_do_update(index_elements=["user_id", "movie_id"],
+                                                      set_={"liked": body.liked, "updated_at": now}))
+            likes = (await conn.execute(select(func.count()).select_from(movie_like)
+                                        .where(movie_like.c.movie_id == movie_id, movie_like.c.liked))).scalar()
+        await cache.bump_listing_generation(request.app.state.redis)
+        return {"movie_id": movie_id, "liked": body.liked, "likes": likes}
 
     return await _guard(write())
 

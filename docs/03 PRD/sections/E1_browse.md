@@ -2221,7 +2221,7 @@ seconds per filter combination.
       "description": "The visible movies, ordered by published_at DESC then id DESC. A movie is returned only when it matches language_id (a movie attribute) AND has at least one showtime satisfying every supplied showtime filter — date, cinema_id and format_id — simultaneously, per P-BRW-04. One EXISTS over the showtimes, never one per filter.",
       "body": {
         "count": "integer",
-        "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
+        "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until, release_date (YYYY-MM-DD or null), coming_soon (boolean), rating:{average_tenths (integer or null), count}, likes (integer) - CR-008 T10-T12 (P-ACC-17)}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
       }
     },
     "422": {"description": "A query parameter failed validation"},
@@ -2268,7 +2268,13 @@ existed.
         "language": "{id, name}",
         "genres": "array of {id, name}",
         "poster_url": "string",
-        "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip"
+        "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip",
+        "release_date": "string YYYY-MM-DD or null (CR-008 T12, P-ACC-17)",
+        "coming_soon": "boolean, released after the cinema's today",
+        "rating": "{average_tenths integer or null, count, breakdown: 10 integers, scores 1..10}",
+        "likes": "integer",
+        "cast": "array of {name, role or null}",
+        "crew": "array of {name, role or null}"
       }
     },
     "404": {"description": "No visible movie with that id"},

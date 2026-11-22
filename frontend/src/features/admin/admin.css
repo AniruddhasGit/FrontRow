@@ -74,3 +74,9 @@
 .admin-list > li > .admin-link { display: block; margin-bottom: var(--fr-space-1); text-decoration: none; font-family: var(--fr-font-display);
   font-size: var(--fr-text-lg); font-weight: var(--fr-weight-bold); color: var(--fr-ink-strong); min-height: 0; }
 .admin-list > li > .admin-link:hover { color: var(--fr-accent-ink); }
+
+/* CR-008 T16: a fieldset defaults to min-width: min-content, which pushed the date inputs past a 360 px screen */
+.admin-form fieldset { min-width: 0; }
+.admin-form fieldset input { width: 100%; }
+.admin-form label { grid-template-columns: minmax(0, 1fr); }
+.admin-form input[type="file"] { width: 100%; min-width: 0; }

@@ -1,4 +1,4 @@
-"""SQLAlchemy Core mirror of the 27 tables in docs/06 DataModel/schema.sql. NOT the schema.
+"""SQLAlchemy Core mirror of the 29 tables in docs/06 DataModel/schema.sql. NOT the schema.
 
 The ORM mirrors the schema; it never defines it (AGENT_CONTRACT rule 8). The database - built by the
 migration from schema.sql - owns every constraint, default, index and grant; this module only names
@@ -15,7 +15,7 @@ column lets the database default apply, which is the only default allowed (FR-AD
 
 from __future__ import annotations
 
-from sqlalchemy import TIMESTAMP, BigInteger, Boolean, Column, Identity, Integer, MetaData, Table, Text
+from sqlalchemy import TIMESTAMP, BigInteger, Boolean, Column, Date, Identity, Integer, MetaData, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
@@ -176,6 +176,10 @@ movie = Table(
     Column('display_until', TIMESTAMP(timezone=True), nullable=True),
     Column('version', Integer, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    # CR-008 T12 full details (revision 0006)
+    Column('release_date', Date, nullable=True),
+    Column('cast_members', Text, nullable=True),
+    Column('crew_members', Text, nullable=True),
 )
 
 
@@ -375,4 +379,30 @@ support_message = Table(
     Column('topic', Text, nullable=False),
     Column('message', Text, nullable=False),
     Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+)
+
+
+# ---- CR-008 T12 (revision 0006) ----
+
+movie_rating = Table(
+    'movie_rating',
+    metadata,
+    Column('id', BigInteger, Identity(always=True), primary_key=True, nullable=False),
+    Column('user_id', BigInteger, nullable=False),
+    Column('movie_id', BigInteger, nullable=False),
+    Column('score', Integer, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=True),
+)
+
+
+movie_like = Table(
+    'movie_like',
+    metadata,
+    Column('id', BigInteger, Identity(always=True), primary_key=True, nullable=False),
+    Column('user_id', BigInteger, nullable=False),
+    Column('movie_id', BigInteger, nullable=False),
+    Column('liked', Boolean, nullable=False),
+    Column('created_at', TIMESTAMP(timezone=True), nullable=False),
+    Column('updated_at', TIMESTAMP(timezone=True), nullable=True),
 )

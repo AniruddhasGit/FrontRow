@@ -9,7 +9,8 @@ display_from / display_until are naive local on the wire in both directions, in 
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import delete, false, func, insert, select, update
@@ -38,8 +39,12 @@ NO_WINDOW = "This film has no display window. Set the dates it is shown between 
 ALREADY = "This film is already published."
 NOT_PUBLISHED = "This film is not published, so there is nothing to withdraw."
 BAD_FILTER = "That filter value is not valid."
+RELEASE = "Enter the release date as a date, or leave it empty."
+PEOPLE = "The list is longer than 4000 characters. Shorten it."
 
 AUTHORED = ("title", "synopsis", "runtime_minutes", "certification_id", "language_id", "genre_ids")
+# CR-008 T12: the full details - optional on a create, edited like the authored fields and audited with them
+DETAILS = ("release_date", "cast_members", "crew_members")
 WINDOW = ("display_from", "display_until")
 
 
@@ -79,7 +84,14 @@ def _film(r: Any, genres: list[dict], zone: str) -> dict:
             "published_at": None if r.published_at is None else utc_text(r.published_at.replace(microsecond=0)),
             "display_from": _local(r.display_from, zone), "display_until": _local(r.display_until, zone),
             "published": r.published, "window_open": r.window_open, "is_visible_now": r.is_visible_now,
-            "version": r.version, "created_at": utc_text(r.created_at)}
+            "version": r.version, "created_at": utc_text(r.created_at),
+            "release_date": None if r.release_date is None else r.release_date.isoformat(),
+            "cast_members": r.cast_members, "crew_members": r.crew_members}
+
+
+def _plain(values: dict) -> dict:
+    """An audit row's JSON: the release date as its ISO text."""
+    return {k: v.isoformat() if isinstance(v, date) else v for k, v in values.items()}
 
 
 async def _zone(conn: AsyncConnection) -> str:
@@ -155,6 +167,20 @@ async def _validate(conn: AsyncConnection, fields: dict, stored: dict | None) ->
         if offered != set(ids):
             raise invalid("genre_ids", GENRES)
         out["genre_ids"] = sorted(ids)
+    if "release_date" in fields:
+        value = fields["release_date"]
+        if value is not None and not (isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)):
+            raise invalid("release_date", RELEASE)
+        try:
+            out["release_date"] = None if value is None else date.fromisoformat(value)
+        except ValueError:
+            raise invalid("release_date", RELEASE) from None
+    for key in ("cast_members", "crew_members"):
+        if key in fields:
+            value = fields[key]
+            if value is not None and (not isinstance(value, str) or len(value) > 4000):
+                raise invalid(key, PEOPLE)
+            out[key] = (value or "").strip() or None  # one person per line, 'Name: role'; blank is "not entered"
     return out
 
 
@@ -168,7 +194,7 @@ async def create_film(conn: AsyncConnection, actor: Any, fields: dict, now: date
         genre_ids = values.pop("genre_ids")
         movie_id = await conn.scalar(insert(movie).values(**values, version=1, created_at=now).returning(movie.c.id))
         await conn.execute(insert(movie_genre), [{"movie_id": movie_id, "genre_id": g} for g in genre_ids])
-        await audit(conn, actor, "movie.created", "movie", movie_id, None, {**values, "genre_ids": genre_ids}, now)
+        await audit(conn, actor, "movie.created", "movie", movie_id, None, _plain({**values, "genre_ids": genre_ids}), now)
     return await get_film(conn, movie_id, now)
 
 
@@ -210,10 +236,10 @@ async def edit_film(conn: AsyncConnection, actor: Any, movie_id: int, fields: di
             await conn.execute(insert(movie_genre), [{"movie_id": movie_id, "genre_id": g} for g in changed["genre_ids"]])
         await conn.execute(update(movie).where(movie.c.id == movie_id).values(
             **{k: v for k, v in changed.items() if k != "genre_ids"}, version=row["version"] + 1))
-        authored = [k for k in AUTHORED if k in changed]
+        authored = [k for k in AUTHORED + DETAILS if k in changed]
         if authored:
-            await audit(conn, actor, "movie.updated", "movie", movie_id, {k: row[k] for k in authored},
-                        {k: changed[k] for k in authored}, now)
+            await audit(conn, actor, "movie.updated", "movie", movie_id, _plain({k: row[k] for k in authored}),
+                        _plain({k: changed[k] for k in authored}), now)
         if any(k in changed for k in WINDOW):
             await audit(conn, actor, "movie.display_window_changed", "movie", movie_id, _window_text(row),
                         _window_text(merged), now)
@@ -239,7 +265,7 @@ async def publish(conn: AsyncConnection, actor: Any, movie_id: int, fields: dict
 
 
 async def unpublish(conn: AsyncConnection, actor: Any, movie_id: int, fields: dict, now: datetime) -> dict:
-    """Withdrawal, not deletion: the row, its showtimes and every booking stay exactly as they are (P-ADM-06)."""
+    """Withdrawal, not deletion: the row, its shows and every booking stay exactly as they are (P-ADM-06)."""
     version = need_version(fields)
     async with transaction(conn, ("movie.unpublished",)):
         row = await _lock(conn, movie_id)

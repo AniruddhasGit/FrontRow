@@ -11,6 +11,8 @@ import { controlsFor, countLine, listingStrip, runtimeName, settleListing, type 
 import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import type { Saved } from "../account/account";
+import { Genres, RatingBadge, releaseLabel } from "../discover/Bits";
+import { ratingName } from "../discover/discover";
 import "./browse.css";
 
 // The one place these screens read the clock; tests and a harness pass their own `now`. Module-level, so it is
@@ -56,7 +58,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
   }, []);
 
   useEffect(() => {
-    window.history.replaceState(window.history.state, "", `/films${query(filters)}`);
+    window.history.replaceState(window.history.state, "", `/films${query(filters)}${window.location.hash}`);
     const controller = new AbortController();
     get<{ count: number; movies: Film[] }>(`/api/movies${query(filters)}`, controller.signal).then((r) => {
       if (controller.signal.aborted) return;
@@ -79,6 +81,12 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
     return () => controller.abort();
   }, [filters, attempt, now]);
 
+  const showing = films?.filter((f) => !f.coming_soon) ?? [];
+  const soon = films?.filter((f) => f.coming_soon) ?? [];
+  // A #coming-soon link (the landing's See all) scrolls there once the films are on the page.
+  useEffect(() => {
+    if (films && window.location.hash) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+  }, [films]);
   const days = useMemo(() => (films ? listingStrip(now(), films.map((m) => m.display_until)) : []), [films, now]);
   const controls = reference === undefined ? controlsFor({ cinemas: [], languages: [], formats: [], certifications: [] }) : controlsFor(reference);
   const anyFilter = KEYS.some((k) => filters[k] !== null);
@@ -119,16 +127,28 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
       ) : films.length === 0 ? (
         <p className="fr-state">{anyFilter ? "Nothing is showing for the chosen filters." : "Nothing is showing right now."}</p>
       ) : (
-        <ul className="fr-cards">
-          {films.map((m, i) => <Card key={m.id} film={m} index={i} saved={saved} toggle={toggle} />)}
-        </ul>
+        <>
+          <ul className="fr-cards">
+            {showing.map((m, i) => <Card key={m.id} film={m} index={i} saved={saved} toggle={toggle} />)}
+          </ul>
+          {/* CR-008 T10: films not out yet get their own section (the landing's Coming soon "See all" lands here) */}
+          {soon.length ? (
+            <section aria-labelledby="coming-soon" className="fr-listing-soon">
+              <h2 id="coming-soon">Coming soon</h2>
+              <ul className="fr-cards">
+                {soon.map((m, i) => <Card key={m.id} film={m} index={showing.length + i} saved={saved} toggle={toggle} />)}
+              </ul>
+            </section>
+          ) : null}
+        </>
       )}
     </section>
   );
 }
 
 function Card({ film, index, saved, toggle }: { film: Film; index: number; saved: Saved; toggle: (id: number, s: boolean) => void }) {
-  const name = `${film.title}, ${runtimeName(film.runtime_minutes)}, ${film.certification.name}, ${film.language.name}`;
+  const name = `${film.title}, ${film.coming_soon ? "coming soon" : ratingName(film.rating)}, ${runtimeName(film.runtime_minutes)}, `
+    + `${film.certification.name}, ${film.language.name}`;
   return (
     <li className="fr-card" style={{ ["--i" as string]: index, viewTransitionName: `film-${film.id}` }}>
       <a href={`/movies/${film.id}`} className="fr-card-link" aria-label={name} onClick={(e) => {
@@ -137,13 +157,18 @@ function Card({ film, index, saved, toggle }: { film: Film; index: number; saved
         navigate(`/movies/${film.id}`);
       }}>
         <Poster src={film.poster_url} title={film.title} />
-        <h2 className="fr-card-title">{film.title}</h2>
+        {/* CR-008 T12: the stars beside the title; T11: the genres under it */}
+        <span className="fr-title-row">
+          <h2 className="fr-card-title">{film.title}</h2>
+          {film.coming_soon ? null : <RatingBadge rating={film.rating} />}
+        </span>
+        <Genres film={film} />
         <p className="fr-card-synopsis">{film.synopsis}</p>
         <p className="fr-meta">
+          {film.coming_soon && film.release_date ? <span className="fr-tile-note">Opens {releaseLabel(film.release_date)}</span> : null}
           <span className="fr-mono">{film.runtime_minutes} min</span>
           <span className="fr-chip">{film.certification.name}</span>
           <span>{film.language.name}</span>
-          {film.genres.length > 0 ? <span>{film.genres.map((g) => g.name).join(", ")}</span> : null}
         </p>
       </a>
       {/* a sibling of the card's link, never inside it: one control per tab stop */}

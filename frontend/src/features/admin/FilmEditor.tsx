@@ -70,6 +70,8 @@ export function FilmEditor({ movieId, seed }: { movieId?: string; seed?: Seed })
     const body: Record<string, unknown> = {
       title: form.title, synopsis: form.synopsis, runtime_minutes: Number(form.runtime),
       certification_id: Number(form.certification), language_id: Number(form.language), genre_ids: form.genres.map(Number),
+      // CR-008 T12: empty means "not entered" (null)
+      release_date: form.release || null, cast_members: form.cast.trim() || null, crew_members: form.crew.trim() || null,
     };
     if (form.from) body.display_from = form.from;
     if (form.until) body.display_until = form.until;
@@ -128,6 +130,25 @@ export function FilmEditor({ movieId, seed }: { movieId?: string; seed?: Seed })
         {select("certification", "Certification")}
         {select("language", "Language")}
         {select("genre", "Genres", true)}
+        <fieldset>
+          <legend>Full details (shown on the film page)</legend>
+          <label>
+            Release date
+            <input className="admin-mono" type="date" value={form.release} onChange={(e) => set("release")(e.target.value)} />
+          </label>
+          <label>
+            Cast, one person per line as Name: character
+            <textarea value={form.cast} onChange={(e) => set("cast")(e.target.value)} maxLength={4000} rows={4} />
+          </label>
+          <label>
+            Crew, one person per line as Name: job
+            <textarea value={form.crew} onChange={(e) => set("crew")(e.target.value)} maxLength={4000} rows={4} />
+          </label>
+          <p className="admin-help">
+            After its release date a film is listed as showing; before it, as Coming soon, where customers can like it. Leave the date empty for
+            a film that is already out.
+          </p>
+        </fieldset>
         <p className="admin-help">
           A title of 1 to 200 characters, a synopsis of up to 4000, and a runtime in whole minutes. Choose one language, one certification and at
           least one genre.
@@ -197,5 +218,6 @@ function fromFilm(film: Film | null) {
     certification: film ? String(film.certification_id) : "", language: film ? String(film.language_id) : "",
     genres: (film?.genre_ids ?? []).map(String),
     from: film?.display_from?.slice(0, 16) ?? "", until: film?.display_until?.slice(0, 16) ?? "",
+    release: film?.release_date ?? "", cast: film?.cast_members ?? "", crew: film?.crew_members ?? "",
   };
 }

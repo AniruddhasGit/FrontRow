@@ -1609,6 +1609,25 @@ hold leaves the balance as it was. A confirm whose `expected_total_paise` differ
 with `TOTAL_CHANGED` and books nothing. Nothing in this row runs on a schedule or a timer.
 
 
+### `P-ACC-17` · Discovery: search, film details, ratings and likes · `RULED`
+`[SRC: CR-008 T9-T12 (owner, 2026-11-22), which amends the frozen scope: the owner asked for search, landing rows, ratings, likes and full film details]`
+`[BRD: R-ACC-02, R-ACC-03]`
+
+**Behaviour.** Anyone may search the films a customer can see by title or genre (case-insensitive, at most 8
+results, title matches first). Every film in the listing and on its page carries its release date, whether it is
+coming soon (released after the cinema's today), its star average in tenths (an integer, half up; `null` when
+unrated), its rating count and its like count; the film page adds the 1-10 breakdown, the cast and the crew. A
+signed-in customer may rate a film 1 to 10 once a show of it that they booked and paid for has started (one rating per
+customer and film; a second rating replaces the first), and may like a film that is coming soon (a toggle).
+
+**Who may do it.** Search and the details: anyone. Rating and liking: a signed-in account, on its own rows only
+(`P-ACC-12`); the rating gate is checked by the server inside the write's transaction, never by the client.
+
+**Exceptions.** Rating without a started, paid booking is `403 FORBIDDEN` and writes nothing; liking a released film
+is `403 FORBIDDEN`. A score outside 1..10 is `422`. Nothing in this row runs on a schedule or a timer; the listing's
+cached figures are refreshed by the write itself (the listing generation is bumped after it commits).
+
+
 ## S5 — UX specification
 
 ### `SCR-ACC-01` · Sign in or register — one screen, two tabs
@@ -2883,6 +2902,245 @@ CR-008 T3-T8 (`P-ACC-16`): the personal account. Every `/api/me/` route below ca
   "authorisation_rule": "Public. When a valid session is present the row is filed under that user and that user's own address; a body cannot file a message under another account.",
   "satisfies": [
     "P-ACC-16"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
+
+```endpoint
+{
+  "id": "EP-ACC-18",
+  "method": "GET",
+  "path": "/api/search",
+  "summary": "Search the visible films by title or genre, as the customer types",
+  "auth": "public",
+  "roles": [
+    "guest",
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "query": {
+      "q": "string, 0..100 characters; fewer than 2 non-space characters finds nothing"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "At most 8 films, title matches first",
+      "body": {
+        "items": "array of {id, title, genres [{id, name}], poster_url, matched title|genre}"
+      }
+    },
+    "422": {
+      "description": "q is longer than 100 characters"
+    },
+    "503": {
+      "description": "Postgres is unreachable"
+    }
+  },
+  "errors": [
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none, as the listing: the client debounces (250 ms) and aborts the previous request",
+  "authorisation_rule": "Public. The visibility predicate (app/domain/visibility.py) is applied in the query, so a draft or a film outside its window is never found.",
+  "satisfies": [
+    "P-ACC-17"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-19",
+  "method": "GET",
+  "path": "/api/me/movies/{movie_id}",
+  "summary": "The film page's per-viewer half: my score, whether I may rate, whether I liked it",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The caller's view",
+      "body": {
+        "movie_id": "integer",
+        "score": "integer 1..10 or null",
+        "can_rate": "boolean",
+        "liked": "boolean",
+        "coming_soon": "boolean"
+      }
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "AUTH_REQUIRED",
+    "NOT_FOUND",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "safe method - no state change",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-20",
+  "method": "PUT",
+  "path": "/api/me/ratings/{movie_id}",
+  "summary": "Rate a film 1 to 10 after a show of it that the caller booked has started",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "score": "integer 1..10, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "Saved; the film's new figures",
+      "body": {
+        "movie_id": "integer",
+        "score": "integer",
+        "rating": "object {average_tenths integer or null, count, breakdown [10 integers, scores 1..10]}"
+      }
+    },
+    "400": {
+      "description": "The body does not parse, carries another property, or score is not an integer"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    },
+    "422": {
+      "description": "score is outside 1..10"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "VALIDATION_FAILED",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id); the same body twice leaves the same state and one row.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12). The gate is an EXISTS over the caller's own bookings, in the write's transaction.",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
+  ],
+  "brd": [
+    "R-ACC-02",
+    "R-ACC-03"
+  ]
+}
+```
+
+```endpoint
+{
+  "id": "EP-ACC-21",
+  "method": "PUT",
+  "path": "/api/me/likes/{movie_id}",
+  "summary": "Like or un-like a film that is coming soon",
+  "auth": "authenticated",
+  "roles": [
+    "customer",
+    "manager",
+    "admin"
+  ],
+  "request": {
+    "path_params": {
+      "movie_id": "integer, positive, a film a customer can currently see"
+    },
+    "body": {
+      "liked": "boolean, required"
+    }
+  },
+  "responses": {
+    "200": {
+      "description": "The new state and the film's like count",
+      "body": {
+        "movie_id": "integer",
+        "liked": "boolean",
+        "likes": "integer"
+      }
+    },
+    "400": {
+      "description": "The body does not parse or carries another property"
+    },
+    "401": {
+      "description": "No valid session"
+    },
+    "403": {
+      "description": "The film is already released"
+    },
+    "404": {
+      "description": "No visible film with that id"
+    }
+  },
+  "errors": [
+    "REQUEST_INVALID",
+    "AUTH_REQUIRED",
+    "FORBIDDEN",
+    "NOT_FOUND",
+    "DEPENDENCY_UNAVAILABLE",
+    "INTERNAL_ERROR"
+  ],
+  "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id). Un-liking is an UPDATE, never a DELETE.",
+  "rate_limit": "none",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+  "satisfies": [
+    "P-ACC-17",
+    "P-ACC-12"
   ],
   "brd": [
     "R-ACC-02",

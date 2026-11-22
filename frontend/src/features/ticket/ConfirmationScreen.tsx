@@ -6,6 +6,8 @@ import { formatPaise } from "../admin/money";
 import { get } from "../browse/api";
 import { dayLabel, timeLabel } from "../browse/logic";
 import "../booking/booking.css";
+import { ShareButton } from "../discover/Bits";
+import { bookingIcs } from "../discover/discover";
 import { takeHandOver } from "./arrival";
 import { ConfirmationPage, NOT_FOUND, UNAVAILABLE, failed, type Booking, hallViewSrc } from "./page";
 
@@ -43,6 +45,7 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
           startsLabel={booking ? `${dayLabel(booking.showtime_starts_at.slice(0, 10))} · ${timeLabel(booking.showtime_starts_at)}` : ""}
           receiptTo={first ? email : null} />
       ) : null}
+      {booking ? <Extras booking={booking as Booking & { showtime_ends_at?: string }} /> : null}
       {booking && hallViewSrc(booking.hall_name) ? (
         <figure className="fr-hall-view">
           <img src={hallViewSrc(booking.hall_name)!} alt={`The screen as seen from the middle of ${booking.hall_name}`}
@@ -50,6 +53,24 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
           <figcaption>Your view on the night: {booking.hall_name}, from the middle of the hall.</figcaption>
         </figure>
       ) : null}
+    </div>
+  );
+}
+
+/** CR-008 T13b/c: "Add to calendar" (an .ics file whose times are UTC instants, so any calendar shows them in its own
+ *  zone at the right moment) and Share (the film and the time - never the reference, which is the ticket itself). */
+function Extras({ booking }: { booking: Booking & { showtime_ends_at?: string } }) {
+  const ends = booking.showtime_ends_at ?? booking.showtime_starts_at;
+  const ics = bookingIcs({ ...booking, showtime_ends_at: ends }, new Date().toISOString());
+  const when = `${dayLabel(booking.showtime_starts_at.slice(0, 10))}, ${timeLabel(booking.showtime_starts_at)}`;
+  return (
+    <div className="fr-ticket-extras">
+      <a className="fr-action-secondary fr-calendar" href={`data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`}
+         download={`frontrow-${booking.reference}.ics`}>
+        <span aria-hidden="true">📅</span> Add to calendar
+      </a>
+      <ShareButton label="Share" title={booking.movie_title} path="/"
+                   text={`I'm seeing ${booking.movie_title} at FrontRow, ${booking.hall_name}, ${when}.`} />
     </div>
   );
 }

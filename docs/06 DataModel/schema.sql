@@ -149,7 +149,12 @@ CREATE TABLE movie (
     display_until              timestamptz,  -- P-ADM-04; P-BRW-01; FR-ADR-021 - EXCLUSIVE upper bound. The ADMIN types the exclusive end instant; the server shifts nothing. Nullable, and null fails the predicate. Must be strictly greater than display_from IN THE MERGED ROW (a PATCH sending one half alone is checked against the stored other half). Also carried on the customer listing payload, because the date strip is built from max(display_until) (P-BRW-02, P-BRW-04).
     version                    integer NOT NULL,  -- P-ADM-02; FR-ADR-035; S-ADM-14 - Optimistic concurrency. Set to 1 by the application on insert; incremented by exactly 1 on every successful mutating write. S-ADM-14 asserts the EXACT set of tables carrying a column named version: movie, showtime, screen, seat_category, cinema — and no others. A no-op write does not increment it. Default is application-set, not database-side, per P-ADM-01 step 4 ('inserts the movie row with ... version = 1').
     created_at                 timestamptz NOT NULL DEFAULT now(),  -- EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23 - Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' DEFAULT now() at the database (FR-ADR-018: 'created_at and updated_at ... default to now() at the database'; the injected clock governs domain decisions, the database clock governs row metadata).
+    release_date               date,  -- CR-008 (owner, 2026-11-22) T12 - The film's release date, a calendar date in the cinema's zone (no instant). After the cinema's today the film is 'Coming soon' on the landing and takes likes instead of ratings; null is treated as released. Typed by the admin; never derived from display_from.
+    cast_members               text,  -- CR-008 (owner, 2026-11-22) T12 - The cast, one person per line as 'Name: character'. Plain text, edited in the admin film editor; the film page splits it into lines. Null = not entered.
+    crew_members               text,  -- CR-008 (owner, 2026-11-22) T12 - The crew, one person per line as 'Name: job'. Same shape and rules as cast_members.
     PRIMARY KEY (id),
+    CONSTRAINT ck_movie__cast_members CHECK (cast_members IS NULL OR char_length(cast_members) <= 4000),
+    CONSTRAINT ck_movie__crew_members CHECK (crew_members IS NULL OR char_length(crew_members) <= 4000),
     CONSTRAINT fk_movie__certification_id FOREIGN KEY (certification_id) REFERENCES certification (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_movie__language_id FOREIGN KEY (language_id) REFERENCES language (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
@@ -274,6 +279,43 @@ CREATE TABLE movie_genre (
     CONSTRAINT fk_movie_genre__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_movie_genre__genre_id FOREIGN KEY (genre_id) REFERENCES genre (id) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+
+-- --------------------------------------------------------------------------
+-- movie_like - One row per (account, film) liked while the film is not yet released; `liked` says whether the like stands now. Un-liking sets liked = false rather than deleting, so frontrow_app needs no DELETE grant here.
+-- CR-008 (owner, 2026-11-22) T12 (ratings and likes)
+CREATE TABLE movie_like (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - Always the session's user; never taken from a request.
+    movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - The film.
+    liked                      boolean NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - true = the like stands. The toggle is one INSERT ... ON CONFLICT DO UPDATE.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018 - Row metadata; set on every change of the value.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_movie_like__user_id_movie_id UNIQUE (user_id, movie_id),
+    CONSTRAINT fk_movie_like__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_movie_like__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The per-film like count is aggregated by movie_id on every listing build.
+CREATE INDEX ix_movie_like__movie_id ON movie_like (movie_id);
+
+-- --------------------------------------------------------------------------
+-- movie_rating - One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.
+-- CR-008 (owner, 2026-11-22) T12 (ratings and likes)
+CREATE TABLE movie_rating (
+    id                         bigint GENERATED ALWAYS AS IDENTITY NOT NULL,  -- FR-ADR-017 (bigint identity on every table) - Never appears in a public URL.
+    user_id                    bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - Always the session's user; never taken from a request.
+    movie_id                   bigint NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - The film.
+    score                      integer NOT NULL,  -- CR-008 (owner, 2026-11-22) T12 - 1 to 10, whole numbers.
+    created_at                 timestamptz NOT NULL DEFAULT now(),  -- S-XCT-09 Â· FR-ADR-018 - Row metadata at the database (FR-ADR-018).
+    updated_at                 timestamptz DEFAULT now(),  -- CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018 - Row metadata; set on every change of the value.
+    PRIMARY KEY (id),
+    CONSTRAINT uq_movie_rating__user_id_movie_id UNIQUE (user_id, movie_id),
+    CONSTRAINT ck_movie_rating__score CHECK (score BETWEEN 1 AND 10),
+    CONSTRAINT fk_movie_rating__user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+    CONSTRAINT fk_movie_rating__movie_id FOREIGN KEY (movie_id) REFERENCES movie (id) ON DELETE RESTRICT ON UPDATE RESTRICT
+);
+-- The per-film average, count and 1-10 breakdown are aggregated by movie_id on every listing build.
+CREATE INDEX ix_movie_rating__movie_id ON movie_rating (movie_id);
 
 -- --------------------------------------------------------------------------
 -- password_reset_token - One row per password-reset request: the SHA-256 of a token that is never stored, its expiry, whether it was spent, and the two separate columns that track the worker's send of the reset email.
@@ -532,6 +574,8 @@ GRANT SELECT, INSERT, UPDATE ON language TO frontrow_app;
 GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app;
 GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON movie_like TO frontrow_app;
+GRANT SELECT, INSERT, UPDATE ON movie_rating TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app;
 GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app;

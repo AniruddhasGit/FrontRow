@@ -116,8 +116,9 @@ PASSWORD_PLACEHOLDER = "CHANGE_ME_NOT_A_REAL_PASSWORD"
 NOTICE = ("NOTICE: the next write freezes the seat layout of all six halls. Renumbering, removing or "
           "recategorising a seat is refused with 409 LAYOUT_FROZEN from now on.")
 # Every table, children first, for the local-only wipe.
-# CR-008: bookmark, notification, reward_entry, support_message reference users / booking / movie, so they go too.
-TABLES = ["bookmark", "notification", "reward_entry", "support_message", "admin_grant", "audit_log", "receipt_dispatch", "outbox_message", "idempotency_record", "booking_seat", "booking",
+# CR-008: bookmark, notification, reward_entry, support_message, movie_rating, movie_like reference users / booking / movie,
+# so they go too.
+TABLES = ["movie_rating", "movie_like", "bookmark", "notification", "reward_entry", "support_message", "admin_grant", "audit_log", "receipt_dispatch", "outbox_message", "idempotency_record", "booking_seat", "booking",
           "payment", "showtime_seat", "showtime", "movie_genre", "movie", "manager_screen_assignment",
           "password_reset_token", "seat", "screen", "seat_category", "cinema", "users", "language",
           "certification", "genre", "format"]

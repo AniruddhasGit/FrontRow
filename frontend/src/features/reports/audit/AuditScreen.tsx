@@ -99,12 +99,12 @@ export function AuditScreen({ seed, get = browserGet }: { seed?: Partial<AuditSt
               <tbody>
                 {s.rows.map((r) => (
                   <tr key={r.id}>
-                    <td>{whenText(r.occurred_at)}</td>
-                    <td>{r.actor_email}</td>
-                    <td className="rpt-num">{r.action}</td>
-                    <td className="rpt-num">{r.entity_type} {r.entity_id}</td>
-                    <td><Values values={r.before} /></td>
-                    <td><Values values={r.after} /></td>
+                    <td data-label="When">{whenText(r.occurred_at)}</td>
+                    <td data-label="Who">{r.actor_email}</td>
+                    <td data-label="Action" className="rpt-num">{r.action}</td>
+                    <td data-label="Record" className="rpt-num">{r.entity_type} {r.entity_id}</td>
+                    <td data-label="Before"><Values values={r.before} /></td>
+                    <td data-label="After"><Values values={r.after} /></td>
                   </tr>
                 ))}
               </tbody>

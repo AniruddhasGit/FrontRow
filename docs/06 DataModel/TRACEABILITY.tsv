@@ -138,6 +138,11 @@ column	timestamptz	movie	display_from	P-ADM-04; P-BRW-01; FR-ADR-021		INCLUSIVE 
 column	timestamptz	movie	display_until	P-ADM-04; P-BRW-01; FR-ADR-021		EXCLUSIVE upper bound. The ADMIN types the exclusive end instant; the server shifts nothing. Nullable, and null fails the predicate. Must be strictly greater than display_from IN THE MERGED ROW (a PATCH sending one half alone is checked against the stored other half). Also carried on the customer listing payload, because the date strip is built from max(display_until) (P-BRW-02, P-BRW-04).
 column	integer	movie	version	P-ADM-02; FR-ADR-035; S-ADM-14		Optimistic concurrency. Set to 1 by the application on insert; incremented by exactly 1 on every successful mutating write. S-ADM-14 asserts the EXACT set of tables carrying a column named version: movie, showtime, screen, seat_category, cinema — and no others. A no-op write does not increment it. Default is application-set, not database-side, per P-ADM-01 step 4 ('inserts the movie row with ... version = 1').
 column	timestamptz	movie	created_at	EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23		Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' DEFAULT now() at the database (FR-ADR-018: 'created_at and updated_at ... default to now() at the database'; the injected clock governs domain decisions, the database clock governs row metadata).
+column	date	movie	release_date	CR-008 (owner, 2026-11-22) T12		The film's release date, a calendar date in the cinema's zone (no instant). After the cinema's today the film is 'Coming soon' on the landing and takes likes instead of ratings; null is treated as released. Typed by the admin; never derived from display_from.
+column	text	movie	cast_members	CR-008 (owner, 2026-11-22) T12		The cast, one person per line as 'Name: character'. Plain text, edited in the admin film editor; the film page splits it into lines. Null = not entered.
+column	text	movie	crew_members	CR-008 (owner, 2026-11-22) T12		The crew, one person per line as 'Name: job'. Same shape and rules as cast_members.
+constraint	check	movie	ck_movie__cast_members	CR-008 (owner, 2026-11-22) T12		The editor's bound (4000, as the synopsis), refused again at the database.
+constraint	check	movie	ck_movie__crew_members	CR-008 (owner, 2026-11-22) T12		The editor's bound (4000, as the synopsis), refused again at the database.
 constraint	foreign_key	movie	fk_movie__certification_id	P-ADM-01 precondition 3; FR-ADR-021; S-ADM-19		certification
 constraint	foreign_key	movie	fk_movie__language_id	P-ADM-01 precondition 3; FR-ADR-021; S-ADM-19		language
 table	entity	movie_genre	movie_genre	FR-ADR-021 ('genre is many-to-many through a join table'); P-ADM-01 happy path step 4; E1_browse.md P-BRW-04 ('at least one currently visible film has a movie_genre row pointing at it')		The many-to-many join that gives a film its genres.
@@ -146,6 +151,29 @@ column	bigint	movie_genre	genre_id	P-ADM-01 (genre_ids: array of integer, 1..10,
 column	timestamptz	movie_genre	created_at	E8 P-XCT-04 ('Every table carries `created_at`') · S-XCT-09		Added by revision 0002 (a forward migration; 0001 is never edited). S-XCT-09 asserts information_schema returns zero public tables lacking created_at, except alembic_version and audit_log. DEFAULT now() at the database (FR-ADR-018): row metadata only, never read by a domain decision. Rows existing before 0002 carry the instant 0002 ran.
 constraint	foreign_key	movie_genre	fk_movie_genre__movie_id	S-ADM-19 (zero CASCADE rules anywhere in the schema)		movie
 constraint	foreign_key	movie_genre	fk_movie_genre__genre_id	S-ADM-19		genre
+table	entity	movie_like	movie_like	CR-008 (owner, 2026-11-22) T12 (ratings and likes)		One row per (account, film) liked while the film is not yet released; `liked` says whether the like stands now. Un-liking sets liked = false rather than deleting, so frontrow_app needs no DELETE grant here.
+column	bigint	movie_like	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
+column	bigint	movie_like	user_id	CR-008 (owner, 2026-11-22) T12		Always the session's user; never taken from a request.
+column	bigint	movie_like	movie_id	CR-008 (owner, 2026-11-22) T12		The film.
+column	boolean	movie_like	liked	CR-008 (owner, 2026-11-22) T12		true = the like stands. The toggle is one INSERT ... ON CONFLICT DO UPDATE.
+column	timestamptz	movie_like	created_at	S-XCT-09 Â· FR-ADR-018		Row metadata at the database (FR-ADR-018).
+column	timestamptz	movie_like	updated_at	CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018		Row metadata; set on every change of the value.
+constraint	unique	movie_like	uq_movie_like__user_id_movie_id	CR-008 (owner, 2026-11-22) T12		One row per account and film: the toggle's ON CONFLICT target, so a double click never makes two.
+constraint	foreign_key	movie_like	fk_movie_like__user_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		users
+constraint	foreign_key	movie_like	fk_movie_like__movie_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		movie
+index	index	movie_like	ix_movie_like__movie_id	CR-008 (owner, 2026-11-22) T12		The per-film like count is aggregated by movie_id on every listing build.
+table	entity	movie_rating	movie_rating	CR-008 (owner, 2026-11-22) T12 (ratings and likes)		One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.
+column	bigint	movie_rating	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
+column	bigint	movie_rating	user_id	CR-008 (owner, 2026-11-22) T12		Always the session's user; never taken from a request.
+column	bigint	movie_rating	movie_id	CR-008 (owner, 2026-11-22) T12		The film.
+column	integer	movie_rating	score	CR-008 (owner, 2026-11-22) T12		1 to 10, whole numbers.
+column	timestamptz	movie_rating	created_at	S-XCT-09 Â· FR-ADR-018		Row metadata at the database (FR-ADR-018).
+column	timestamptz	movie_rating	updated_at	CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018		Row metadata; set on every change of the value.
+constraint	unique	movie_rating	uq_movie_rating__user_id_movie_id	CR-008 (owner, 2026-11-22) T12		One rating per customer per film: the upsert's ON CONFLICT target, so re-rating updates and never adds.
+constraint	check	movie_rating	ck_movie_rating__score	CR-008 (owner, 2026-11-22) T12		The scale is 1 to 10; the API refuses the same bounds first.
+constraint	foreign_key	movie_rating	fk_movie_rating__user_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		users
+constraint	foreign_key	movie_rating	fk_movie_rating__movie_id	CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)		movie
+index	index	movie_rating	ix_movie_rating__movie_id	CR-008 (owner, 2026-11-22) T12		The per-film average, count and 1-10 breakdown are aggregated by movie_id on every listing build.
 table	entity	notification	notification	CR-008 (owner, 2026-11-22) T7 (notifications)		In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them. Nothing schedules or polls them; the unread count is read on navigation.
 column	bigint	notification	id	FR-ADR-017 (bigint identity on every table)		Never appears in a public URL.
 column	bigint	notification	user_id	CR-008 (owner, 2026-11-22) T7		The account it is for (the booking's user).

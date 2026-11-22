@@ -1,6 +1,8 @@
 /* SCR-BRW-03 / SCR-SEA-01 (COMPONENTS.md §1, §2, §5, §6). Every value is a design token (FR-ADR-044); no hex code.
-   The map scrolls sideways INSIDE its own box and the page body never does; the seat is never shrunk to avoid
-   that scroll, because --fr-seat-size (24px) is the WCAG 2.2 target-size minimum (COMPONENTS.md §1.3). */
+   CR-008 T16 (owner, 2026-11-22: no horizontal scroll anywhere) replaces the sideways-scrolling box: the map FITS its
+   panel. SeatMapScreen sets --fr-seat-size / --fr-seat-gap from the box's width (features/seatmap/fit.ts); when a seat
+   would be too small to tap (under 22px on a touch screen), the whole hall is an overview and a tap zooms into one
+   block, where the seats are tappable again - instead of a scroll. */
 .fr-seatmap-head h1 {
   margin-bottom: var(--fr-space-1);
 }
@@ -62,10 +64,43 @@
   letter-spacing: var(--fr-track-caps);
   text-transform: uppercase;
 }
-.fr-grid-scroll {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-padding-inline-start: var(--fr-seat-gutter);
+.fr-grid-box {
+  min-width: 0;
+  max-width: 100%;
+}
+.fr-grid-box[data-fit="overview"] .fr-seat {
+  cursor: zoom-in;
+}
+/* seats too small for their number: the number is in the label, the cell shows the state only */
+.fr-grid-box[data-small] .fr-seat-num,
+.fr-grid-box[data-fit="overview"] .fr-seat-num {
+  display: none;
+}
+.fr-grid-box[data-small] .fr-seat {
+  border-radius: 2px;
+}
+.fr-grid-box[data-small] .fr-band-rule {
+  margin: calc(var(--fr-seat-band-gap) / 4) 0;
+}
+.fr-zoom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fr-space-2);
+  margin-bottom: var(--fr-space-3);
+}
+.fr-zoom-bar p {
+  margin: 0;
+  flex: 1 0 100%;
+  order: -1; /* the block's name on its own line, the buttons under it */
+  font-size: var(--fr-text-sm);
+  font-weight: var(--fr-weight-bold);
+  color: var(--fr-screen-ink);
+}
+.fr-zoom-bar[role="group"] p {
+  flex-basis: 100%;
+  text-align: left;
+  color: var(--fr-ink-muted);
 }
 .fr-grid {
   display: flex;
@@ -86,9 +121,6 @@
 }
 .fr-gutter {
   grid-column: 1;
-  position: sticky;
-  left: 0;
-  z-index: 1;
   background: var(--fr-surface-inset);
   font-family: var(--fr-font-mono);
   font-size: var(--fr-text-xs);

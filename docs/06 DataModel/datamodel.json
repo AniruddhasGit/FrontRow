@@ -33,7 +33,9 @@
     "bookmark": "CR-008 (owner, 2026-11-22): One row per (account, film) the customer has ever bookmarked; `saved` says whether it is on the wishlist now.",
     "reward_entry": "CR-008 (owner, 2026-11-22): The points ledger: one row per points movement, each tied to the booking that caused it.",
     "notification": "CR-008 (owner, 2026-11-22): In-app notifications, created only by events (a booking confirmed, points earned, points redeemed) inside the transaction that caused them.",
-    "support_message": "CR-008 (owner, 2026-11-22): A message sent from the Help & support contact form, stored for the operator to read."
+    "support_message": "CR-008 (owner, 2026-11-22): A message sent from the Help & support contact form, stored for the operator to read.",
+    "movie_rating": "CR-008 (owner, 2026-11-22): One score 1-10 per customer and film, only after a paid booking for it has started.",
+    "movie_like": "CR-008 (owner, 2026-11-22): One like per customer and film, for films not yet released."
   },
   "bible_reference_exceptions": {
     "screen.rows": "a JSON response field, not a column - the grid extent is derived per response (P-BRW-08); screen has no rows column",
@@ -115,6 +117,8 @@
         "GRANT SELECT, INSERT, DELETE ON manager_screen_assignment TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON movie TO frontrow_app",
         "GRANT SELECT, INSERT, DELETE ON movie_genre TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE ON movie_like TO frontrow_app",
+        "GRANT SELECT, INSERT, UPDATE ON movie_rating TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON notification TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON outbox_message TO frontrow_app",
         "GRANT SELECT, INSERT, UPDATE ON password_reset_token TO frontrow_app",
@@ -801,6 +805,14 @@
       "support_message": {
         "rows": 0,
         "cite": "CR-008 (owner, 2026-11-22) - the seed writes bookings directly, never through the confirm, so no event row exists after a fresh seed"
+      },
+      "movie_rating": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) T12 - the seed writes no rating or like; customers write them"
+      },
+      "movie_like": {
+        "rows": 0,
+        "cite": "CR-008 (owner, 2026-11-22) T12 - the seed writes no rating or like; customers write them"
       }
     },
     "invariants": [
@@ -2362,6 +2374,33 @@
           "cite": "EP-ADM-01 (docs/03 PRD/api/contract.json); S-ADM-23",
           "note": "Required by the admin film list: 'ORDER BY created_at DESC, id DESC - a total order, because created_at alone is not one: two films created in the same transaction share an instant ... The seed script creates its films in one transaction, so the tie is not hypothetical.' DEFAULT now() at the database (FR-ADR-018: 'created_at and updated_at ... default to now() at the database'; the injected clock governs domain decisions, the database clock governs row metadata).",
           "reserved_row": null
+        },
+        {
+          "name": "release_date",
+          "type": "date",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "The film's release date, a calendar date in the cinema's zone (no instant). After the cinema's today the film is 'Coming soon' on the landing and takes likes instead of ratings; null is treated as released. Typed by the admin; never derived from display_from.",
+          "reserved_row": null
+        },
+        {
+          "name": "cast_members",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "The cast, one person per line as 'Name: character'. Plain text, edited in the admin film editor; the film page splits it into lines. Null = not entered.",
+          "reserved_row": null
+        },
+        {
+          "name": "crew_members",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "The crew, one person per line as 'Name: job'. Same shape and rules as cast_members.",
+          "reserved_row": null
         }
       ],
       "primary_key": [
@@ -2400,7 +2439,20 @@
           "name": "fk_movie__language_id"
         }
       ],
-      "checks": [],
+      "checks": [
+        {
+          "name": "ck_movie__cast_members",
+          "expression": "cast_members IS NULL OR char_length(cast_members) <= 4000",
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "The editor's bound (4000, as the synopsis), refused again at the database."
+        },
+        {
+          "name": "ck_movie__crew_members",
+          "expression": "crew_members IS NULL OR char_length(crew_members) <= 4000",
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "The editor's bound (4000, as the synopsis), refused again at the database."
+        }
+      ],
       "indexes": []
     },
     {
@@ -2475,6 +2527,253 @@
       ],
       "checks": [],
       "indexes": []
+    },
+    {
+      "name": "movie_like",
+      "purpose": "One row per (account, film) liked while the film is not yet released; `liked` says whether the like stands now. Un-liking sets liked = false rather than deleting, so frontrow_app needs no DELETE grant here.",
+      "cite": "CR-008 (owner, 2026-11-22) T12 (ratings and likes)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "Always the session's user; never taken from a request.",
+          "reserved_row": null
+        },
+        {
+          "name": "movie_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "The film.",
+          "reserved_row": null
+        },
+        {
+          "name": "liked",
+          "type": "boolean",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "true = the like stands. The toggle is one INSERT ... ON CONFLICT DO UPDATE.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 Â· FR-ADR-018",
+          "note": "Row metadata at the database (FR-ADR-018).",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018",
+          "note": "Row metadata; set on every change of the value.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "user_id",
+            "movie_id"
+          ],
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "One row per account and film: the toggle's ON CONFLICT target, so a double click never makes two.",
+          "name": "uq_movie_like__user_id_movie_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_like__user_id"
+        },
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "references": {
+            "table": "movie",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_like__movie_id"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "unique": false,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "The per-film like count is aggregated by movie_id on every listing build.",
+          "name": "ix_movie_like__movie_id"
+        }
+      ]
+    },
+    {
+      "name": "movie_rating",
+      "purpose": "One customer's score for one film, 1 to 10. Only a customer with a paid booking for the film whose showtime has started may write one (checked in the same transaction as the write, app/domain/ratings.py); a second rating is an update of the same row.",
+      "cite": "CR-008 (owner, 2026-11-22) T12 (ratings and likes)",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "FR-ADR-017 (bigint identity on every table)",
+          "note": "Never appears in a public URL.",
+          "reserved_row": null,
+          "identity": true
+        },
+        {
+          "name": "user_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "Always the session's user; never taken from a request.",
+          "reserved_row": null
+        },
+        {
+          "name": "movie_id",
+          "type": "bigint",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "The film.",
+          "reserved_row": null
+        },
+        {
+          "name": "score",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "note": "1 to 10, whole numbers.",
+          "reserved_row": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "cite": "S-XCT-09 Â· FR-ADR-018",
+          "note": "Row metadata at the database (FR-ADR-018).",
+          "reserved_row": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "now()",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· FR-ADR-018",
+          "note": "Row metadata; set on every change of the value.",
+          "reserved_row": null
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique": [
+        {
+          "columns": [
+            "user_id",
+            "movie_id"
+          ],
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "One rating per customer per film: the upsert's ON CONFLICT target, so re-rating updates and never adds.",
+          "name": "uq_movie_rating__user_id_movie_id"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": {
+            "table": "users",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_rating__user_id"
+        },
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "references": {
+            "table": "movie",
+            "columns": [
+              "id"
+            ]
+          },
+          "on_delete": "RESTRICT",
+          "cite": "CR-008 (owner, 2026-11-22) T12 Â· S-XCT-09 (every FK is ON DELETE RESTRICT)",
+          "on_update": "RESTRICT",
+          "name": "fk_movie_rating__movie_id"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_movie_rating__score",
+          "expression": "score BETWEEN 1 AND 10",
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "The scale is 1 to 10; the API refuses the same bounds first."
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "movie_id"
+          ],
+          "unique": false,
+          "cite": "CR-008 (owner, 2026-11-22) T12",
+          "why": "The per-film average, count and 1-10 breakdown are aggregated by movie_id on every listing build.",
+          "name": "ix_movie_rating__movie_id"
+        }
+      ]
     },
     {
       "name": "notification",

@@ -88,6 +88,8 @@ DECLARE
     "seat_category":             ["INSERT","SELECT","UPDATE"],
     "movie":                     ["INSERT","SELECT","UPDATE"],
     "movie_genre":               ["DELETE","INSERT","SELECT"],
+    "movie_rating":              ["INSERT","SELECT","UPDATE"],
+    "movie_like":                ["INSERT","SELECT","UPDATE"],
     "showtime":                  ["INSERT","SELECT","UPDATE"],
     "showtime_seat":             ["INSERT","SELECT"],
     "certification":             ["INSERT","SELECT","UPDATE"],

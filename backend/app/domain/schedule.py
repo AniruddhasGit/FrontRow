@@ -4,7 +4,8 @@ the public listing calls top_up(), at most once an hour per Redis key, and only 
 
 When the last showtime starts less than (horizon - 7) days from now, the last 7 days of the schedule are copied 7
 days forward until the schedule reaches the horizon. Each copy keeps its hall, local slot, price and format, and
-moves to the NEXT published film in id order, so the same films keep rotating. Its end keeps the copied show's
+moves to the NEXT published film in id order that is released by that show's day (CR-008 T10: a film coming soon gets
+no show before its release date), so the same films keep rotating. Its end keeps the copied show's
 gap after the film: ends = starts + (old ends - old starts) - old runtime + new runtime. Each film's display_until is pushed
 to cover its new showtimes (the listing's visibility window). Seat sets are written by the admin path's own
 write_seat_set. One Postgres advisory lock makes concurrent visitors a single top-up.
@@ -16,11 +17,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.domain.admin.showtimes import write_seat_set
+from app.domain.browse.catalogue import default_zone, load_zones
 from app.models import movie, showtime
 
 log = logging.getLogger("app.schedule")
@@ -47,8 +50,19 @@ async def top_up(conn: AsyncConnection, now: datetime, horizon_days: int) -> int
         last = await conn.scalar(select(func.max(showtime.c.starts_at)))
         if last is None or last >= horizon - WEEK:
             return 0
-        films = [r.id for r in await conn.execute(
-            select(movie.c.id).where(movie.c.published_at.is_not(None)).order_by(movie.c.id))]
+        released = dict((await conn.execute(
+            select(movie.c.id, movie.c.release_date).where(movie.c.published_at.is_not(None)).order_by(movie.c.id))).all())
+        films = list(released)
+        zone = ZoneInfo(default_zone(await load_zones(conn)))
+
+        def next_film(after: int, starts: datetime) -> int:
+            day = starts.astimezone(zone).date()
+            start = films.index(after) + 1 if after in films else 0
+            for k in range(len(films)):
+                film = films[(start + k) % len(films)]
+                if released[film] is None or released[film] <= day:
+                    return film
+            return after
         runtime = dict((await conn.execute(select(movie.c.id, movie.c.runtime_minutes))).all())
         added, reach = 0, {}
         # After a long quiet spell the schedule may have ended long ago: jump in whole 7-day steps so the first copy
@@ -58,8 +72,8 @@ async def top_up(conn: AsyncConnection, now: datetime, horizon_days: int) -> int
             week = (await conn.execute(select(showtime).where(showtime.c.starts_at > last - WEEK, showtime.c.starts_at <= last)
                                        .order_by(showtime.c.starts_at))).mappings().all()
             for s in week:
-                film = films[(films.index(s["movie_id"]) + 1) % len(films)] if s["movie_id"] in films else s["movie_id"]
                 starts = s["starts_at"] + shift
+                film = next_film(s["movie_id"], starts) if s["movie_id"] in films else s["movie_id"]
                 ends = starts + (s["ends_at"] - s["starts_at"]) + timedelta(minutes=runtime[film] - runtime[s["movie_id"]])
                 new_id = await conn.scalar(insert(showtime).values(
                     movie_id=film, screen_id=s["screen_id"], starts_at=starts, ends_at=ends,

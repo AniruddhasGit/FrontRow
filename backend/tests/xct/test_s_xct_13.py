@@ -85,7 +85,11 @@ def test_frontend_source_is_mounted_so_the_scans_below_are_not_vacuous():
 
 
 def test_no_localstorage_in_the_frontend():
-    assert _scan(FRONTEND_SRC, r"localStorage") == []
+    # CR-008 T13d (owner, 2026-11-22: "Recently viewed", per browser): ONE amended exception - discover.ts's recentStore,
+    # which keeps film ids under fr.recent and nothing about the session. Any other use still fails.
+    hits = _scan(FRONTEND_SRC, r"localStorage")
+    assert [h for h in hits if "features/discover/discover.ts" not in h.replace("\\", "/")] == []
+    assert len(hits) == 2, hits  # the doc comment and the one read; a third use is a new decision
 
 
 def test_samesite_none_appears_in_neither_application_tree():

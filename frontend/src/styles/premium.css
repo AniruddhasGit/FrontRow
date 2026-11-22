@@ -8,8 +8,7 @@
   color-scheme: dark;
 }
 .fr-strip,
-.fr-pick,
-.fr-grid-scroll {
+.fr-pick {
   scrollbar-width: thin;
   scrollbar-color: var(--fr-control-edge) transparent;
 }

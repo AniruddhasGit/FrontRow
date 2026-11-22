@@ -36,6 +36,9 @@ class FilmCreate(AdminBody):
     certification_id: Any = None
     language_id: Any = None
     genre_ids: Any = None
+    release_date: Any = None  # CR-008 T12, optional
+    cast_members: Any = None
+    crew_members: Any = None
 
 
 class FilmPatch(FilmCreate):
@@ -76,6 +79,9 @@ class Film(BaseModel):
     is_visible_now: bool
     version: int
     created_at: str
+    release_date: str | None  # CR-008 T12: YYYY-MM-DD in the cinema's calendar
+    cast_members: str | None  # one person per line, "Name: character"
+    crew_members: str | None  # one person per line, "Name: job"
 
 
 class FilmPage(BaseModel):

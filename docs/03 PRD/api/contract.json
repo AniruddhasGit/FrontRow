@@ -196,7 +196,7 @@
       "source": "FR-ADR-052 (extension) · CR-008 (raised with T3, the checkout-shows-the-server's-hold fix)"
     }
   ],
-  "endpoint_count": 70,
+  "endpoint_count": 74,
   "endpoints": [
     {
       "id": "EP-ACC-01",
@@ -1117,6 +1117,231 @@
       ]
     },
     {
+      "id": "EP-ACC-18",
+      "method": "GET",
+      "path": "/api/search",
+      "summary": "Search the visible films by title or genre, as the customer types",
+      "auth": "public",
+      "roles": [
+        "guest",
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "query": {
+          "q": "string, 0..100 characters; fewer than 2 non-space characters finds nothing"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "At most 8 films, title matches first",
+          "body": {
+            "items": "array of {id, title, genres [{id, name}], poster_url, matched title|genre}"
+          }
+        },
+        "422": {
+          "description": "q is longer than 100 characters"
+        },
+        "503": {
+          "description": "Postgres is unreachable"
+        }
+      },
+      "errors": [
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "safe method - no state change",
+      "rate_limit": "none, as the listing: the client debounces (250 ms) and aborts the previous request",
+      "authorisation_rule": "Public. The visibility predicate (app/domain/visibility.py) is applied in the query, so a draft or a film outside its window is never found.",
+      "satisfies": [
+        "P-ACC-17"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-19",
+      "method": "GET",
+      "path": "/api/me/movies/{movie_id}",
+      "summary": "The film page's per-viewer half: my score, whether I may rate, whether I liked it",
+      "auth": "authenticated",
+      "roles": [
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "movie_id": "integer, positive, a film a customer can currently see"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "The caller's view",
+          "body": {
+            "movie_id": "integer",
+            "score": "integer 1..10 or null",
+            "can_rate": "boolean",
+            "liked": "boolean",
+            "coming_soon": "boolean"
+          }
+        },
+        "401": {
+          "description": "No valid session"
+        },
+        "404": {
+          "description": "No visible film with that id"
+        }
+      },
+      "errors": [
+        "AUTH_REQUIRED",
+        "NOT_FOUND",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "safe method - no state change",
+      "rate_limit": "none",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+      "satisfies": [
+        "P-ACC-17",
+        "P-ACC-12"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-20",
+      "method": "PUT",
+      "path": "/api/me/ratings/{movie_id}",
+      "summary": "Rate a film 1 to 10 after a show of it that the caller booked has started",
+      "auth": "authenticated",
+      "roles": [
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "movie_id": "integer, positive, a film a customer can currently see"
+        },
+        "body": {
+          "score": "integer 1..10, required"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Saved; the film's new figures",
+          "body": {
+            "movie_id": "integer",
+            "score": "integer",
+            "rating": "object {average_tenths integer or null, count, breakdown [10 integers, scores 1..10]}"
+          }
+        },
+        "400": {
+          "description": "The body does not parse, carries another property, or score is not an integer"
+        },
+        "401": {
+          "description": "No valid session"
+        },
+        "403": {
+          "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+        },
+        "404": {
+          "description": "No visible film with that id"
+        },
+        "422": {
+          "description": "score is outside 1..10"
+        }
+      },
+      "errors": [
+        "REQUEST_INVALID",
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "VALIDATION_FAILED",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id); the same body twice leaves the same state and one row.",
+      "rate_limit": "none",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12). The gate is an EXISTS over the caller's own bookings, in the write's transaction.",
+      "satisfies": [
+        "P-ACC-17",
+        "P-ACC-12"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
+      "id": "EP-ACC-21",
+      "method": "PUT",
+      "path": "/api/me/likes/{movie_id}",
+      "summary": "Like or un-like a film that is coming soon",
+      "auth": "authenticated",
+      "roles": [
+        "customer",
+        "manager",
+        "admin"
+      ],
+      "request": {
+        "path_params": {
+          "movie_id": "integer, positive, a film a customer can currently see"
+        },
+        "body": {
+          "liked": "boolean, required"
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "The new state and the film's like count",
+          "body": {
+            "movie_id": "integer",
+            "liked": "boolean",
+            "likes": "integer"
+          }
+        },
+        "400": {
+          "description": "The body does not parse or carries another property"
+        },
+        "401": {
+          "description": "No valid session"
+        },
+        "403": {
+          "description": "The film is already released"
+        },
+        "404": {
+          "description": "No visible film with that id"
+        }
+      },
+      "errors": [
+        "REQUEST_INVALID",
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "NOT_FOUND",
+        "DEPENDENCY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id). Un-liking is an UPDATE, never a DELETE.",
+      "rate_limit": "none",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE. No user id is accepted in the path, query or body, so another account's row matches nothing (P-ACC-12).",
+      "satisfies": [
+        "P-ACC-17",
+        "P-ACC-12"
+      ],
+      "brd": [
+        "R-ACC-02",
+        "R-ACC-03"
+      ]
+    },
+    {
       "id": "EP-ADM-01",
       "method": "GET",
       "path": "/api/admin/movies",
@@ -1184,7 +1409,10 @@
           "runtime_minutes": "integer, 1 or more, required",
           "certification_id": "integer, must exist, required",
           "language_id": "integer, must exist, required",
-          "genre_ids": "array of integer, 1..10, unique, each must exist, required"
+          "genre_ids": "array of integer, 1..10, unique, each must exist, required",
+          "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+          "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+          "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'"
         }
       },
       "responses": {
@@ -1320,6 +1548,9 @@
           "certification_id": "integer, must exist, optional",
           "language_id": "integer, must exist, optional",
           "genre_ids": "array of integer, 1..10, unique, each must exist, optional",
+          "release_date": "string YYYY-MM-DD or null, optional (CR-008 T12, P-ACC-17)",
+          "cast_members": "string 0..4000 or null, optional - one person per line, 'Name: character'",
+          "crew_members": "string 0..4000 or null, optional - one person per line, 'Name: job'",
           "display_from": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07)",
           "display_until": "string, ISO-8601 local date and time in Asia/Kolkata, optional. NAIVE LOCAL ONLY - a value carrying a Z, a +hh:mm offset or a zone name is 422 VALIDATION_FAILED and is never coerced (P-ADM-04, P-ADM-07). Strictly after display_from IN THE MERGED ROW - this is a partial update and every bound is evaluated against the row as it would be after the patch, so sending either half alone is checked against the stored other half and can fail 422 (P-ADM-04)"
         }
@@ -3009,7 +3240,7 @@
           "description": "The visible movies, ordered by published_at DESC then id DESC. A movie is returned only when it matches language_id (a movie attribute) AND has at least one showtime satisfying every supplied showtime filter — date, cinema_id and format_id — simultaneously, per P-BRW-04. One EXISTS over the showtimes, never one per filter.",
           "body": {
             "count": "integer",
-            "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
+            "movies": "array of {id, title, synopsis, runtime_minutes, certification:{id,name}, language:{id,name}, genres:[{id,name}], poster_url, display_until, release_date (YYYY-MM-DD or null), coming_soon (boolean), rating:{average_tenths (integer or null), count}, likes (integer) - CR-008 T10-T12 (P-ACC-17)}. display_until is an ISO-8601 instant with the +05:30 offset, the exclusive end of that film's display window. It is NEVER null on this endpoint even though the column is nullable (P-BRW-01): a film reaches this array only by passing both visibility gates, and a null window fails the window gate, so every film here has one. The client therefore takes the maximum without a null branch. It is the field the listing's date strip is built from: the client takes the MAXIMUM of display_until across this array (P-BRW-04). It is the same field EP-BRW-02 already carries for the single-movie strip, so one shape serves both. No separate aggregate is returned — a caller holding the films can compute any bound it needs, and a second field carrying a fact derivable from the first is a second thing that can disagree."
           }
         },
         "422": {
@@ -3076,7 +3307,13 @@
             "language": "{id, name}",
             "genres": "array of {id, name}",
             "poster_url": "string",
-            "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip"
+            "display_until": "string, ISO-8601 with +05:30 offset, used to bound the date strip",
+            "release_date": "string YYYY-MM-DD or null (CR-008 T12, P-ACC-17)",
+            "coming_soon": "boolean, released after the cinema's today",
+            "rating": "{average_tenths integer or null, count, breakdown: 10 integers, scores 1..10}",
+            "likes": "integer",
+            "cast": "array of {name, role or null}",
+            "crew": "array of {name, role or null}"
           }
         },
         "404": {

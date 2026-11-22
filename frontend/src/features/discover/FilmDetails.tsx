@@ -1,0 +1,127 @@
+// CR-008 T12: the film page's full details (description, genres, runtime, certificate, language, release date, cast,
+// crew) and its ratings (average, count, the 1-10 breakdown) with the viewer's own control: rate 1-10 once a show they
+// booked has started (the server decides, EP-ACC-20), or like a film that is coming soon (EP-ACC-21).
+// One status for the viewer's half (Mine) and one for a write (Write); no timer, no poll.
+import { useEffect, useState } from "react";
+import { get, send, type FilmDetail } from "../browse/api";
+import { runtimeName } from "../browse/logic";
+import { signInHref } from "../auth/session";
+import { Link } from "../../router";
+import { releaseLabel } from "./Bits";
+import { ratingName, ratingText } from "./discover";
+
+type Me = { score: number | null; can_rate: boolean; liked: boolean; coming_soon: boolean };
+type Mine = { kind: "loading" } | { kind: "guest" } | { kind: "error" } | { kind: "ready"; me: Me };
+type Write = { kind: "idle" } | { kind: "saving" } | { kind: "failed"; message: string };
+
+export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: (f: FilmDetail) => void }) {
+  const [mine, setMine] = useState<Mine>({ kind: "loading" });
+  const [write, setWrite] = useState<Write>({ kind: "idle" });
+  useEffect(() => {
+    const ctl = new AbortController();
+    void get<Me>(`/api/me/movies/${film.id}`, AbortSignal.any([ctl.signal, AbortSignal.timeout(15000)])).then((r) => {
+      if (ctl.signal.aborted) return;
+      setMine(r.ok ? { kind: "ready", me: r.body } : r.status === 401 ? { kind: "guest" } : { kind: "error" });
+    });
+    return () => ctl.abort();
+  }, [film.id]);
+
+  const rate = async (score: number) => {
+    if (mine.kind !== "ready" || write.kind === "saving") return;
+    setWrite({ kind: "saving" });
+    const r = await send<{ score: number; rating: FilmDetail["rating"] }>("PUT", `/api/me/ratings/${film.id}`, { score });
+    if (!r.ok) return setWrite({ kind: "failed", message: r.message || "Your rating was not saved. Try again." });
+    setWrite({ kind: "idle" });
+    setMine({ kind: "ready", me: { ...mine.me, score: r.body.score } });
+    onChanged({ ...film, rating: r.body.rating });
+  };
+  const like = async () => {
+    if (mine.kind !== "ready" || write.kind === "saving") return;
+    setWrite({ kind: "saving" });
+    const r = await send<{ liked: boolean; likes: number }>("PUT", `/api/me/likes/${film.id}`, { liked: !mine.me.liked });
+    if (!r.ok) return setWrite({ kind: "failed", message: r.message || "That did not save. Try again." });
+    setWrite({ kind: "idle" });
+    setMine({ kind: "ready", me: { ...mine.me, liked: r.body.liked } });
+    onChanged({ ...film, likes: r.body.likes });
+  };
+
+  const facts: [string, string][] = [
+    ["Runtime", runtimeName(film.runtime_minutes)], ["Certificate", film.certification.name], ["Language", film.language.name],
+    ["Release date", film.release_date ? releaseLabel(film.release_date) : "Not announced"],
+    ["Genres", film.genres.length ? film.genres.map((g) => g.name).join(", ") : "None listed"],
+  ];
+  const most = Math.max(1, ...film.rating.breakdown);
+  const avg = ratingText(film.rating);
+  return (
+    <div className="fr-film-details">
+      <section aria-labelledby="about-film">
+        <h2 id="about-film">About the film</h2>
+        <p className="fr-movie-synopsis">{film.synopsis || "No description yet."}</p>
+        <dl className="fr-facts">{facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+        <People id="film-cast" title="Cast" people={film.cast} />
+        <People id="film-crew" title="Crew" people={film.crew} />
+      </section>
+      <section className="fr-ratings" aria-labelledby="film-ratings">
+        <h2 id="film-ratings">{film.coming_soon ? "Before it opens" : "Ratings"}</h2>
+        {film.coming_soon ? (
+          <p className="fr-ratings-score"><span className="fr-ratings-big">{film.likes}</span>
+            <span className="fr-ratings-count">{film.likes === 1 ? "person wants" : "people want"} to see it</span></p>
+        ) : (
+          <>
+            <p className="fr-ratings-score" aria-label={ratingName(film.rating)}>
+              <span className="fr-ratings-big" aria-hidden="true">{avg ? `★ ${avg}` : "New"}</span>
+              <span className="fr-ratings-count" aria-hidden="true">
+                {film.rating.count ? `out of 10 · ${film.rating.count} ${film.rating.count === 1 ? "rating" : "ratings"}` : "No ratings yet"}
+              </span>
+            </p>
+            <ol className="fr-bars" aria-label="How people scored it" reversed>
+              {[...film.rating.breakdown].map((n, i) => ({ n, score: i + 1 })).reverse().map(({ n, score }) => (
+                <li key={score} aria-label={`${score} out of 10: ${n} ${n === 1 ? "rating" : "ratings"}`}>
+                  <span className="fr-mono" aria-hidden="true">{score}</span>
+                  <span className="fr-bar" aria-hidden="true"><span style={{ width: `${(100 * n) / most}%` }} /></span>
+                  <span className="fr-mono" aria-hidden="true">{n}</span>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+        <div className="fr-my">
+          <h3>{film.coming_soon ? "Want to see it?" : "Your rating"}</h3>
+          {mine.kind === "loading" ? <p>Checking your account…</p>
+            : mine.kind === "error" ? <p>Your rating cannot be loaded right now.</p>
+            : mine.kind === "guest" ? (
+              <p><Link to={signInHref(`/movies/${film.id}`)}>Sign in</Link> {film.coming_soon ? "to like this film." : "to rate a film you have seen here."}</p>
+            ) : film.coming_soon ? (
+              <button type="button" className="fr-action-secondary fr-like" aria-pressed={mine.me.liked}
+                      disabled={write.kind === "saving"} onClick={() => void like()}>
+                <span aria-hidden="true">{mine.me.liked ? "♥" : "♡"}</span> {mine.me.liked ? "Liked" : "Like"}
+              </button>
+            ) : mine.me.can_rate ? (
+              <>
+                <p>{mine.me.score ? `You gave it ${mine.me.score}. Choose again to change it.` : "You have seen it: how was it?"}</p>
+                <div role="group" aria-label="Rate this film from 1 to 10" className="fr-scores">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                    <button key={n} type="button" className="fr-choice" aria-pressed={mine.me.score === n} aria-label={`${n} out of 10`}
+                            disabled={write.kind === "saving"} onClick={() => void rate(n)}>{n}</button>
+                  ))}
+                </div>
+              </>
+            ) : <p>You can rate this film once a show of it that you booked has started.</p>}
+          <p role="status" className="fr-share-note">{write.kind === "failed" ? write.message : write.kind === "saving" ? "Saving…" : ""}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function People({ id, title, people }: { id: string; title: string; people: FilmDetail["cast"] }) {
+  if (!people.length) return null;
+  return (
+    <>
+      <h2 id={id}>{title}</h2>
+      <ul className="fr-people" aria-labelledby={id}>
+        {people.map((p, i) => <li key={`${p.name}-${i}`}><strong>{p.name}</strong>{p.role ? <span>{p.role}</span> : null}</li>)}
+      </ul>
+    </>
+  );
+}

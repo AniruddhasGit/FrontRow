@@ -34,10 +34,11 @@ def _mounted(app) -> set[tuple[str, str]]:
     return mounted_routes(app)
 
 
-def test_the_contract_lists_70_endpoints():
-    # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30) + EP-ACC-09..17 (CR-008 T3-T8), the count generate_api.py emits.
-    assert CONTRACT["endpoint_count"] == 70
-    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 70
+def test_the_contract_lists_74_endpoints():
+    # 58 + EP-ADM-30..32 (SRC-008 ROLE-1, S-ADM-30) + EP-ACC-09..17 (CR-008 T3-T8) + EP-ACC-18..21 (CR-008 T9-T12), the count
+    # generate_api.py emits.
+    assert CONTRACT["endpoint_count"] == 74
+    assert len({(e["method"], e["path"]) for e in CONTRACT["endpoints"]}) == 74
 
 
 def test_mounted_minus_contract_is_empty(app):
