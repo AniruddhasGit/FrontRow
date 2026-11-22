@@ -55,7 +55,12 @@ def test_no_code_path_prunes_a_table_on_the_booking_path():
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
         if rx.search(line)
     ]
-    assert hits == []
+    # CR-006 (owner ruling 2026-11-22, S-XCT-09 amended): the one exception is the demo copy's history deletion, the
+    # SECURITY DEFINER function in migration 0004. It deletes the seat rows of old showtimes and old showtimes nobody
+    # booked - never a booking, booking seat, payment, audit row, user or film - and runs only when DEMO_HISTORY_DAYS > 0.
+    demo = [h for h in hits if h.startswith("migrations/versions/0004_demo_history.py:")]
+    assert len(demo) == 2
+    assert [h for h in hits if h not in demo] == []
 
 
 def test_every_table_except_alembic_version_and_audit_log_carries_created_at(migrated_db):

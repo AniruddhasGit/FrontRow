@@ -112,6 +112,8 @@ services:
       DATABASE_URL: postgresql://frontrow_app:local-dev-app@postgres:5432/frontrow
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: INFO
+      # CR-006: keep the local demo schedule 21 days ahead, topped up on the listing read (AWS leaves it 0).
+      DEMO_SHOWTIMES_AHEAD_DAYS: "21"
       API_PORT: "8000"
       SHUTDOWN_DRAIN_TIMEOUT_SECONDS: "20"
       READINESS_CACHE_TTL_SECONDS: "3"

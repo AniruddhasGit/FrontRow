@@ -34,3 +34,16 @@
 .rpt-values dd { margin: 0; }
 .rpt-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--fr-space-3); align-items: end; }
 .rpt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- 2026-11-22 polish (ui-design redesign pass) ---- */
+/* the sort controls are column headings, not bordered buttons */
+.rpt-panel .rpt-table th button { min-height: var(--fr-tap-min); padding: 0; border: 0; background: none; color: var(--fr-ink-strong);
+  font-weight: var(--fr-weight-bold); cursor: pointer; }
+.rpt-panel .rpt-table th button:hover { color: var(--fr-accent-ink); }
+.rpt-table th { padding: var(--fr-space-2); font-size: var(--fr-text-sm); color: var(--fr-ink-strong); }
+.rpt-table tbody tr:hover td { background: var(--fr-surface-inset); }
+/* the hall picker keeps a control's width */
+.rpt-panel select { max-width: 22rem; }
+/* phones: wide tables scroll in their own box instead of being crushed into a column of wrapped words */
+.rpt-scroll > .rpt-table { min-width: 44rem; }
+.rpt-figures { padding: var(--fr-space-4); border-radius: var(--fr-radius-lg); background: var(--fr-surface-inset); }

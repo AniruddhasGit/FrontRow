@@ -13,6 +13,7 @@ import { App } from "./App";
 import { Wake } from "./features/wake/Wake";
 import "./styles/premium.css"; // after App, so it lands after every feature stylesheet
 import "./styles/immersive.css"; // CR-004: edge to edge, after premium
+import "./styles/buttons.css"; // one button system for the whole site, last
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

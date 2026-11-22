@@ -426,13 +426,18 @@ function Haze({ meta }: { meta: BakedMeta }) {
     return new CanvasTexture(c);
   }, []);
   const still = useMemo(reducedMotion, []);
+  // The dust is the only thing moving in an idle hall, so it sets the redraw rate: ~24 frames a second, not every
+  // display frame (owner, 2026-11-22: "lightweight"). Slow drifting specks read the same at 24.
+  const next = useRef(0);
+  useEffect(() => () => clearTimeout(next.current), []);
   useFrame(({ clock }) => {
     if (still) return;
     const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
     seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
       s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
     a.needsUpdate = true;
-    invalidate();
+    clearTimeout(next.current);
+    next.current = window.setTimeout(invalidate, 42);
   });
   return (
     <>
@@ -640,7 +645,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
   }, []);
 
   return (
-    <Canvas frameloop="demand" dpr={[1, 1.75]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
+    <Canvas frameloop="demand" dpr={[1, 1.25]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
@@ -652,7 +657,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
       <Halos placed={placed} mine={mine} tone={tone} />
       <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={baked?.meta.intro ?? null}
            wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} />
-      <EffectComposer multisampling={4}>
+      <EffectComposer multisampling={0}>
         <Bloom mipmapBlur luminanceThreshold={1} intensity={baked ? 0.6 : 0.9} />
         <Vignette offset={0.3} darkness={0.55} />
         {/* a baked room is display-referred already: tone mapping it again would grey it */}
