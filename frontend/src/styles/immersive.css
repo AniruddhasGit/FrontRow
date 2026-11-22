@@ -69,14 +69,62 @@
 /* ---- the landing (CR-005): the films rail on the left, your locked seat in the hall on the right ---- */
 .fr-landing {
   --fr-rail-w: clamp(18rem, 22vw, 24rem);
-  --fr-fold: 900ms cubic-bezier(0.65, 0, 0.35, 1);
+  /* the strong curves of the motion standard (ui-motion STANDARDS): out for enter/exit, in-out for on-screen moves */
+  --fr-ease-strong-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --fr-ease-move: cubic-bezier(0.77, 0, 0.175, 1);
   display: grid;
   grid-template-columns: var(--fr-rail-w) minmax(0, 1fr);
-  transition: grid-template-columns 700ms cubic-bezier(0.65, 0, 0.35, 1);
 }
-/* Book tickets: the rail folds away and the hall takes the window while the camera turns */
-.fr-landing[data-leaving="book"] {
-  grid-template-columns: 0 minmax(0, 1fr);
+/* Desktop: nothing here animates layout. The hall's canvas keeps one size for the page's whole life (a resizing
+   WebGL canvas re-lays-out and re-renders every frame: the old grid-column transition was the jitter); the rail sits
+   over it and the stage is shifted right by half the rail so the screen stays centred in what you see. Every move
+   below is transform, opacity or clip-path only. */
+@media (min-width: 56.01rem) {
+  .fr-landing {
+    display: block;
+    overflow: hidden;
+  }
+  .fr-landing .fr-rail {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--fr-rail-w);
+    z-index: 4;
+    transition: transform 500ms var(--fr-ease-move), opacity 300ms var(--fr-ease-strong-out);
+  }
+  /* the parent class too: the base .fr-landing-stage rule below (position: relative) comes later in this file */
+  .fr-landing .fr-landing-stage {
+    position: absolute;
+    inset: 0;
+    transform: translateX(calc(var(--fr-rail-w) / 2));
+    transition: transform 600ms var(--fr-ease-move);
+  }
+  .fr-landing .fr-landing-bar {
+    left: calc(var(--fr-rail-w) / 2 + var(--fr-space-5));
+    right: calc(var(--fr-rail-w) / 2 + var(--fr-space-5));
+  }
+  /* Book tickets: the rail slides out to the left and the hall recentres on the whole window, then the camera turns */
+  .fr-landing[data-leaving="book"] .fr-rail {
+    transform: translateX(-100%);
+  }
+  .fr-landing[data-leaving="book"] .fr-landing-stage {
+    transform: none;
+  }
+  /* All films: the rail's ground opens across the page (a clip-path wipe, no layout), then /films takes over */
+  .fr-landing::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: var(--fr-surface-base);
+    clip-path: inset(0 calc(100% - var(--fr-rail-w)) 0 0);
+    visibility: hidden;
+    transition: clip-path 600ms var(--fr-ease-move), visibility 0s 600ms;
+  }
+  .fr-landing[data-leaving="films"]::after {
+    visibility: visible;
+    clip-path: inset(0);
+    transition: clip-path 600ms var(--fr-ease-move), visibility 0s;
+  }
 }
 .fr-rail {
   display: flex;
@@ -87,10 +135,6 @@
   padding-top: calc(var(--fr-head) + var(--fr-space-2));
   background: var(--fr-surface-base);
   border-right: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  transition: opacity 400ms ease;
-}
-.fr-landing[data-leaving="book"] .fr-rail {
-  opacity: 0;
 }
 .fr-rail h1 {
   font-size: var(--fr-text-xl);
@@ -121,18 +165,18 @@
 .fr-rail-films > li {
   scroll-snap-align: start;
   /* on arrival (from the wake screen too) the films pop in one after another */
-  animation: fr-rail-pop 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: calc(240ms + var(--i, 0) * 90ms);
+  animation: fr-rail-pop 320ms var(--fr-ease-strong-out) both;
+  animation-delay: calc(180ms + var(--i, 0) * 60ms);
 }
 @keyframes fr-rail-pop {
   from {
     opacity: 0;
-    transform: translateX(-18px) scale(0.97);
+    transform: translateX(-12px);
   }
 }
 /* the rail itself slides in from the left edge as the landing opens */
 .fr-rail {
-  animation: fr-rail-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: fr-rail-in 420ms var(--fr-ease-strong-out) both;
 }
 @keyframes fr-rail-in {
   from {
@@ -159,9 +203,10 @@
   border-radius: var(--fr-radius-lg);
   border: var(--fr-stroke-hair) solid transparent;
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0.72;
   transform: scale(0.96);
-  transition: opacity 300ms ease, transform 300ms ease, background-color 300ms ease, border-color 300ms ease;
+  transition: opacity 200ms var(--fr-ease-strong-out), transform 200ms var(--fr-ease-strong-out),
+    background-color 200ms ease, border-color 200ms ease;
 }
 .fr-rail-film .fr-poster {
   grid-row: 1 / span 2;
@@ -214,10 +259,9 @@
   gap: var(--fr-space-3) var(--fr-space-4);
   padding: var(--fr-space-3) var(--fr-space-3) var(--fr-space-3) var(--fr-space-5);
   border-radius: var(--fr-radius-lg);
-  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--fr-surface-base) 92%, transparent);
   border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  transition: opacity 400ms ease, transform 400ms ease;
+  transition: opacity 200ms var(--fr-ease-strong-out), transform 200ms var(--fr-ease-strong-out);
 }
 .fr-landing[data-leaving] .fr-landing-bar {
   opacity: 0;
@@ -249,25 +293,7 @@
   color: var(--fr-ink-muted);
   flex: 1;
 }
-/* All films: the curtain opens left to right and pulls the rail's edge with it - the rail's ground, with the rail's
-   border on its leading edge, grows across the hall until it is the whole page */
-.fr-landing-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-right: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  z-index: 5;
-  width: 0;
-  background: var(--fr-surface-base);
-  transition: width var(--fr-fold);
-}
-/* the cloth publishes how far it has opened (--fr-curtain-open, on its own clock), and the fill's edge rides it */
-.fr-landing[data-leaving="drawn"] .fr-landing-fill {
-  width: calc(var(--fr-curtain-open, 1) * 100%);
-  transition: none;
-}
-.fr-landing[data-leaving="drawn"] .fr-rail {
-  border-right-color: transparent;
-}
+/* All films: the rail widens across the whole page (the hall folds away under it), then /films takes over */
 
 /* ---- the seat page: the hall on the left, the panel (heading, 2D map, summary) on the right ---- */
 .fr-seatmap.fr-immersive {
@@ -331,8 +357,7 @@
 }
 .fr-seatmap.fr-immersive .fr-hall3d-bar .fr-choice,
 .fr-seatmap.fr-immersive .fr-hall3d-bar .fr-action-secondary {
-  background: color-mix(in srgb, var(--fr-surface-base) 80%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--fr-surface-base) 92%, transparent);
 }
 .fr-seatmap.fr-immersive .fr-hall3d-name {
   top: auto;
@@ -455,7 +480,7 @@
   margin-inline: auto;
 }
 
-/* ---- /films (CR-005): the poster wall the curtain opens onto - posters, the title under each, cards popping in ---- */
+/* ---- /films (CR-005): the poster wall - posters, the title under each ---- */
 .fr-listing .fr-cards {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.5rem), 1fr));
   gap: var(--fr-space-6) var(--fr-space-5);
@@ -490,9 +515,100 @@
   font-size: var(--fr-text-xs);
   color: var(--fr-ink-muted);
 }
-/* Arriving from the landing's curtain, each film glides from its place in the rail to its card (matched by its
-   view-transition name, film-<id>); the rest of the page fades in under the root transition. */
+/* Arriving from the landing's rail, each film glides from its place in the rail to its card (matched by its
+   view-transition name, film-<id>); a film that was not in the rail has no old picture, so it fades in a moment after
+   the others have landed; the rest of the page fades in under the root transition. */
 ::view-transition-group(*) {
-  animation-duration: 650ms;
-  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-duration: 500ms;
+  animation-timing-function: cubic-bezier(0.77, 0, 0.175, 1);
+}
+::view-transition-new(*):only-child {
+  animation: fr-film-in 300ms 450ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes fr-film-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Touch screens fire a hover on tap: the lift-on-hover is a mouse affordance only (ui-motion STANDARDS, accessibility). */
+@media (hover: none) {
+  .fr-card:hover,
+  .fr-time:not([data-closed]):hover,
+  .fr-listing .fr-card:hover .fr-poster {
+    transform: none;
+  }
+}
+
+/* ---- 404 (ui-design redesign pass) ---- */
+.fr-notfound {
+  display: grid;
+  justify-items: start;
+  gap: var(--fr-space-4);
+  padding-block: clamp(var(--fr-space-6), 12vh, 8rem);
+}
+.fr-notfound h1,
+.fr-notfound p {
+  margin: 0;
+}
+.fr-notfound p {
+  color: var(--fr-ink-muted);
+  font-size: var(--fr-text-lg);
+}
+.fr-notfound .fr-action {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 0 var(--fr-space-6);
+  text-decoration: none;
+}
+
+/* ---- Loading placeholders (ui-components, hand-built: the project takes no component library) ----
+   One soft highlight sweeps across every skeleton block, so a wait reads as "loading", not "broken". The highlight is
+   a pseudo-element moved with transform (compositor only, no repaint per frame); reduced motion keeps the still block. */
+.admin-row-loading,
+.fr-card-loading .fr-poster,
+.fr-time-loading,
+.rpt-loading,
+.fr-grid-loading {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.admin-row-loading::after,
+.fr-card-loading .fr-poster::after,
+.fr-time-loading::after,
+.rpt-loading::after,
+.fr-grid-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--fr-ink-strong) 6%, transparent) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: fr-shimmer 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes fr-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-row-loading::after,
+  .fr-card-loading .fr-poster::after,
+  .fr-time-loading::after,
+  .rpt-loading::after,
+  .fr-grid-loading::after {
+    animation: none;
+  }
+}
+
+/* Phones: no side-by-side wipe to make, so All films fades the landing out over the same 600 ms. */
+@media (max-width: 56rem) {
+  .fr-landing {
+    transition: opacity 500ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .fr-landing[data-leaving="films"] {
+    opacity: 0;
+  }
 }

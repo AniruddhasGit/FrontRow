@@ -4,9 +4,9 @@
 //   signed out - to sign-in, which returns to the seat page (its own arrival: the screen, then the seats);
 //   signed in  - one flow: the rail folds away, the camera turns from your seat onto the seats, and the seat page takes
 //                over on that same picture (fr.flown; the router holds the frame until its hall has drawn).
-// "All films": the curtain drops on the hall, then opens from left to right, pulling the rail's edge across with it until
-// the rail is the whole page; the films already in the rail glide to their places in the /films grid (a View Transition,
-// matched by name) and everything else fades in.
+// "All films" (owner, 2026-11-22; the curtain is gone): the rail expands across the page, then the films already in it
+// glide to their places in the /films grid (a View Transition, matched by name) and the films that were not in the
+// rail fade in a moment after (immersive.css).
 // Reads only the public read path, once per choice; nothing polls.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatPaise } from "../admin/money";
@@ -14,7 +14,6 @@ import { leaveForSignIn, signInHref, takeNotice } from "../auth/session";
 import { get, query, type Film, type Showtime } from "../browse/api";
 import { runtimeName, showtimeName, timeLabel } from "../browse/logic";
 import { Poster } from "../browse/Poster";
-import { Curtain, type CurtainPhase } from "../curtain/Curtain";
 import { FLOWN } from "../hall3d/Hall3D";
 import { screenNumber } from "../hall3d/hall";
 import { nextHallDrawn } from "../hall3d/hallReady";
@@ -24,7 +23,8 @@ import { navigate } from "../../router";
 import "../browse/browse.css";
 
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
-type Leaving = null | "book" | "curtain" | "drawn";
+type Leaving = null | "book" | "films";
+const EXPAND_MS = 600; // the rail's ground wiping across the page (immersive.css .fr-landing::after), before /films takes over
 
 export function Landing() {
   const [films, setFilms] = useState<Film[] | null>(null);
@@ -130,13 +130,14 @@ export function Landing() {
     }
     navigate(`/showtimes/${st.id}`, nextHallDrawn());
   }, [st]);
-  const curtainDone = () => {
-    if (leaving === "curtain") setLeaving("drawn");
-    else if (leaving === "drawn") navigate("/films");
-  };
+  useEffect(() => {
+    if (leaving !== "films") return;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t = setTimeout(() => navigate("/films"), reduced ? 0 : EXPAND_MS);
+    return () => clearTimeout(t);
+  }, [leaving]);
 
   const film = films?.find((f) => f.id === filmId) ?? null;
-  const phase: CurtainPhase = leaving === "curtain" ? "down" : leaving === "drawn" ? "drawn" : "up";
   return (
     <section className="fr-immersive fr-landing" data-leaving={leaving ?? undefined}>
       <aside className="fr-rail" aria-label="Films">
@@ -160,14 +161,12 @@ export function Landing() {
             </li>
           ))}
         </ul>
-        <button type="button" className="fr-action-secondary fr-rail-all" disabled={!!leaving} onClick={() => setLeaving("curtain")}>
+        <button type="button" className="fr-action-secondary fr-rail-all" disabled={!!leaving} onClick={() => setLeaving("films")}>
           All films
         </button>
       </aside>
       <div className="fr-landing-stage">
         <HallStage hallNo={hall} film={film} map={map} pan={leaving === "book"} onPanned={panned} />
-        <Curtain phase={phase} onDone={curtainDone} />
-        <div className="fr-landing-fill" aria-hidden="true" />
         {film ? (
           <div className="fr-landing-bar">
             <p className="fr-landing-now">{film.title}</p>

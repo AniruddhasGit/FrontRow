@@ -126,6 +126,13 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
   const restored = useRef(false); // the first map has been received (and any restored selection revealed)
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  // A banner appearing above the map pushes it down; the seat that has focus is kept in view (WCAG 2.4.11, S-SEA-04).
+  useEffect(() => {
+    const focused = document.activeElement;
+    if ((gone || notice) && focused instanceof HTMLElement && focused.closest('[role="grid"]')) {
+      focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [gone, notice]);
 
   const setHold = useCallback((next: Hold | null) => {
     setHoldState(next);

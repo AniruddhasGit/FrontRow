@@ -28,6 +28,22 @@ before(async () => {
   }
   found.sort((a, b) => b.s.starts_at.localeCompare(a.s.starts_at));
   assert.ok(found.length, "an open showtime in the 220-seat hall");
+  // The checks need a real sold seat. Since CR-006 the newest shows are fresh top-up copies with no sales, so when the
+  // chosen show has none, one real booking is made on it first (local data only, through the product's own API).
+  if (!found[0].m.seats.some((s) => s.state === "sold")) {
+    const { ctx, page } = await signedIn(browser, "e2e-brw-2@example.com");
+    const seat = found[0].m.seats.find((s) => s.state === "available" && s.is_active);
+    const status = await page.evaluate(async ([sid, seatId]) => {
+      const h = { "content-type": "application/json" };
+      const hold = await (await fetch(`/api/showtimes/${sid}/holds`, { method: "POST", headers: h, body: JSON.stringify({ seat_ids: [seatId] }) })).json();
+      const r = await fetch("/api/bookings", { method: "POST", headers: { ...h, "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ hold_token: hold.hold_token, showtime_id: sid }) });
+      return r.status;
+    }, [found[0].s.id, seat.id]);
+    await ctx.close();
+    assert.equal(status, 201, "a real booking for the sold-seat fixture");
+    found[0].m = await api(`/api/showtimes/${found[0].s.id}/seatmap`);
+  }
   ST = found[0].s.id;
   MAP = found[0].m;
 });

@@ -71,6 +71,8 @@ what a task actually loaded without decrypting anything.
 | `CINEMA_TIMEZONE` | `Asia/Kolkata` (the default; set it only to change it deliberately) |
 | `SEATMAP_CACHE_TTL_SECONDS` | `10` (the default; set it only to change it deliberately) |
 | `LISTING_CACHE_TTL_SECONDS` | `60` (the default; set it only to change it deliberately) |
+| `DEMO_SHOWTIMES_AHEAD_DAYS` | `0` on AWS, always (CR-006: the demo copy's showtime top-up; leave it unset) |
+| `DEMO_HISTORY_DAYS` | `0` on AWS, always (CR-006: the demo copy's history deletion; leave it unset) |
 | `SEATMAP_POLL_INTERVAL_SECONDS` | `3` (the default; set it only to change it deliberately) |
 | `CACHE_REBUILD_LOCK_TTL_MS` | `2000` (the default; set it only to change it deliberately) |
 | `PAYMENT_SIMULATED_DELAY_MS` | `1500` (the default; set it only to change it deliberately) |

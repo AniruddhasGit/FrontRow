@@ -137,7 +137,10 @@ def test_the_insert_waits_on_the_screen_row_lock(client):
 def test_nothing_schedules_and_no_worker_or_job_creates_a_showtime():
     assert rg(r"INSERT INTO showtime|Showtime[(]|insert[(]showtime[)]", "backend/app/workers", "backend/app/jobs") == []
     census = rg(r"(?i)INSERT INTO showtime\b|insert\(showtime\)", "backend/app", "backend/migrations", "scripts")
-    assert {h[0] for h in census} == {"backend/app/domain/admin/showtimes.py", "scripts/seed.py"}
+    # CR-006 (owner ruling 2026-11-22, S-ADM-09 amended): the demo copy's showtime top-up (domain/schedule.py) is the one
+    # creator besides the admin path and the seed. It runs on a listing read when DEMO_SHOWTIMES_AHEAD_DAYS > 0, never on
+    # a timer, and never in a worker or job (asserted on the line above and below).
+    assert {h[0] for h in census} == {"backend/app/domain/admin/showtimes.py", "scripts/seed.py", "backend/app/domain/schedule.py"}
     assert rg(r"(?i)INSERT INTO showtime\b|insert\(showtime\)", "backend/app/workers", "backend/app/jobs") == []
     assert rg(r"APScheduler|celery|crontab|cron.d|schedule[.]every|EventBridge", "backend/app", "backend/migrations",
               "frontend/src", "scripts", *zone_c(".github/workflows")) == []

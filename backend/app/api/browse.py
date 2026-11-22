@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.api.errors import ApiError
 from app.core import cache
 from app.core.ratelimit import Bucket, client_ip, enforce
-from app.domain import posters
+from app.domain import posters, schedule
 from app.domain.browse import catalogue, seatmap
 from app.models import movie
 from app.domain.money import BIGINT_MAX
@@ -105,6 +105,23 @@ def _cutoff(request: Request) -> timedelta:
     return timedelta(minutes=request.app.state.settings.SALES_CUTOFF_MINUTES)
 
 
+async def _top_up(request: Request, now) -> None:
+    """CR-006: at most one schedule check an hour (a Redis key), on the listing read. Never fails the listing:
+    Redis or PostgreSQL trouble here only means the check waits for the next read."""
+    state = request.app.state
+    try:
+        if not await state.redis.set("schedule:topup:checked", "1", nx=True, ex=3600):
+            return
+        async with _db(request) as conn:
+            added = await schedule.top_up(conn, now, state.settings.DEMO_SHOWTIMES_AHEAD_DAYS)
+            if state.settings.DEMO_HISTORY_DAYS:
+                added += await schedule.delete_history(conn, now, state.settings.DEMO_HISTORY_DAYS)
+        if added:
+            await cache.bump_listing_generation(state.redis)
+    except Exception:  # noqa: BLE001 - a demo convenience must never take the listing down
+        log.warning("demo schedule top-up skipped", exc_info=True)
+
+
 @router.get("/movies")
 async def list_movies(request: Request, date: str | None = Query(None), language_id: str | None = Query(None),
                       format_id: str | None = Query(None), cinema_id: str | None = Query(None),
@@ -118,6 +135,8 @@ async def list_movies(request: Request, date: str | None = Query(None), language
                                        format_id=_id(format_id, "format_id"), cinema_id=_id(cinema_id, "cinema_id"))
     state = request.app.state
     now = state.clock.now()
+    if state.settings.DEMO_SHOWTIMES_AHEAD_DAYS:
+        await _top_up(request, now)
 
     async def build() -> bytes:
         async with _db(request) as conn:
@@ -150,7 +169,9 @@ async def get_poster(request: Request, movie_id: Id) -> Response:
     if key is None:  # no such film, or a film with no poster: the same answer
         raise ApiError(404, "NOT_FOUND")
     settings = request.app.state.settings
-    return RedirectResponse(posters.store(request.app.state).presign(key), status_code=302,
+    # CR-006: the demo films' posters ship with the website (/art/films/...); the redirect stays the same shape.
+    target = key if key.startswith("/art/") else posters.store(request.app.state).presign(key)
+    return RedirectResponse(target, status_code=302,
                             headers={"Cache-Control": f"max-age={settings.POSTER_REDIRECT_CACHE_SECONDS}"})
 
 

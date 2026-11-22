@@ -57,3 +57,15 @@ def test_only_seat_and_assignment_rows_are_ever_deleted_and_nothing_cascades(cli
 def test_no_pruning_or_scheduled_deletion_exists_in_the_code():
     assert rg(r"retention|prune|purge|vacuum_old|cron|crontab|APScheduler|schedule[.]every", "backend/app",
               "backend/migrations", "scripts", *zone_c(".github/workflows")) == []
+
+
+def test_the_one_demo_exception_stays_the_only_one(client):
+    """CR-006 (owner ruling 2026-11-22, S-ADM-19 amended): the demo copy may delete history through exactly one
+    SECURITY DEFINER function, demo_delete_history, called from exactly one place, behind DEMO_HISTORY_DAYS (0 = off,
+    the default and AWS). No other function in the schema runs with its owner's rights, and frontrow_app still holds no
+    DELETE grant on the booking tables."""
+    definers = owner_sql(client.db, "SELECT proname FROM pg_proc WHERE prosecdef AND pronamespace = 'public'::regnamespace")
+    assert [r[0] for r in definers] == ["demo_delete_history"]
+    assert {path for path, _, _ in rg(r"demo_delete_history", "backend/app")} == {"backend/app/domain/schedule.py"}
+    for table in ("showtime", "booking", "booking_seat", "payment", "showtime_seat"):
+        assert owner_sql(client.db, f"SELECT has_table_privilege('frontrow_app', '{table}', 'DELETE')") == [(False,)]

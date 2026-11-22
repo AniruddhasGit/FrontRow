@@ -44,3 +44,33 @@
    375px. Let the form and its controls shrink to the column. */
 .admin-form, .admin-form > * { min-width: 0; }
 .admin-form input, .admin-form select, .admin-form textarea { max-width: 100%; box-sizing: border-box; }
+
+/* ---- 2026-11-22 polish (ui-design redesign pass): forms keep a reading width, controls a tap height, the
+   checkbox sits beside its label, the hall list is a set of cards, and the primary link reads as a button. ---- */
+.admin-form { max-width: 46rem; padding: var(--fr-space-5); gap: var(--fr-space-4); border-radius: var(--fr-radius-lg);
+  border-color: var(--fr-rule-quiet); }
+.admin-form input:not([type="checkbox"]):not([type="radio"]), .admin-form select { min-height: var(--fr-tap-min);
+  padding: 0 var(--fr-space-3); border-radius: var(--fr-radius-md); background: var(--fr-surface-inset); }
+.admin-form button, .admin button { min-height: var(--fr-tap-min); padding: 0 var(--fr-space-4); border-radius: var(--fr-radius-md); }
+.admin-form button[type="submit"] { font-weight: var(--fr-weight-bold); border-color: transparent; }
+.admin label:has(> input[type="checkbox"]), .admin label:has(> input[type="radio"]) { display: flex; align-items: center;
+  gap: var(--fr-space-2); }
+.admin input[type="checkbox"], .admin input[type="radio"] { width: 1.125rem; height: 1.125rem; margin: 0; padding: 0;
+  accent-color: var(--fr-surface-accent); flex: none; }
+.admin-filter { flex-wrap: wrap; align-items: center; }
+.admin-filter legend { margin-bottom: var(--fr-space-2); font-weight: var(--fr-weight-medium); }
+.admin-primary { justify-self: start; display: inline-flex; align-items: center; padding: 0 var(--fr-space-5);
+  font-weight: var(--fr-weight-bold); text-decoration: none; }
+.admin-poster { width: 4.75rem; padding: var(--fr-space-1); box-sizing: border-box; border-radius: var(--fr-radius-sm);
+  font-size: 0.6875rem; line-height: 1.25; }
+.admin-film { padding: var(--fr-space-4); border-radius: var(--fr-radius-lg); background: var(--fr-surface-raised);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet); transition: border-color var(--fr-motion-base) var(--fr-ease-out); }
+.admin-film:hover { border-color: var(--fr-control-edge); }
+.admin-list:has(> li > .admin-film) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: var(--fr-space-3); }
+/* the hall list: one card per hall */
+.admin-list:has(> li > .admin-link) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: var(--fr-space-3); }
+.admin-list > li:has(> .admin-link) { padding: var(--fr-space-4); border-radius: var(--fr-radius-lg); background: var(--fr-surface-raised);
+  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet); color: var(--fr-ink-muted); font-size: var(--fr-text-sm); }
+.admin-list > li > .admin-link { display: block; margin-bottom: var(--fr-space-1); text-decoration: none; font-family: var(--fr-font-display);
+  font-size: var(--fr-text-lg); font-weight: var(--fr-weight-bold); color: var(--fr-ink-strong); min-height: 0; }
+.admin-list > li > .admin-link:hover { color: var(--fr-accent-ink); }

@@ -178,6 +178,13 @@ class Settings(BaseSettings):
     SEATMAP_CACHE_TTL_SECONDS: int = Field(10, ge=0)
     # Movie and showtime list cache lifetime. Longer: an admin's publish takes longer to appear.
     LISTING_CACHE_TTL_SECONDS: int = Field(60, ge=0)
+    # CR-006, the demo copy only: keep showtimes this many days ahead by copying the last week forward when the
+    # listing is read (app/domain/schedule.py). 0 (the default, and AWS) turns it off; nothing runs on a timer.
+    DEMO_SHOWTIMES_AHEAD_DAYS: int = Field(0, ge=0)
+    # CR-006, the demo copy only (owner ruling 2026-11-22): showtimes that started more than this many days ago are
+    # deleted with their bookings, on the same hourly listing-read check. 0 (the default, and AWS) keeps everything.
+    # At least 30 when set: the database function refuses anything nearer.
+    DEMO_HISTORY_DAYS: int = Field(0, ge=0)
     # How often the client re-reads the seat map (check 10).
     SEATMAP_POLL_INTERVAL_SECONDS: int = Field(3, ge=1)
     # The per-key cache stampede guard. Too short and two callers rebuild.
