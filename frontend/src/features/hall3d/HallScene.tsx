@@ -25,7 +25,7 @@ const KINDS: ModelKind[] = ["standard", "premium", "recliner"];
 // CR-003 baked hall: each normalised seat (seatModels.ts: 0.57 m wide, facing -z) scaled to its baked Blender size
 // (hall1_build.py SEAT_FIT) and turned round to face +z, where the baked screen is.
 const BAKED_SCALE: Record<ModelKind, [number, number, number]> = {
-  standard: [1.045, 1.007, 1.007], premium: [1.041, 1.021, 1.021], recliner: [1.946, 1.677, 1.676],
+  standard: [1.045, 1.007, 1.007], premium: [1.041, 1.021, 1.021], recliner: [1.946, 2.17, 2.17],
 };
 // A baked hall's free seats are the tan leather the owner approved in the renders (CR-003), not the velvet.
 const LEATHER = new Color("#b8743a");

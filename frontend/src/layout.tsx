@@ -4,9 +4,10 @@
 // boundary - the server's routers are.
 import type { ReactNode } from "react";
 import "./layout.css";
-import { Link } from "./router";
+import { goBack, Link, usePathname } from "./router";
 
 export function Layout({ children, nav, account }: { children: ReactNode; nav?: ReactNode; account?: ReactNode }) {
+  const home = usePathname() === "/";
   return (
     <div className="fr-app">
       <a className="fr-skip" href="#main">
@@ -14,6 +15,12 @@ export function Layout({ children, nav, account }: { children: ReactNode; nav?: 
       </a>
       <header className="fr-header">
         <div className="fr-header-inner">
+          {home ? null : (
+            // CR-007: one dedicated Back on every screen but home, in the same place every time
+            <button type="button" className="fr-back" onClick={goBack}>
+              <span aria-hidden="true">←</span> Back
+            </button>
+          )}
           <Link to="/" className="fr-brand">
             FrontRow
           </Link>

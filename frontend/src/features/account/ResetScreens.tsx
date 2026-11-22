@@ -83,7 +83,7 @@ export function ResetConfirmScreen({ token, seed = {} }: { token: string | null;
     if (ok) {
       // Signed in. Replace the URL first so the token is not left in the address bar or history (SCR-ACC-03).
       // [JUDGMENT CALL] /bookings, the app's my-bookings route; the PRD names /account/bookings, which is not mounted.
-      window.history.replaceState(null, "", "/account/reset/confirm");
+      window.history.replaceState(window.history.state, "", "/account/reset/confirm");
       return navigate("/bookings");
     }
     const error = data.error ?? {};

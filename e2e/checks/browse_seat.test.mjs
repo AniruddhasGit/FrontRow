@@ -301,7 +301,8 @@ test("S-BRW-17 field, screen bar and row gutters keep their rects across the sea
     assert.equal(a.loading, 0);
     assert.equal(b.loading, 0);
   });
-  await t.test("screen bar rect equal", () => assert.deepEqual(a.bar, b.bar));
+  // CR-007: the bar now sits over the seat block, so its x and width follow the seats; its height and place stay
+  await t.test("screen bar keeps its top and height", () => assert.deepEqual([a.bar.y, a.bar.height], [b.bar.y, b.bar.height]));
   await t.test("field x, y and width equal", () => {
     assert.deepEqual([a.field.x, a.field.y, a.field.width], [b.field.x, b.field.y, b.field.width]);
   });

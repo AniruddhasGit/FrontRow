@@ -32,3 +32,16 @@ export function currentTo(links: NavLink[], pathname: string): string | null {
 export function shortEmail(email: string): string {
   return email.length > 24 ? email.slice(0, 23) + "…" : email;
 }
+
+/** CR-007: where Back goes when there is no in-app step to undo (a deep link): the nearest parent path that is a
+ *  registered screen, else home; null on home itself. `isRoute` is the router's table, passed in to keep this pure. */
+export function parentOf(pathname: string, isRoute: (path: string) => boolean): string | null {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+  while (parts.length > 1) {
+    parts.pop();
+    const up = "/" + parts.join("/");
+    if (isRoute(up)) return up;
+  }
+  return "/";
+}

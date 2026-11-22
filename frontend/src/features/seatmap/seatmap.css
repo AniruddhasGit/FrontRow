@@ -33,6 +33,16 @@
   color: var(--fr-ink-muted);
   font-size: var(--fr-text-xs);
 }
+/* CR-007: inside the map's scroll box, on the seat grid's own columns, so it moves with the seats */
+.fr-screen-placed {
+  display: grid;
+  grid-template-columns: var(--fr-seat-gutter) repeat(var(--fr-grid-cols), var(--fr-seat-size));
+  column-gap: var(--fr-seat-gap);
+  width: max-content;
+}
+.fr-screen-placed > * {
+  grid-column: var(--fr-screen-over);
+}
 .fr-screen-bar {
   width: 60%;
   height: 4px;

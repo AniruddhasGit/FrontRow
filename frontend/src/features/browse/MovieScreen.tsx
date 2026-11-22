@@ -53,7 +53,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
 
   const choose = (day: string | null) => {
     setDate(day);
-    window.history.replaceState(null, "", `/movies/${movieId}${query({ date: day })}`);
+    window.history.replaceState(window.history.state, "", `/movies/${movieId}${query({ date: day })}`);
   };
 
   if (film === "missing") {

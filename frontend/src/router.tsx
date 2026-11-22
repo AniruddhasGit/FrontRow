@@ -11,6 +11,7 @@ import { authRoutes } from "./features/auth/routes";
 import { browseRoutes } from "./features/browse/routes";
 // lane p8-reports: /dashboard and /dashboard/audit
 import { reportsRoutes } from "./features/reports/routes";
+import { parentOf } from "./nav";
 
 export type RouteParams = Record<string, string>;
 export interface AppRoute {
@@ -24,8 +25,24 @@ const NAVIGATE_EVENT = "fr:navigate";
 /** `hold`, when given, keeps the old page's last frame on screen until it settles (CR-005: the landing's hall stays
  *  up until the seat page's hall has drawn), capped by the promise itself. */
 export function navigate(to: string, hold?: Promise<void>): void {
-  window.history.pushState(null, "", to);
+  window.history.pushState({ frDepth: depth() + 1 }, "", to);
   transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)), hold);
+}
+
+// CR-007: how many in-app steps lie behind this entry (0 on a deep link or a reload of the first page).
+function depth(): number {
+  const s = window.history.state as { frDepth?: unknown } | null;
+  return typeof s?.frDepth === "number" ? s.frDepth : 0;
+}
+
+/** CR-007, the header's Back: undo the last in-app step when there is one, else go up to the parent screen. */
+export function goBack(): void {
+  if (depth() > 0) {
+    window.history.back();
+    return;
+  }
+  const up = parentOf(window.location.pathname, (p) => allRoutes().some((r) => match(r.path, p) !== null));
+  if (up) navigate(up);
 }
 
 // The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
