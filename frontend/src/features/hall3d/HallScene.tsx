@@ -343,6 +343,7 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
         if (!/^\/art\/films\/[a-z0-9-]+\.webp$/.test(path)) return;
         new TextureLoader().load(path.replace(/\.webp$/, "-still.webp"), (t) => {
           t.colorSpace = SRGBColorSpace;
+          t.userData.still = true; // the film is on: the house lights may go down
           show(t, true);
         }, undefined, () => null);
       }).catch(() => null);
@@ -498,8 +499,9 @@ function sampleGlow(t: Texture | null): Glow {
  *  The uniforms ease toward each new picture over about a second (a cut on a real screen re-lights the room; it does
  *  not flicker). Tune: 0.015 (reach), 0.22 + 0.38 (tint), 0.74 + 0.56 (brightness swing), 0.55 (spill), 0.6 + 0.8 (sheen). */
 const GLOW_VERT = "#include <begin_vertex>\n  vRoomW = (modelMatrix * vec4(transformed, 1.0)).xyz;";
-const GLOW_FRAG = "uniform vec3 uGlowPos; uniform vec3 uGlowNeg; uniform float uLuma; uniform float uScreenZ; uniform float uHalfW;\nvarying vec3 vRoomW;\n";
-const GLOW_APPLY = `float glowD = max(0.0, uScreenZ - vRoomW.z);
+const GLOW_FRAG = "uniform float uHouse; uniform vec3 uGlowPos; uniform vec3 uGlowNeg; uniform float uLuma; uniform float uScreenZ; uniform float uHalfW;\nvarying vec3 vRoomW;\n";
+const GLOW_APPLY = `outgoingLight *= uHouse;
+  float glowD = max(0.0, uScreenZ - vRoomW.z);
   float glowNear = 1.0 / (1.0 + 0.015 * glowD * glowD);
   vec3 glow = mix(uGlowNeg, uGlowPos, smoothstep(-uHalfW, uHalfW, vRoomW.x));
   vec3 glowHue = glow / max(max(glow.r, glow.g), max(glow.b, 0.05));
@@ -510,7 +512,15 @@ const GLOW_APPLY = `float glowD = max(0.0, uScreenZ - vRoomW.z);
   outgoingLight += glowHue * glowNear * dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722)) * (0.6 + 0.8 * uLuma);
   #include <opaque_fragment>`;
 
-function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null }) {
+/** House lights (owner, 2026-11-22): up while seats are being chosen, down once the film's still is on the screen.
+ *  "down" is the level the room's baked light, the downlights and the wall strips sink to; the exit and entry signs, the
+ *  step lights and the projector port stay lit, as they do in a real cinema. Eased over ~1.5 s, like a dimmer. */
+const HOUSE_DOWN = 0.55;
+const DIMMED = /^emit_(dl|led_strip)/;
+
+function BakedRoom({ n, film, tone, meta, paint, houseDown }: {
+  n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean;
+}) {
   const invalidate = useThree((s) => s.invalidate);
   const painted = usePainted(paint, meta.screen.w / meta.screen.h);
   const still = useScreenArt(film, tone);
@@ -519,14 +529,16 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
   const screen = useRef<Mesh | null>(null);
   // the light on the room now (eased in useFrame below toward `target`, the light the current picture casts)
   const glowU = useMemo(() => ({
+    uHouse: { value: 1 },
     uGlowPos: { value: new Color(...NO_GLOW.left) }, uGlowNeg: { value: new Color(...NO_GLOW.right) },
     uLuma: { value: NO_GLOW.luma }, uScreenZ: { value: meta.screen.z },
     uHalfW: { value: Math.max(...meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 },
   }), [meta]);
   const target = useRef<Glow>(NO_GLOW);
+  const lamps = useRef<{ material: MeshBasicMaterial; full: Color }[]>([]);
   const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
   const fill = useRef<{ color: Color; intensity: number } | null>(null);
-  const house = useRef<{ color: Color } | null>(null);
+  const house = useRef<{ color: Color; intensity: number } | null>(null);
   useEffect(() => {
     let live = true;
     new GLTFLoader().load(`/halls/hall${n}.glb`, (g) => {
@@ -555,7 +567,9 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
           geo.setAttribute("uv", new BufferAttribute(uv, 2));
           screen.current = m;
         } else if (m.name.startsWith("emit_")) {
-          m.material = new MeshBasicMaterial({ color: was.emissive.clone().multiplyScalar(Math.min(was.emissiveIntensity * 0.6, 6)), toneMapped: false });
+          const full = was.emissive.clone().multiplyScalar(Math.min(was.emissiveIntensity * 0.6, 6));
+          m.material = new MeshBasicMaterial({ color: full.clone(), toneMapped: false });
+          if (DIMMED.test(m.name)) lamps.current.push({ material: m.material as MeshBasicMaterial, full });
         }
       });
       setRoom(g.scene);
@@ -569,8 +583,14 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
     target.current = sampleGlow(art);
     invalidate();
   }, [art, invalidate]);
+  const down = houseDown && !!art?.userData.still;
+  useEffect(() => invalidate(), [down, invalidate]);
   useFrame((_, delta) => {
     const k = 1 - Math.exp(-Math.min(delta, 0.1) * 3); // ~1 s to settle on a new picture
+    const level = down ? HOUSE_DOWN : 1;
+    const dimming = Math.abs(glowU.uHouse.value - level) > 1e-3;
+    glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 2));
+    for (const l of lamps.current) l.material.color.copy(l.full).multiplyScalar(glowU.uHouse.value);
     const t = target.current;
     const off = (c: Color, v: Glow["left"]) => Math.abs(c.r - v[0]) + Math.abs(c.g - v[1]) + Math.abs(c.b - v[2]);
     const settling = Math.abs(t.luma - glowU.uLuma.value) > 1e-3 || off(glowU.uGlowPos.value, t.left) > 3e-3
@@ -589,11 +609,14 @@ function BakedRoom({ n, film, tone, meta, paint }: { n: number; film: Film | nul
     // the room's soft fill is mostly light bounced off the screen: half house-warm, half the picture's hue
     if (fill.current) {
       fill.current.color.copy(WARM_FILL).lerp(seatLight.current?.color ?? WARM_FILL, 0.5);
-      fill.current.intensity = 0.35 * (0.6 + 0.9 * SCREEN_LIGHT.luma);
+      fill.current.intensity = 0.35 * (0.6 + 0.9 * SCREEN_LIGHT.luma) * (0.5 + 0.5 * glowU.uHouse.value);
     }
     // the house light over the seat backs is partly screen light off the ceiling and walls
-    if (house.current && seatLight.current) house.current.color.copy(HOUSE_WARM).lerp(seatLight.current.color, 0.35);
-    if (settling) invalidate();
+    if (house.current && seatLight.current) {
+      house.current.color.copy(HOUSE_WARM).lerp(seatLight.current.color, 0.35);
+      house.current.intensity = 12 * glowU.uHouse.value;
+    }
+    if (settling || dimming) invalidate();
   });
   useEffect(() => {
     if (!screen.current) return;
@@ -700,12 +723,14 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
   );
 }
 
-export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false }: {
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false }: {
   map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
   onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null; paint?: Paint | null;
   /** CR-005: the landing's seat - no seat to click, no hover, no dragging; the camera moves only when told to. */
   locked?: boolean;
+  /** The house lights go down once the film's still is on the screen (the landing); up while choosing seats. */
+  houseDown?: boolean;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
@@ -756,7 +781,7 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
-      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
       {KINDS.map((k) => (byKind[k].length ? (
         <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={locked ? () => undefined : pick}
                   onHover={locked ? () => undefined : hoverSeat} baked={!!baked} />
