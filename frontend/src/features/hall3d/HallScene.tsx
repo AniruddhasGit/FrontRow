@@ -17,6 +17,7 @@ import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, pack
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { stillPath } from "./still";
 import { FLICKER_S, flickerLevel } from "./flicker";
+import { DOUBLE_MS, seatAction, type SeatGesture } from "./gestures";
 import { hallDrawn } from "./hallReady";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
@@ -210,7 +211,7 @@ function lightSeats(m: Material, shU: Record<string, { value: unknown }>, glow: 
 }
 
 function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
-  kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
   baked: boolean; lit: SeatLit | null;
 }) {
   const ref = useRef<InstancedMesh>(null);
@@ -292,6 +293,9 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
   }, [items, colourOf, geo, invalidate]);
 
   const seatAt = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId === undefined ? null : items[e.instanceId]?.seat ?? null);
+  // gestures.ts: a click waits DOUBLE_MS, so the second click of a double click cancels it and the camera stays put
+  const single = useRef(0);
+  useEffect(() => () => clearTimeout(single.current), []);
   return (
     <>
     {geo.frame && <instancedMesh key={"f" + items.length} ref={frameRef} args={[geo.frame, frameMaterial, items.length]} raycast={() => null} />}
@@ -299,7 +303,22 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
       onClick={(e) => {
         e.stopPropagation();
         const s = seatAt(e);
-        if (s && e.delta < 6) onPick(s); // a drag to look around is not a tap
+        clearTimeout(single.current);
+        if (!s || e.delta >= 6 || e.nativeEvent.detail >= 2) return; // a drag to look around is not a tap
+        single.current = window.setTimeout(() => onPick(s, "click"), DOUBLE_MS);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        clearTimeout(single.current);
+        const s = seatAt(e);
+        if (s) onPick(s, "double");
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        const s = seatAt(e);
+        if (!s) return;
+        e.nativeEvent.preventDefault(); // a right click on a seat is ours, not the browser's menu
+        onPick(s, "right");
       }}
       onPointerMove={(e) => {
         e.stopPropagation();
@@ -837,7 +856,7 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
 
 /** Every seat model's instances; a probe-lit hall (CR-010) also loads its reflection panorama here, once. */
 function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env }: {
-  byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
   baked: boolean; glow: GlowU | null; env: string | undefined;
 }) {
   const map = useHallEnv(glow ? env : undefined);
@@ -885,11 +904,13 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
     };
   }, [live, mine, hover, tone, closed, baked]);
 
-  const pick = (stale: Seat) => {
+  // owner, 2026-11-23: click = go to the seat's view; double click = choose it (stay put); right click = take it back
+  const pick = (stale: Seat, g: SeatGesture) => {
     const seat = live.get(stale.id) ?? stale;
     const v = visualOf(seat, mine);
-    if (selectable(seat, v, closed)) onTap(seat, v); // the 2D map's own guard, then its own handler
-    onLook(seat); // any seat, choosable or not, can be previewed from
+    const act = seatAction(g, v, selectable(seat, v, closed));
+    if (act === "look") onLook(seat);
+    else if (act !== "none") onTap(seat, v); // the 2D map's own handler: adds a free seat, gives back one of yours
   };
   const hoverSeat = (s: Seat | null) => {
     const seat = s ? live.get(s.id) ?? s : null;
