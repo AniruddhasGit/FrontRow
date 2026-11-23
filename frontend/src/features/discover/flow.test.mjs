@@ -80,14 +80,13 @@ test("the hero door's show: the chosen one if open, else the first open one, els
   assert.equal(d.doorShow([s(1, true)], null), null);
 });
 
-test("the hero door is one real button named for the show, the screen above it, ENTER below, and the time", () => {
+test("the hero door: the corridor picture is a button named for the show, and a Book button does the same", () => {
   const show = { id: 7, starts_at: "2026-11-22T19:30:00+05:30", screen: { id: 3, name: "SCREEN 3" }, sales_closed: false };
   const doc = render(TheatreDoor, { show, film: { title: "Silent Sky" } });
   const buttons = all(doc, (e) => role(e) === "button");
-  assert.equal(buttons.length, 1);
+  assert.equal(buttons.length, 2);
   assert.equal(name(buttons[0], doc), "Enter SCREEN 3 for Silent Sky at 7:30 pm");
-  assert.match(text(doc), /ENTER/);
+  assert.match(name(buttons[1], doc), /^Book · SCREEN 3 · 7:30 pm$/);
   assert.match(text(doc), /SCREEN 3/);
-  assert.match(text(doc), /7:30 pm/);
 });
 

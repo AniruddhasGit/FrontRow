@@ -33,7 +33,9 @@ function walkIn(showtimeId: number) {
   navigate(`/showtimes/${showtimeId}`, nextHallDrawn());
 }
 
-const LAMPS = [0, 1, 2, 3, 4]; // ceiling lamps, near to far
+// Cycles renders of the corridor, per screen, with the door ajar and open (claude_leash Graphics/FrontRow,
+// corridor_render.py). The doorway sits at DOORWAY in the image; object-position pins it there in the box too.
+const art = (n: number, state: "ajar" | "open") => `/art/corridor/screen${n}_${state}.webp`;
 
 export function TheatreDoor({ show, film, onFly }: {
   show: DoorShow | null; film: { title: string }; onFly?: (flying: boolean) => void;
@@ -62,6 +64,7 @@ export function TheatreDoor({ show, film, onFly }: {
 
   const at = show ? timeLabel(show.starts_at) : "";
   const open = !!show && !show.sales_closed;
+  const n = (show && screenNumber(show.screen.name)) || 1;
   const press = () => {
     if (!show || !open) return;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return walkIn(show.id);
@@ -74,32 +77,26 @@ export function TheatreDoor({ show, film, onFly }: {
   const style: CSSProperties | undefined = flying ? (full
     ? { position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh" }
     : { position: "fixed", ...box }) : undefined;
+  const busy = !open || door.kind === "flying";
   return (
     <>
-      {flying ? <div className="fr-corridor-keep" /> : null}
-      <div ref={ref} className="fr-corridor" data-door={door.kind} data-full={full || undefined} style={style}>
-        <div className="fr-corridor-zoom">
-          <div className="fr-corridor-room" aria-hidden="true">
-            <span className="fr-corridor-ceiling" />
-            <span className="fr-corridor-wall fr-corridor-left" />
-            <span className="fr-corridor-wall fr-corridor-right" />
-            <span className="fr-corridor-floor" />
-            {LAMPS.map((i) => <span key={i} className="fr-corridor-lamp" style={{ ["--d" as string]: i }} />)}
-          </div>
-          <div className="fr-corridor-end">
-            <p className="fr-corridor-screen" aria-hidden="true">{show ? show.screen.name : "SCREEN"}</p>
-            <button type="button" className="fr-corridor-door" disabled={!open || door.kind === "flying"} onClick={press}
-                    aria-label={open ? `Enter ${show!.screen.name} for ${film.title} at ${at}` : "No show open to enter"}>
-              <span className="fr-corridor-gap" aria-hidden="true" />
-              <span className="fr-corridor-leaf" aria-hidden="true"><span className="fr-corridor-pane" /></span>
-            </button>
-            <p className="fr-corridor-enter" aria-hidden="true"><span>ENTER</span></p>
-          </div>
+      <div className="fr-corridor-box">
+        {flying ? <div className="fr-corridor-keep" /> : null}
+        <div ref={ref} className="fr-corridor" data-door={door.kind} data-full={full || undefined} style={style}>
+          {/* the whole picture is the door's button: the door is small in it, and the corridor is the way in */}
+          <button type="button" className="fr-corridor-door" disabled={busy} onClick={press}
+                  aria-label={open ? `Enter ${show!.screen.name} for ${film.title} at ${at}` : "No show open to enter"}>
+            <span className="fr-corridor-zoom" aria-hidden="true">
+              <img className="fr-corridor-shot" src={art(n, "ajar")} alt="" decoding="async" />
+              <img className="fr-corridor-shot fr-corridor-opened" src={art(n, "open")} alt="" decoding="async" />
+            </span>
+          </button>
         </div>
-        <p className="fr-corridor-plate">
-          {open ? <><span className="fr-mono">{show!.screen.name} · {at}</span> · push the door to walk in</> : "Choose a showtime below"}
-        </p>
       </div>
+      {/* the same flight, for anyone who does not think of pushing the door */}
+      <button type="button" className="fr-action fr-corridor-book" disabled={busy} onClick={press}>
+        {open ? <>Book <span className="fr-mono">· {show!.screen.name} · {at}</span></> : "Choose a showtime below"}
+      </button>
     </>
   );
 }
