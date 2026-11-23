@@ -117,9 +117,10 @@
 }
 /* As the corridor fills the window the door swings open onto the dark hall (the strip, frame by frame), then you step
    towards it - a short push, never far enough to magnify the render - and everything fades to black into the hall. */
+.fr-corridor-swing[data-peek],
 .fr-corridor[data-door="flying"] .fr-corridor-swing {
   opacity: 1;
-  animation: fr-door-swing 650ms steps(11, jump-none) 380ms both;
+  animation: fr-door-swing 650ms steps(12, jump-none) 380ms both; /* 12 stops = the 12 frames, never half of two */
 }
 @keyframes fr-door-swing {
   from { background-position-x: 0%; }

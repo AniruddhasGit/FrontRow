@@ -11,7 +11,6 @@ import {
   PMREMGenerator, RGBAFormat, RingGeometry, SRGBColorSpace, ShaderChunk, TextureLoader, Vector3, type BufferGeometry, type Group, type Material, type Mesh,
   type PerspectiveCamera, type Texture,
 } from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, packSH } from "./seatLight";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
@@ -19,6 +18,7 @@ import { stillPath } from "./still";
 import { FLICKER_S, flickerLevel } from "./flicker";
 import { DOUBLE_MS, seatAction, type SeatGesture } from "./gestures";
 import { hallDrawn } from "./hallReady";
+import { loadRoom } from "./preload";
 import { HALL_CAP_MS, readiness, settled, type PartState, type Parts } from "./readiness";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
@@ -681,8 +681,10 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU, mark }: {
   const house = useRef<{ color: Color; intensity: number } | null>(null);
   useEffect(() => {
     let live = true;
-    new GLTFLoader().load(`/halls/hall${n}.glb`, (g) => {
+    // the parse may already be done: the film page starts it (preload.ts); the clone keeps the cached scene untouched
+    loadRoom(n).then((gl) => {
       if (!live) return;
+      const g = { scene: gl.scene.clone(true) };
       g.scene.traverse((o) => {
         const m = o as Mesh;
         if (!m.isMesh) return;
@@ -715,7 +717,7 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU, mark }: {
       setRoom(g.scene);
       mark("room", "loaded"); // GLTFLoader answers once the room's textures are in too
       invalidate();
-    }, undefined, () => live && mark("room", "failed")); // no room file: the page's fallback (readiness.ts)
+    }, () => live && mark("room", "failed")); // no room file: the page's fallback (readiness.ts)
     return () => {
       live = false;
     };
