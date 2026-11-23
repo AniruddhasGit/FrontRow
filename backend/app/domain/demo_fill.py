@@ -7,7 +7,7 @@ backfill is scripts/demo_bookings.py.
 THE TARGET. A show's share of seats sold at time T is final(show) * ramp(days until it starts). final is fixed per show
 (a hash of its id, never random): about 0.82 on a weekday afternoon, more for Friday to Sunday and for evenings, less
 for a morning, with about 1 show in 12 nearly sold out and 1 in 14 weak; across many shows it averages 80-90%.
-ramp = 0.08 + 0.92 * exp(-days / 5.5): ~10% three weeks out, ~34% a week out, ~72% two days out, 100% at the start.
+ramp = 0.08 + 0.92 * exp(-days / 5.5): ~10% 21 days out, ~34% a week out, ~72% two days out, 100% at the start.
 
 THE SEATS. Free seats are ranked by how good they are (near the centre column, about 60% of the way back, a premium or
 recliner seat first) plus a per-show jitter, and taken in groups of 1 to 6 side by side in one row, mostly pairs. Each
@@ -30,7 +30,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import random
 import secrets
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -108,7 +107,29 @@ def target_share(showtime_id: int, starts_at: datetime, now: datetime, zone: Zon
     return final_share(showtime_id, starts_at.astimezone(zone)) * ramp((starts_at - now).total_seconds() / 86400)
 
 
-def choose(seats: list[tuple[int, int, int, int, int]], need: int, rng: random.Random, salt: int) -> list[list[tuple]]:
+class Draws:
+    """A repeatable stream of draws for one show, from blake2b (the same key gives the same seats; never `random`, S-TKT-01)."""
+
+    def __init__(self, *key: object) -> None:
+        self.key, self.n = key, 0
+
+    def random(self) -> float:
+        self.n += 1
+        return _unit(*self.key, self.n)
+
+    def randrange(self, stop: int) -> int:
+        return min(int(self.random() * stop), stop - 1)
+
+    def choices(self, items, weights):
+        x, acc = self.random() * sum(weights), 0.0
+        for item, w in zip(items, weights):
+            acc += w
+            if x < acc:
+                return [item]
+        return [items[-1]]
+
+
+def choose(seats: list[tuple[int, int, int, int, int]], need: int, rng: Draws, salt: int) -> list[list[tuple]]:
     """Groups of free seats side by side, best seats first. seats: (seat_id, row, col, category_id, uplift_bp) of the
     FREE seats only. Returns at most `need` seats in groups."""
     if not seats or need <= 0:
@@ -190,7 +211,7 @@ async def fill(conn: AsyncConnection, redis, now: datetime, *, horizon_days: int
                 free.setdefault(show_id, []).append((seat_id, row, col, cat, uplift))
             wanted = []
             for s, need in plan:
-                rng = random.Random(f"{s.id}:{s.sold}")
+                rng = Draws(s.id, s.sold)
                 groups = choose(free.get(s.id, []), need, rng, s.id)
                 if redis is not None and groups:
                     token = f"demo-fill-{secrets.token_hex(8)}"
