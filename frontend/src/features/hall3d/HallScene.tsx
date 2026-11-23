@@ -16,6 +16,7 @@ import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, packSH } from "./seatLight";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { stillPath } from "./still";
+import { FLICKER_S, flickerLevel } from "./flicker";
 import { hallDrawn } from "./hallReady";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
@@ -455,7 +456,7 @@ const N_DUST = 900;
 const WHITE = new Color(1, 1, 1);
 const WARM_FILL = new Color("#6b4a3a");
 const HOUSE_WARM = new Color("#e8a868");
-const SCREEN_LIGHT = { color: new Color(0.78, 0.85, 1.0), luma: 0.25 };
+const SCREEN_LIGHT = { color: new Color(0.78, 0.85, 1.0), luma: 0.25, flick: 1 }; // flick: the projector stutter (flicker.ts)
 const BEAM = new ShaderMaterial({
   transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, vertexColors: true,
   uniforms: { uTint: { value: new Color(0.78, 0.85, 1.0) } },
@@ -509,7 +510,7 @@ function Haze({ meta }: { meta: BakedMeta }) {
   useFrame(({ clock }) => {
     // the beam and its dust carry the picture's light: whiter than the picture (a projector beam is mostly white
     // light), brighter for a bright frame
-    BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar(0.55 + 0.9 * SCREEN_LIGHT.luma);
+    BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar((0.55 + 0.9 * SCREEN_LIGHT.luma) * SCREEN_LIGHT.flick);
     specks.current?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55);
     if (still) return;
     const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
@@ -623,6 +624,8 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
+  const shown = useRef<{ material: MeshBasicMaterial; base: Color } | null>(null);
+  const flickFrom = useRef(-1); // performance.now() of the film change; -1 when no flicker is running
   const target = useRef<Glow>(NO_GLOW);
   const lamps = useRef<{ material: MeshBasicMaterial; full: Color }[]>([]);
   const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
@@ -705,11 +708,28 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
       house.current.color.copy(HOUSE_WARM).lerp(seatLight.current.color, 0.35);
       house.current.intensity = 12 * glowU.uHouse.value;
     }
-    if (settling || dimming) invalidate();
+    let flickering = false;
+    if (flickFrom.current >= 0) {
+      const e = (performance.now() - flickFrom.current) / 1000;
+      SCREEN_LIGHT.flick = flickerLevel(e);
+      if (shown.current) shown.current.material.color.copy(shown.current.base).multiplyScalar(SCREEN_LIGHT.flick);
+      flickering = e < FLICKER_S;
+      if (!flickering) flickFrom.current = -1;
+    }
+    if (settling || dimming || flickering) invalidate();
   });
+  // a new film: the projector stutters back on (not with reduced motion)
+  useEffect(() => {
+    if (!film || reducedMotion()) return;
+    flickFrom.current = performance.now();
+    invalidate();
+  }, [film?.id, invalidate]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!screen.current) return;
-    screen.current.material = new MeshBasicMaterial({ map: art, color: art ? new Color(1.2, 1.2, 1.2) : tone.screen, toneMapped: false });
+    const base = art ? new Color(1.2, 1.2, 1.2) : new Color(tone.screen);
+    const material = new MeshBasicMaterial({ map: art, color: base.clone().multiplyScalar(SCREEN_LIGHT.flick), toneMapped: false });
+    screen.current.material = material;
+    shown.current = { material, base };
     invalidate();
   }, [art, room, tone, invalidate]);
   // the first frame with the room in it tells a waiting page change it may show this page now (hallReady.ts)

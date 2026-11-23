@@ -13,11 +13,23 @@
   scrollbar-color: var(--fr-control-edge) transparent;
 }
 
-/* ---- the room: a faint spill of screen-light at the top of every page ---- */
+/* ---- the room: a faint spill of screen-light at the top of every page ----
+   Owner, 2026-11-23: "some kind of image/texture in the background instead of the plain dark blue". The page is the
+   inside of a cinema, drawn in CSS (no image to download): fine film grain, velvet curtain folds that fade out down
+   the page, the screen's cold spill at the top and the warm brass of the house lights low on each side. It stays
+   behind the content (fixed), and it is dim: text contrast is unchanged. */
 body {
   background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"),
     radial-gradient(ellipse 80rem 28rem at 50% -6rem, color-mix(in srgb, var(--fr-screen-glow) 70%, transparent), transparent 70%) no-repeat,
+    radial-gradient(ellipse 34rem 26rem at -6rem 105%, color-mix(in srgb, var(--fr-surface-accent) 14%, transparent), transparent 70%) no-repeat,
+    radial-gradient(ellipse 34rem 26rem at calc(100% + 6rem) 105%, color-mix(in srgb, var(--fr-surface-accent) 14%, transparent), transparent 70%) no-repeat,
+    linear-gradient(transparent 0, color-mix(in srgb, var(--fr-surface-base) 35%, transparent) 70%, color-mix(in srgb, var(--fr-surface-base) 85%, transparent) 100%),
+    repeating-linear-gradient(90deg,
+      transparent 0, color-mix(in srgb, var(--fr-surface-accent) 7%, transparent) 1.6rem,
+      transparent 3.4rem, color-mix(in srgb, var(--fr-surface-base) 80%, transparent) 4.4rem, transparent 5.6rem),
     var(--fr-surface-base);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

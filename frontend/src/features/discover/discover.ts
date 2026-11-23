@@ -301,3 +301,16 @@ export const DOOR_OPEN_MS = 700;
 export function pressDoor(d: Door, showtimeId: number): Door {
   return d.kind === "opening" ? d : { kind: "opening", showtimeId };
 }
+
+/** The landing rail (owner, 2026-11-23): scrolling the list changes the film, and the list ends at its last film (no
+ *  empty tail), so the scroll position picks the film by how far down the list it is: the top is the first film, the
+ *  bottom the last. `max` is scrollHeight - clientHeight; a list that does not scroll keeps `current`. */
+export function railPick(scrollTop: number, max: number, n: number, current: number): number {
+  if (n <= 0) return -1;
+  if (!(max > 1)) return current;
+  return Math.round(Math.min(1, Math.max(0, scrollTop / max)) * (n - 1));
+}
+/** The scroll position that shows film `i` of `n` as the chosen one (the inverse of railPick). */
+export function railTop(i: number, max: number, n: number): number {
+  return n > 1 ? (i / (n - 1)) * max : 0;
+}

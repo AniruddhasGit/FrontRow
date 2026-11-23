@@ -82,3 +82,14 @@ test("F5: the door is one real button named for the show, with ENTER above it an
   assert.match(text(doc), /7:30 pm/);
   assert.match(text(doc), /adults only/i);
 });
+
+// The landing rail: scrolling chooses the film, top = first, bottom = last, no empty tail needed (owner, 2026-11-23)
+import { railPick, railTop } from "./discover.ts";
+test("the rail's scroll position picks the film, and the ends reach the first and the last", () => {
+  assert.equal(railPick(0, 600, 10, 4), 0);
+  assert.equal(railPick(600, 600, 10, 4), 9);
+  assert.equal(railPick(300, 600, 10, 0), 5);
+  assert.equal(railPick(900, 600, 10, 0), 9);
+  assert.equal(railPick(0, 0, 10, 3), 3); // a list that fits keeps the choice
+  for (let i = 0; i < 10; i++) assert.equal(railPick(railTop(i, 600, 10), 600, 10, -1), i);
+});
