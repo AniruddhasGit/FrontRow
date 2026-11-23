@@ -185,17 +185,20 @@ async def get_poster(request: Request, movie_id: Id) -> Response:
 
 
 BAD_REVIEW_SORT = "Sort reviews by newest or helpful."
+BAD_REVIEW_BAND = "Filter reviews by 9-10, 7-8, 5-6, 3-4 or 1-2."
 
 
 @router.get("/movies/{movie_id}/reviews")
-async def movie_reviews(request: Request, movie_id: Id, sort: str = Query("newest")) -> Response:
+async def movie_reviews(request: Request, movie_id: Id, sort: str = Query("newest"), band: str | None = Query(None)) -> Response:
     """CR-011 F4: the film page's reviews, public like the film itself. Uncached: a vote or an edit shows at once, and
-    it is read once per film page visit (no poll)."""
+    it is read once per film page visit (no poll). CR-013: ?band= narrows the list to one star band."""
     if sort not in catalogue.REVIEW_SORTS:
         raise ApiError(422, "VALIDATION_FAILED", BAD_REVIEW_SORT, {"field": "sort"})
+    if band is not None and band not in catalogue.REVIEW_BANDS:
+        raise ApiError(422, "VALIDATION_FAILED", BAD_REVIEW_BAND, {"field": "band"})
     async with _db(request) as conn:
         zones = await catalogue.load_zones(conn)
-        found = await catalogue.reviews(conn, request.app.state.clock.now(), movie_id, sort, catalogue.default_zone(zones))
+        found = await catalogue.reviews(conn, request.app.state.clock.now(), movie_id, sort, catalogue.default_zone(zones), band)
     if found is None:
         raise ApiError(404, "NOT_FOUND", MOVIE_NOT_SHOWING)
     return Response(_json(found), media_type="application/json")

@@ -1,4 +1,5 @@
-"""CR-008 T9 search, T11/T12 film details, ratings and likes - the rating gate is the server's, tested with a refusal.
+"""CR-008 T9 search, T11/T12 film details, ratings and likes - the rating gate is the server's, tested with a refusal
+(CR-013: the gate is now "the film is out", refused for a coming-soon film below).
 
 The pay lane's world (tests/pay/kit.py): one film "The Long Night", showtime 7 at 20:00 IST on 14 Aug (14:30Z); the
 clock starts at 14:00Z, half an hour before it.
@@ -28,19 +29,14 @@ async def test_every_new_account_route_needs_a_session(world):
             assert (r.status_code, r.json()["error"]["code"]) == (401, "AUTH_REQUIRED"), path
 
 
-async def test_rating_is_refused_without_a_started_paid_booking_and_counted_after(world):
+async def test_any_signed_in_customer_rates_a_released_film_and_it_is_counted(world):
+    # CR-013 (owner request 2026-11-23, amended): a rating no longer needs a started paid booking, so the two 403s this
+    # test asserted (booked but not started, never booked) are gone and can_rate is true for a released film.
     db, film = world["db"], world["movie"]
-    viewer, stranger = user(db), user(db)
-    book(db, viewer, SHOWTIME, [F7])
+    viewer = user(db)
     clock = clock_at()  # 14:00Z: the show has not started yet
     async with api(db, clock) as c:
-        mine, theirs = cookies(c, viewer), cookies(c, stranger)
-        r = await c.put(f"/api/me/ratings/{film}", json={"score": 8}, cookies=mine)
-        assert (r.status_code, r.json()["error"]["code"]) == (403, "FORBIDDEN")  # booked, but the show has not started
-        assert (await c.get(f"/api/me/movies/{film}", cookies=mine)).json()["can_rate"] is False
-        clock.set(AFTER_START)
-        r = await c.put(f"/api/me/ratings/{film}", json={"score": 8}, cookies=theirs)
-        assert (r.status_code, r.json()["error"]["code"]) == (403, "FORBIDDEN")  # never booked: refused
+        mine = cookies(c, viewer)
         assert (await c.get(f"/api/me/movies/{film}", cookies=mine)).json() == {
             "movie_id": film, "score": None, "can_rate": True, "liked": False, "coming_soon": False,
             "review": None, "review_id": None, "voted": []}  # review, review_id, voted: CR-011 F4
@@ -69,7 +65,9 @@ async def test_the_average_is_half_up_in_tenths_and_a_failed_payment_is_no_ticke
         await c.put(f"/api/me/ratings/{film}", json={"score": 7}, cookies=cookies(c, a))
         r = await c.put(f"/api/me/ratings/{film}", json={"score": 8}, cookies=cookies(c, b))
         assert r.json()["rating"]["average_tenths"] == 75  # 7.5, not 7 or 8 (the half-up rule is exercised)
-        assert (await c.put(f"/api/me/ratings/{film}", json={"score": 1}, cookies=cookies(c, unpaid))).status_code == 403
+        # CR-013 (owner request 2026-11-23, amended): a failed payment no longer stops a rating (any signed-in customer
+        # rates); it only keeps the "Saw it at FrontRow" badge off, tested in tests/cr11/test_reviews.py.
+        assert (await c.put(f"/api/me/ratings/{film}", json={"score": 1}, cookies=cookies(c, unpaid))).status_code == 200
 
 
 async def test_likes_are_for_films_not_yet_out_toggle_and_count(world):

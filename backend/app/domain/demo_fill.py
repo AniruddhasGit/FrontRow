@@ -36,7 +36,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Integer, and_, cast, exists, func, select, text
+from sqlalchemy import Integer, and_, case, cast, exists, false, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -60,10 +60,17 @@ GROUPS = (1, 2, 3, 4, 5, 6)
 GROUP_WEIGHTS = (12, 40, 14, 20, 7, 7)  # mostly pairs and fours
 
 
-def crowd_statement():
+def crowd():
+    """THE crowd-account predicate on users (CR-013: also the review badge's demo half). The number is cast only once the
+    pattern has matched (a CASE, since Postgres may reorder an AND), so no other email can make the cast fail."""
     number = func.split_part(func.substr(users.c.email, 10), "@", 1)
-    return (select(users.c.id).where(users.c.role == "customer", users.c.email.op("~")(r"^customer-[0-9]+@[^@]+[.]invalid$"),
-                                     cast(number, Integer) >= CROWD_FIRST).order_by(users.c.id))
+    return and_(users.c.role == "customer",
+                case((users.c.email.op("~")(r"^customer-[0-9]+@[^@]+[.]invalid$"), cast(number, Integer) >= CROWD_FIRST),
+                     else_=false()))
+
+
+def crowd_statement():
+    return select(users.c.id).where(crowd()).order_by(users.c.id)
 
 
 def _unit(*key: object) -> float:

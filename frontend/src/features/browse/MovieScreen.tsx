@@ -142,7 +142,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
                     </span>
                   </span>
                 )}
-                <a className="fr-action-secondary fr-rate-now" href="#film-ratings" onClick={(e) => jump(e, "film-ratings")}>
+                <a className="fr-action-secondary fr-rate-now" href="#film-rate" onClick={(e) => jump(e, "film-rate")}>
                   {film.coming_soon ? "Like it" : "Rate now"}
                 </a>
               </div>

@@ -1,9 +1,10 @@
 // CR-008 T12: the film page's full details (description, genres, runtime, certificate, language, release date, cast,
-// crew) and its ratings (average, count, the 1-10 breakdown) with the viewer's own control: rate 1-10 once a show they
-// booked has started (the server decides, EP-ACC-20), or like a film that is coming soon (EP-ACC-21).
+// crew) and its ratings (average, count, the 1-10 breakdown) with the viewer's own control: rate 1-10 a released film
+// (CR-013: any signed-in customer; the server decides, EP-ACC-20), or like a film that is coming soon (EP-ACC-21).
 // One status for the viewer's half (Mine) and one for a write (Write); no timer, no poll.
-// CR-011 F3/F4: cast and crew as wrapping portrait tiles (initials, no photos), a verified viewer's review form beside
-// their score, and the film's reviews under the ratings (Reviews.tsx).
+// CR-011 F3/F4: cast and crew as wrapping portrait tiles (initials, no photos), the review form beside the score, and the
+// film's reviews under the ratings (Reviews.tsx). CR-013: "Your rating" sits at the top of the reviews (#film-rate); for a
+// coming-soon film (no reviews) the Like stays in the ratings box under the same id.
 import { useEffect, useState } from "react";
 import { get, send, type FilmDetail } from "../browse/api";
 import { runtimeName } from "../browse/logic";
@@ -70,6 +71,47 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
     ["Release date", film.release_date ? releaseLabel(film.release_date) : "Not announced"],
     ["Genres", film.genres.length ? film.genres.map((g) => g.name).join(", ") : "None listed"],
   ];
+  const mineBlock = (
+    <div className="fr-my" id="film-rate">
+      <h3>{film.coming_soon ? "Want to see it?" : "Your rating"}</h3>
+      {mine.kind === "loading" ? <p>Checking your account…</p>
+        : mine.kind === "error" ? <p>Your rating cannot be loaded right now.</p>
+        : mine.kind === "guest" ? (
+          <p><Link to={signInHref(`/movies/${film.id}`)}>Sign in</Link> {film.coming_soon ? "to like this film." : "to rate and review it."}</p>
+        ) : film.coming_soon ? (
+          <button type="button" className="fr-action-secondary fr-like" aria-pressed={mine.me.liked}
+                  disabled={write.kind === "saving"} onClick={() => void like()}>
+            <span aria-hidden="true">{mine.me.liked ? "♥" : "♡"}</span> {mine.me.liked ? "Liked" : "Like"}
+          </button>
+        ) : mine.me.can_rate ? (
+          <>
+            <p>{mine.me.score ? `You gave it ${mine.me.score}. Choose again to change it.` : "How was it? Choose a score."}</p>
+            <div role="group" aria-label="Rate this film from 1 to 10" className="fr-scores">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                <button key={n} type="button" className="fr-choice" aria-pressed={mine.me.score === n} aria-label={`${n} out of 10`}
+                        disabled={write.kind === "saving"} onClick={() => void rate(n)}>{n}</button>
+              ))}
+            </div>
+            {/* CR-011 F4: the review goes with the score; editing reopens the same form */}
+            {!mine.me.score ? null : draft === null ? (
+              <button type="button" className="fr-action-secondary fr-review-open" onClick={() => setDraft(mine.me.review ?? "")}>
+                {mine.me.review ? "Edit your review" : "Write a review"}
+              </button>
+            ) : (
+              <form className="fr-review-form" onSubmit={(e) => { e.preventDefault(); void review(); }}>
+                <label htmlFor="review-text">Your review ({mine.me.score} out of 10)</label>
+                <textarea id="review-text" rows={4} maxLength={2000} value={draft} onChange={(e) => setDraft(e.target.value)} />
+                <div className="fr-review-actions">
+                  <button type="submit" className="fr-action" disabled={write.kind === "saving"}>Post review</button>
+                  <button type="button" className="fr-action-secondary" onClick={() => setDraft(null)}>Cancel</button>
+                </div>
+              </form>
+            )}
+          </>
+        ) : <p>Ratings open once the film is out.</p>}
+      <p role="status" className="fr-share-note">{write.kind === "failed" ? write.message : write.kind === "saving" ? "Saving…" : ""}</p>
+    </div>
+  );
   const most = Math.max(1, ...film.rating.breakdown);
   const avg = ratingText(film.rating);
   return (
@@ -105,48 +147,12 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
             </ol>
           </>
         )}
-        <div className="fr-my">
-          <h3>{film.coming_soon ? "Want to see it?" : "Your rating"}</h3>
-          {mine.kind === "loading" ? <p>Checking your account…</p>
-            : mine.kind === "error" ? <p>Your rating cannot be loaded right now.</p>
-            : mine.kind === "guest" ? (
-              <p><Link to={signInHref(`/movies/${film.id}`)}>Sign in</Link> {film.coming_soon ? "to like this film." : "to rate a film you have seen here."}</p>
-            ) : film.coming_soon ? (
-              <button type="button" className="fr-action-secondary fr-like" aria-pressed={mine.me.liked}
-                      disabled={write.kind === "saving"} onClick={() => void like()}>
-                <span aria-hidden="true">{mine.me.liked ? "♥" : "♡"}</span> {mine.me.liked ? "Liked" : "Like"}
-              </button>
-            ) : mine.me.can_rate ? (
-              <>
-                <p>{mine.me.score ? `You gave it ${mine.me.score}. Choose again to change it.` : "You have seen it: how was it?"}</p>
-                <div role="group" aria-label="Rate this film from 1 to 10" className="fr-scores">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                    <button key={n} type="button" className="fr-choice" aria-pressed={mine.me.score === n} aria-label={`${n} out of 10`}
-                            disabled={write.kind === "saving"} onClick={() => void rate(n)}>{n}</button>
-                  ))}
-                </div>
-                {/* CR-011 F4: the review goes with the score; editing reopens the same form */}
-                {!mine.me.score ? null : draft === null ? (
-                  <button type="button" className="fr-action-secondary fr-review-open" onClick={() => setDraft(mine.me.review ?? "")}>
-                    {mine.me.review ? "Edit your review" : "Write a review"}
-                  </button>
-                ) : (
-                  <form className="fr-review-form" onSubmit={(e) => { e.preventDefault(); void review(); }}>
-                    <label htmlFor="review-text">Your review ({mine.me.score} out of 10)</label>
-                    <textarea id="review-text" rows={4} maxLength={2000} value={draft} onChange={(e) => setDraft(e.target.value)} />
-                    <div className="fr-review-actions">
-                      <button type="submit" className="fr-action" disabled={write.kind === "saving"}>Post review</button>
-                      <button type="button" className="fr-action-secondary" onClick={() => setDraft(null)}>Cancel</button>
-                    </div>
-                  </form>
-                )}
-              </>
-            ) : <p>You can rate this film once a show of it that you booked has started.</p>}
-          <p role="status" className="fr-share-note">{write.kind === "failed" ? write.message : write.kind === "saving" ? "Saving…" : ""}</p>
-        </div>
+        {film.coming_soon ? mineBlock : null}
       </section>
       {film.coming_soon ? null : (
-        <Reviews filmId={film.id} version={posted} me={mine.kind === "ready" ? mine.me : null} signedIn={mine.kind === "ready"} />
+        <Reviews filmId={film.id} version={posted} me={mine.kind === "ready" ? mine.me : null} signedIn={mine.kind === "ready"}>
+          {mineBlock}
+        </Reviews>
       )}
     </div>
   );

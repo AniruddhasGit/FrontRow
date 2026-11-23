@@ -90,3 +90,12 @@ test("the hero door: the corridor picture is a button named for the show, and a 
   assert.match(text(doc), /SCREEN 3/);
 });
 
+
+test("CR-013: the star bands are the server's five, best first, labelled with stars, range and review count", () => {
+  assert.deepEqual([...d.REVIEW_BANDS], ["9-10", "7-8", "5-6", "3-4", "1-2"]);
+  assert.deepEqual(d.REVIEW_BANDS.map(d.bandStars), ["★★★★★", "★★★★", "★★★", "★★", "★"]);
+  const counts = { "9-10": 123, "7-8": 4, "5-6": 0, "3-4": 1, "1-2": 2 };
+  assert.equal(d.bandLabel("9-10", counts), "★★★★★ 9–10 (123)");
+  assert.equal(d.bandLabel("5-6", counts), "★★★ 5–6 (0)");
+  assert.equal(d.bandLabel("1-2", null), "★ 1–2", "no count until the list has answered");
+});

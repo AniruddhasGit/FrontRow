@@ -15,7 +15,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -27,8 +27,7 @@ from app.domain import rewards
 from app.domain.browse import catalogue
 from app.domain.money import BIGINT_MAX
 from app.domain.visibility import visible
-from app.models import (booking, bookmark, format as format_t, language, movie, movie_like, movie_rating, payment, review_vote,
-                        showtime, users)
+from app.models import bookmark, format as format_t, language, movie, movie_like, movie_rating, review_vote, users
 
 router = APIRouter(prefix="/api/me", dependencies=[Depends(caller)])
 
@@ -125,13 +124,13 @@ async def set_bookmark(request: Request, movie_id: Id, conn: AsyncConnection = D
 
 
 # ---- T12: ratings and likes ---------------------------------------------------------------------------------------
-# A rating needs a paid booking of the caller's for that film whose showtime has STARTED (checked in the write's own
-# transaction, never from the client); one row per caller and film, re-rating updates it. A like is for a film that
-# is not out yet (release_date after the cinema's today). Both bump the listing generation, so every card's average
+# A rating is for a released film: any signed-in customer, no booking needed (CR-013, owner 2026-11-23; checked in the
+# write's own transaction, never from the client). One row per caller and film, re-rating updates it. A like is for a
+# film that is not out yet (release_date after the cinema's today). Both bump the listing generation, so every card's average
 # and like count is fresh on the next read. A re-rate pulls created_at back to now if it lay ahead (a demo account's
 # future-dated rating, scripts/demo_reviews.py), so the writer's own rating always shows at once.
 
-RATE_REFUSED = "You can rate a film once a show of it that you booked has started."
+RATE_REFUSED = "Ratings open once the film is out. Until then, like it."
 LIKE_REFUSED = "Likes are for films that are not out yet. Once it is out, see it and rate it."
 BAD_SCORE = "Choose a score from 1 to 10."
 
@@ -144,15 +143,6 @@ class Score(BaseModel):
 class Liked(BaseModel):
     model_config = ConfigDict(extra="forbid")
     liked: StrictBool
-
-
-def _watched(user_id: int, movie_id: int, now):
-    """The rating gate: a confirmed, captured booking of the caller's for a showtime of this film that has started."""
-    return exists(select(booking.c.id)
-                  .select_from(booking.join(showtime, booking.c.showtime_id == showtime.c.id)
-                               .join(payment, booking.c.payment_id == payment.c.id))
-                  .where(booking.c.user_id == user_id, showtime.c.movie_id == movie_id, booking.c.status == "confirmed",
-                         payment.c.state == "captured", showtime.c.starts_at <= now))
 
 
 async def _visible_film(conn: AsyncConnection, movie_id: int, now) -> bool:
@@ -174,7 +164,6 @@ async def my_film(request: Request, movie_id: Id, conn: AsyncConnection = Depend
                                                                       movie_rating.c.movie_id == movie_id))).scalar()
         liked = (await conn.execute(select(movie_like.c.liked).where(movie_like.c.user_id == me,
                                                                     movie_like.c.movie_id == movie_id))).scalar()
-        can_rate = bool((await conn.execute(select(_watched(me, movie_id, now)))).scalar())
         # CR-011 F4: my review's text, and which of this film's reviews I have already marked Helpful
         review = (await conn.execute(select(movie_rating.c.id, movie_rating.c.review_text)
                                      .where(movie_rating.c.user_id == me, movie_rating.c.movie_id == movie_id))).first()
@@ -183,7 +172,7 @@ async def my_film(request: Request, movie_id: Id, conn: AsyncConnection = Depend
                                     .where(review_vote.c.user_id == me, movie_rating.c.movie_id == movie_id)
                                     .order_by(review_vote.c.rating_id))).scalars().all()
         await conn.rollback()
-        return {"movie_id": movie_id, "score": score, "can_rate": can_rate, "liked": bool(liked), "coming_soon": soon,
+        return {"movie_id": movie_id, "score": score, "can_rate": not soon, "liked": bool(liked), "coming_soon": soon,
                 "review": review.review_text if review else None,
                 "review_id": review.id if review and review.review_text else None, "voted": list(voted)}
 
@@ -199,8 +188,7 @@ async def rate_film(request: Request, movie_id: Id, conn: AsyncConnection = Depe
 
     async def write():
         async with conn.begin():
-            await _visible_film(conn, movie_id, now)
-            if not (await conn.execute(select(_watched(me, movie_id, now)))).scalar():
+            if await _visible_film(conn, movie_id, now):
                 raise ApiError(403, "FORBIDDEN", RATE_REFUSED)
             await conn.execute(pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score,
                                                               created_at=now, updated_at=now)
@@ -237,8 +225,8 @@ async def like_film(request: Request, movie_id: Id, conn: AsyncConnection = Depe
 
 
 # ---- CR-011 F4: reviews and Helpful votes ---------------------------------------------------------------------------
-# A review is the caller's rating with text: written and edited under the rating's own gate (a paid booking whose show
-# has started, in the write's transaction). A Helpful vote is once per customer per review (UNIQUE + on_conflict_do_nothing,
+# A review is the caller's rating with text: written and edited under the rating's own gate (a released film, in the
+# write's transaction; CR-013). A Helpful vote is once per customer per review (UNIQUE + on_conflict_do_nothing,
 # so a second press changes nothing), never on the caller's own review, and never undone (insert-only table).
 
 REVIEW_BOUNDS = "Write a review of 1 to 2000 characters."
@@ -265,8 +253,7 @@ async def review_film(request: Request, movie_id: Id, conn: AsyncConnection = De
 
     async def write():
         async with conn.begin():
-            await _visible_film(conn, movie_id, now)
-            if not (await conn.execute(select(_watched(me, movie_id, now)))).scalar():
+            if await _visible_film(conn, movie_id, now):
                 raise ApiError(403, "FORBIDDEN", RATE_REFUSED)
             review_id = (await conn.execute(
                 pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score, review_text=text,

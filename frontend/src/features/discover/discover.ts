@@ -281,9 +281,28 @@ export function adultsOnly(certificate: string): boolean {
 }
 
 /** F4: the film page's reviews - one status for the list, one for a write (no flags). */
-export type Review = { id: number; author: string; score: number; text: string; written_at: string; helpful: number };
+export type Review = { id: number; author: string; score: number; text: string; written_at: string; helpful: number;
+                       verified: boolean };
 export type ReviewList = { kind: "loading" } | { kind: "error" } | { kind: "ready"; count: number; items: Review[] };
 export type ReviewSort = "newest" | "helpful";
+
+/** CR-013 (owner, 2026-11-23): the star filter's bands of the 1-10 score, best first - the server's `band` values. */
+export const REVIEW_BANDS = ["9-10", "7-8", "5-6", "3-4", "1-2"] as const;
+export type ReviewBand = (typeof REVIEW_BANDS)[number];
+export type BandCounts = Record<ReviewBand, number>;
+
+/** One star per two points of the band's top score: 9-10 is five stars, 1-2 is one. */
+export function bandStars(band: ReviewBand): string {
+  return "★".repeat(Number(band.split("-")[1]) / 2);
+}
+/** "9–10" for the eye (an en dash; the wire value keeps the hyphen). */
+export function bandRange(band: ReviewBand): string {
+  return band.replace("-", "–");
+}
+/** A filter button: "★★★★★ 9–10 (123)"; the count is left off until the first answer brings it. */
+export function bandLabel(band: ReviewBand, counts: BandCounts | null): string {
+  return `${bandStars(band)} ${bandRange(band)}${counts ? ` (${counts[band]})` : ""}`;
+}
 export const REVIEW_MAX = 2000;
 
 /** A review's text as the form sends it, or the reason it cannot be sent (the server checks the same bounds). */

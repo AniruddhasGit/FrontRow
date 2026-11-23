@@ -9351,13 +9351,13 @@ with `TOTAL_CHANGED` and books nothing. Nothing in this row runs on a schedule o
 results, title matches first). Every film in the listing and on its page carries its release date, whether it is
 coming soon (released after the cinema's today), its star average in tenths (an integer, half up; `null` when
 unrated), its rating count and its like count; the film page adds the 1-10 breakdown, the cast and the crew. A
-signed-in customer may rate a film 1 to 10 once a show of it that they booked and paid for has started (one rating per
-customer and film; a second rating replaces the first), and may like a film that is coming soon (a toggle).
+signed-in customer may rate a released film 1 to 10, with or without a booking (CR-013, owner 2026-11-23; one rating
+per customer and film; a second rating replaces the first), and may like a film that is coming soon (a toggle).
 
 **Who may do it.** Search and the details: anyone. Rating and liking: a signed-in account, on its own rows only
 (`P-ACC-12`); the rating gate is checked by the server inside the write's transaction, never by the client.
 
-**Exceptions.** Rating without a started, paid booking is `403 FORBIDDEN` and writes nothing; liking a released film
+**Exceptions.** Rating a coming-soon film is `403 FORBIDDEN` and writes nothing; liking a released film
 is `403 FORBIDDEN`. A score outside 1..10 is `422`. Nothing in this row runs on a schedule or a timer; the listing's
 cached figures are refreshed by the write itself (the listing generation is bumped after it commits).
 
@@ -9366,17 +9366,19 @@ cached figures are refreshed by the write itself (the listing generation is bump
 `[SRC: CR-011 F4 (owner, 2026-11-22): "reviews and comments ... on page which looks like" the reference film page; the lead's decision: reviews, not open comment threads]`
 `[BRD: R-ACC-02, R-ACC-03]`
 
-**Behaviour.** A customer who may rate a film (`P-ACC-17`'s gate: a confirmed, captured booking for a showtime of it
-that has started) may write a review: a score 1 to 10 and 1 to 2000 characters of text, stored on their one rating
+**Behaviour.** A customer who may rate a film (`P-ACC-17`'s gate: the film is released; CR-013) may write a review: a score 1 to 10 and 1 to 2000 characters of text, stored on their one rating
 row, so a review replaces their score and a second review edits the first. Anyone may read a visible film's reviews
 (the score, the text, the reviewer's display name or "FrontRow viewer" - never an email - when it was last written,
-and its Helpful count), newest first or most helpful first, at most 50, with the total. A signed-in customer may mark
+its Helpful count, and `verified`: the author has a confirmed, captured booking for a showtime of it that has started,
+or is a demo crowd account, CR-012/CR-013), newest first or most helpful first, at most 50, with the total; an optional
+star band (9-10, 7-8, 5-6, 3-4, 1-2) narrows the list, and the count of reviews in every band comes with it (CR-013).
+A signed-in customer may mark
 another customer's review Helpful once; a vote is never changed or withdrawn.
 
 **Who may do it.** Reading: anyone. Writing and voting: a signed-in account, on its own rows only (`P-ACC-12`); both gates
 are checked by the server inside the write's transaction.
 
-**Exceptions.** A review without the gate is `403 FORBIDDEN`; text that is empty after trimming or longer than 2000
+**Exceptions.** A review of a coming-soon film is `403 FORBIDDEN`; a band outside the five is `422`; text that is empty after trimming or longer than 2000
 characters is `422`; marking one's own review is `403 FORBIDDEN`; a review that does not exist, has no text or belongs to
 a film no customer can see is `404`; a second vote by the same customer is accepted and changes nothing. No comment
 threads, no moderation queue, nothing on a timer.
@@ -22009,7 +22011,7 @@ CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
   "id": "EP-ACC-20",
   "method": "PUT",
   "path": "/api/me/ratings/{movie_id}",
-  "summary": "Rate a film 1 to 10 after a show of it that the caller booked has started",
+  "summary": "Rate a released film 1 to 10 (any signed-in customer, CR-013)",
   "auth": "authenticated",
   "roles": [
     "customer",
@@ -22040,7 +22042,7 @@ CR-008 T9-T12 (`P-ACC-17`): search, the viewer's film state, ratings and likes.
       "description": "No valid session"
     },
     "403": {
-      "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+      "description": "The film is coming soon (CR-013: no booking is needed for a released film)"
     },
     "404": {
       "description": "No visible film with that id"
@@ -22156,7 +22158,8 @@ CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
       "movie_id": "integer, positive, a film a customer can currently see"
     },
     "query": {
-      "sort": "newest (default) | helpful"
+      "sort": "newest (default) | helpful",
+      "band": "optional: 9-10 | 7-8 | 5-6 | 3-4 | 1-2 (CR-013)"
     }
   },
   "responses": {
@@ -22164,15 +22167,16 @@ CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
       "description": "At most 50 reviews and the total",
       "body": {
         "movie_id": "integer",
-        "count": "integer - every review of the film",
-        "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer}"
+        "count": "integer - every review of the film in the band (every review when no band)",
+        "bands": "object {9-10, 7-8, 5-6, 3-4, 1-2: integer} - reviews with text in each band, whatever the band asked",
+        "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer, verified boolean}"
       }
     },
     "404": {
       "description": "No visible film with that id"
     },
     "422": {
-      "description": "sort is not newest or helpful"
+      "description": "sort is not newest or helpful, or band is not one of the five"
     },
     "503": {
       "description": "Postgres is unreachable"
@@ -22202,7 +22206,7 @@ CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
   "id": "EP-ACC-23",
   "method": "PUT",
   "path": "/api/me/reviews/{movie_id}",
-  "summary": "Write or edit the caller's review (score and text) of a film they have seen here",
+  "summary": "Write or edit the caller's review (score and text) of a released film (CR-013)",
   "auth": "authenticated",
   "roles": [
     "customer",
@@ -22236,7 +22240,7 @@ CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
       "description": "No valid session"
     },
     "403": {
-      "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+      "description": "The film is coming soon (CR-013: no booking is needed for a released film)"
     },
     "404": {
       "description": "No visible film with that id"
@@ -22256,7 +22260,7 @@ CR-011 F4 (`P-ACC-18`): reviews and Helpful votes.
   ],
   "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id) of movie_rating; the same body twice leaves the same state and one row.",
   "rate_limit": "none",
-  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's EXISTS over the caller's own bookings, in the write's transaction.",
+  "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's: the film is released (CR-013), in the write's transaction.",
   "satisfies": [
     "P-ACC-18",
     "P-ACC-12"

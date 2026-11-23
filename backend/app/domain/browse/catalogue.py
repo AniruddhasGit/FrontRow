@@ -28,8 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 # THE visibility predicate (P-BRW-01, P-ADM-05) lives in one module; every movie-addressed query here applies it.
 from app.domain.visibility import visible
-from app.models import (certification, cinema, format, genre, language, movie, movie_genre, movie_like, movie_rating, review_vote,
-                        screen, showtime, users)
+from app.models import (booking, certification, cinema, format, genre, language, movie, movie_genre, movie_like, movie_rating, payment,
+                        review_vote, screen, showtime, users)
 
 
 class SortOption(str, enum.Enum):
@@ -220,9 +220,29 @@ REVIEW_SORTS = ("newest", "helpful")
 REVIEWER = "FrontRow viewer"  # a reviewer who set no display name; the email is never shown
 
 
-async def reviews(conn: AsyncConnection, t: datetime, movie_id: int, sort: str, zone: str) -> dict | None:
-    """CR-011 F4: a visible film's reviews - ratings that carry text, all by verified viewers (the write's gate) - newest
-    first or most helpful first (ties newest), at most REVIEW_LIMIT, with the total. None when the film is not visible."""
+# CR-013 (owner, 2026-11-23): the star filter's bands of the 1-10 score, best first, as the client labels them.
+REVIEW_BANDS = {"9-10": (9, 10), "7-8": (7, 8), "5-6": (5, 6), "3-4": (3, 4), "1-2": (1, 2)}
+
+
+def watched(user_id, movie_id, t: datetime):
+    """A confirmed, captured booking by `user_id` for a showtime of `movie_id` that has started by t. Until CR-013 this
+    was the rating write's gate; now it only earns a review its "Saw it at FrontRow" badge. The arguments may be columns,
+    so it correlates per review row."""
+    return exists(select(booking.c.id)
+                  .select_from(booking.join(showtime, booking.c.showtime_id == showtime.c.id)
+                               .join(payment, booking.c.payment_id == payment.c.id))
+                  .where(booking.c.user_id == user_id, showtime.c.movie_id == movie_id, booking.c.status == "confirmed",
+                         payment.c.state == "captured", showtime.c.starts_at <= t))
+
+
+async def reviews(conn: AsyncConnection, t: datetime, movie_id: int, sort: str, zone: str, band: str | None = None) -> dict | None:
+    """CR-011 F4: a visible film's reviews - ratings that carry text - newest first or most helpful first (ties newest),
+    at most REVIEW_LIMIT, with the total. None when the film is not visible. CR-013: any signed-in customer may write
+    one, so each item says whether its author is `verified` (saw it here, or is one of the demo crowd, whose badge the
+    owner kept in CR-012), in the same query; `band` narrows to one REVIEW_BANDS key, and `bands` counts the reviews
+    in every band (not the filtered ones) in one more query."""
+    from app.domain.demo_fill import crowd  # here, not at the top: demo_fill imports this module
+
     if (await conn.execute(select(movie.c.id).where(movie.c.id == movie_id, visible(t)))).first() is None:
         return None
     helpful = (select(func.count()).select_from(review_vote)
@@ -232,14 +252,19 @@ async def reviews(conn: AsyncConnection, t: datetime, movie_id: int, sort: str, 
     if sort == "helpful":
         order = [helpful.desc(), *order]
     where = (movie_rating.c.movie_id == movie_id, movie_rating.c.review_text.is_not(None), rating_shown(t))
-    total = (await conn.execute(select(func.count()).select_from(movie_rating).where(*where))).scalar()
+    bands = (await conn.execute(select(*(func.count().filter(movie_rating.c.score.between(lo, hi)).label(k)
+                                         for k, (lo, hi) in REVIEW_BANDS.items())).where(*where))).one()._asdict()
+    if band is not None:
+        where = (*where, movie_rating.c.score.between(*REVIEW_BANDS[band]))
+    total = bands[band] if band is not None else sum(bands.values())
+    verified = or_(watched(movie_rating.c.user_id, movie_id, t), crowd())
     rows = (await conn.execute(select(movie_rating.c.id, movie_rating.c.score, movie_rating.c.review_text, written.label("at"),
-                                      users.c.display_name, helpful.label("helpful"))
+                                      users.c.display_name, helpful.label("helpful"), verified.label("verified"))
                                .select_from(movie_rating.join(users, movie_rating.c.user_id == users.c.id))
                                .where(*where).order_by(*order).limit(REVIEW_LIMIT))).all()
-    return {"movie_id": movie_id, "count": total, "items": [
+    return {"movie_id": movie_id, "count": total, "bands": bands, "items": [
         {"id": r.id, "author": (r.display_name or "").strip() or REVIEWER, "score": r.score, "text": r.review_text,
-         "written_at": local_iso(r.at, zone), "helpful": r.helpful} for r in rows]}
+         "written_at": local_iso(r.at, zone), "helpful": r.helpful, "verified": bool(r.verified)} for r in rows]}
 
 
 SEARCH_LIMIT = 8
