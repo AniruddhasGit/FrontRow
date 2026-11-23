@@ -17,7 +17,7 @@ import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logi
 import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import { FilmTile, releaseLabel, ShareButton } from "../discover/Bits";
-import { adultsOnly, byScreen, doorShow, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
+import { adultsOnly, doorShow, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
 import { TheatreDoor } from "../discover/Door";
 import { FilmDetails } from "../discover/FilmDetails";
 import "./browse.css";
@@ -195,21 +195,14 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
         </div>
       ) : (
         <>
-          {/* CR-011 F3: one card per screen, its times as buttons; choosing one opens that screen's door below */}
-          <div className="fr-screens">
-            {byScreen(listed.showtimes).map((g) => (
-              <div key={g.screen.id} className="fr-screen-card">
-                <h3>{g.screen.name} {formats(g.shows).map((f) => <span key={f} className="fr-chip">{f}</span>)}</h3>
-                <ul className="fr-times">
-                  {g.shows.map((st) => (
-                    <li key={st.id}>
-                      <ShowtimeButton st={st} chosen={st.id === show?.id} onChoose={pick} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          {/* owner, 2026-11-23: one row of small boxes - format on top, the time, the screen - not a card per screen */}
+          <ul className="fr-times fr-times-flat">
+            {[...listed.showtimes].sort((x, y) => Date.parse(x.starts_at) - Date.parse(y.starts_at)).map((st) => (
+              <li key={st.id}>
+                <ShowtimeButton st={st} chosen={st.id === show?.id} onChoose={pick} />
+              </li>
             ))}
-          </div>
+          </ul>
           {listed.next_date_with_showtimes && listed.showtimes.every((s) => s.sales_closed) ? (
             // Every showtime here is closed: the list stays, and the next buyable date is offered (P-BRW-06 1a).
             <button type="button" className="fr-clear" onClick={() => choose(listed.next_date_with_showtimes)}>
@@ -250,6 +243,7 @@ function ShowtimeButton({ st, chosen, onChoose }: { st: Showtime; chosen: boolea
   const name = showtimeName(st, formatPaise);
   const body = (
     <>
+      {st.format?.name ? <span className="fr-time-format">{st.format.name}</span> : null}
       <span className="fr-mono fr-time-at">{timeLabel(st.starts_at)}</span>
       <span className="fr-time-hall">{st.screen.name}</span>
       {st.sales_closed ? <span className="fr-time-closed">Closed</span> : <span className="fr-mono fr-time-price">{formatPaise(st.base_price_paise)}</span>}
