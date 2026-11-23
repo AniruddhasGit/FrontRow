@@ -52,13 +52,6 @@ test("F3: You might also like shares a genre, most shared first, then rating, th
   assert.deepEqual(d.recommended(film(9, { genres: [] }), films), []);
 });
 
-test("F3: a date's showtimes group by screen in numeric name order, times in order", () => {
-  const st = (id, at, sid, name) => ({ id, starts_at: at, screen: { id: sid, name } });
-  const groups = d.byScreen([st(1, "2026-11-22T21:00:00+05:30", 10, "SCREEN 10"), st(2, "2026-11-22T18:00:00+05:30", 2, "SCREEN 2"),
-    st(3, "2026-11-22T12:00:00+05:30", 10, "SCREEN 10")]);
-  assert.deepEqual(groups.map((x) => [x.screen.name, x.shows.map((s) => s.id)]), [["SCREEN 2", [2]], ["SCREEN 10", [3, 1]]]);
-});
-
 test("F4/F5: review bounds, initials, the adults-only notice, and the door opens once", () => {
   assert.deepEqual(d.reviewText("  Loved it  "), { ok: true, text: "Loved it" });
   assert.equal(d.reviewText("   ").ok, false);

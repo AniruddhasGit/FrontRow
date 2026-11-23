@@ -258,18 +258,6 @@ export function genresOf(films: Film[]): { id: number; name: string }[] {
   return [...all].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** F3: a date's showtimes grouped by screen, screens in name order (SCREEN 2 before SCREEN 10), times in order. */
-export function byScreen<S extends { starts_at: string; screen: { id: number; name: string } }>(shows: S[]): { screen: S["screen"]; shows: S[] }[] {
-  const groups = new Map<number, { screen: S["screen"]; shows: S[] }>();
-  for (const s of shows) {
-    if (!groups.has(s.screen.id)) groups.set(s.screen.id, { screen: s.screen, shows: [] });
-    groups.get(s.screen.id)!.shows.push(s);
-  }
-  const out = [...groups.values()];
-  out.forEach((g) => g.shows.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)));
-  return out.sort((a, b) => a.screen.name.localeCompare(b.screen.name, undefined, { numeric: true }));
-}
-
 /** Two letters for a portrait-less person tile: "Mira Hale" -> "MH", "Cher" -> "C". */
 export function initials(name: string): string {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");

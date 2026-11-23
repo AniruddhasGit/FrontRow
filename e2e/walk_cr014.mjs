@@ -17,7 +17,8 @@ import { BASE, launch } from "./lib.mjs";
 const [mode = "desk", ...flags] = process.argv.slice(2);
 const stub = flags.includes("stub");
 const ROOT = new URL("./evidence/cr014/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-const EV = `${ROOT}${mode}${flags.includes("phone") ? "-phone" : ""}/`;
+const HALL = Number(process.env.HALL || 1); // HALL=n: walk into SCREEN n
+const EV = `${ROOT}${mode}${flags.includes("phone") ? "-phone" : ""}${HALL > 1 ? `-hall${HALL}` : ""}/`;
 fs.rmSync(EV, { recursive: true, force: true });
 fs.mkdirSync(EV, { recursive: true });
 const say = (...a) => console.log("-", ...a);
@@ -60,10 +61,10 @@ if (mode === "slow") {
   });
 }
 
-/** A showing film with an open show in a hall with a baked room, preferring SCREEN 1 (the first corridor file). */
+/** A showing film with an open show in SCREEN $HALL (default 1). */
 async function pick() {
   await page.goto(BASE + "/films");
-  return page.evaluate(async () => {
+  return page.evaluate(async (hall) => {
     const j = async (p) => (await fetch(p)).json();
     const out = [];
     for (const f of (await j("/api/movies")).movies.filter((m) => !m.coming_soon)) {
@@ -71,8 +72,8 @@ async function pick() {
       if (!day.showtimes.some((s) => !s.sales_closed) && day.next_date_with_showtimes) day = await j(`/api/showtimes?movie_id=${f.id}&date=${day.next_date_with_showtimes}`);
       for (const s of day.showtimes.filter((x) => !x.sales_closed)) out.push({ film: f.id, title: f.title, date: day.date, show: s.id, screen: s.screen.name });
     }
-    return out.find((o) => o.screen === "SCREEN 1") ?? out[0];
-  });
+    return out.find((o) => o.screen === `SCREEN ${hall}`) ?? out[0];
+  }, HALL);
 }
 const target = await pick();
 assert.ok(target, "an open showtime in the local data");
