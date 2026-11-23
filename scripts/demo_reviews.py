@@ -218,7 +218,7 @@ def crowd(cur, out) -> list[int]:
     seed = cur.execute("SELECT email, password_hash FROM users WHERE role = 'customer' "
                        "AND email ~ '^customer-01@[^@]+[.]invalid$' ORDER BY id LIMIT 1").fetchone()
     if seed is None:
-        raise SystemExit("demo_reviews: no seed customer (customer-01@...invalid): run scripts/seed.py first. "
+        raise SystemExit("demo_reviews: no seed customer-01 account at a .invalid domain: run scripts/seed.py first. "
                          "Nothing was written.")
     domain, password_hash = seed[0].split("@", 1)[1], seed[1]
     rng = random.Random("frontrow-crowd")

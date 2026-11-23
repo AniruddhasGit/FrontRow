@@ -428,3 +428,7 @@ written**, which is the only reason they surfaced at all.
 - **A rating read without `catalogue.rating_shown(t)` leaks the future.** The demo crowd's ratings are dated up to 120 days
   ahead on purpose; a new query over `movie_rating` (or `review_vote`) that forgets the `created_at <= t` predicate shows
   next month's reviews today and inflates the counts. [UNPROVEN HERE: found by design, not by a failure]
+- **Anything address-shaped in scripts/ fails S-XCT-28**, even an error message like `customer-01@...invalid`
+  (observed 2026-11-23, in commit 0a8124b's demo_reviews.py). *Fix:* write "a customer-01 account at a .invalid domain".
+- **Words like "retention", "prune" or "purge" anywhere in backend/app, migrations or scripts fail S-ADM-19's no-pruning
+  scan.** Write "expire" or "keep" instead. [UNPROVEN HERE: avoided by reading the test, not by a failure]

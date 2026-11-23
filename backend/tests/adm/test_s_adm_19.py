@@ -64,8 +64,12 @@ def test_the_one_demo_exception_stays_the_only_one(client):
     SECURITY DEFINER function, demo_delete_history, called from exactly one place, behind DEMO_HISTORY_DAYS (0 = off,
     the default and AWS). No other function in the schema runs with its owner's rights, and frontrow_app still holds no
     DELETE grant on the booking tables."""
-    definers = owner_sql(client.db, "SELECT proname FROM pg_proc WHERE prosecdef AND pronamespace = 'public'::regnamespace")
-    assert [r[0] for r in definers] == ["demo_delete_history"]
+    definers = owner_sql(client.db, "SELECT proname FROM pg_proc WHERE prosecdef AND pronamespace = 'public'::regnamespace "
+                                    "ORDER BY 1")
+    # CR-012 (owner ruling 2026-11-23): the second and last one, demo_delete_bookings (migration 0008), expires the demo
+    # crowd's bookings after six months, behind the same DEMO_HISTORY_DAYS, from the same one module.
+    assert [r[0] for r in definers] == ["demo_delete_bookings", "demo_delete_history"]
     assert {path for path, _, _ in rg(r"demo_delete_history", "backend/app")} == {"backend/app/domain/schedule.py"}
+    assert {path for path, _, _ in rg(r"demo_delete_bookings", "backend/app")} == {"backend/app/domain/schedule.py"}
     for table in ("showtime", "booking", "booking_seat", "payment", "showtime_seat"):
         assert owner_sql(client.db, f"SELECT has_table_privilege('frontrow_app', '{table}', 'DELETE')") == [(False,)]
