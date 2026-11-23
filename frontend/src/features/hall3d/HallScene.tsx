@@ -470,7 +470,10 @@ function usePainted(paint: Paint | null, aspect: number): Texture | null {
 /** The projector beam through the haze, and the dust drifting in it (the demo's, CR-003): a cone from the projector
  *  port to the screen's corners, bright where seen edge-on so it reads as a soft shaft, plus specks that drift. The
  *  dust keeps the canvas drawing every frame; with reduced motion it holds still and nothing redraws. */
-const N_DUST = 900;
+const N_DUST = 600; // owner, 2026-11-23: "reduce them a bit" (was 900)
+/** Dust sizes (owner, 2026-11-23: "some large and some fine, same size looks weird"): most specks fine, some medium, a
+ *  few large and fainter. [share of the specks, size in metres, opacity] */
+const DUST_SIZES: [number, number, number][] = [[0.7, 0.008, 0.6], [0.25, 0.016, 0.5], [0.05, 0.03, 0.35]];
 /** The light the screen casts right now (BakedRoom eases it toward each new picture); the beam and the dust read it. */
 const WHITE = new Color(1, 1, 1);
 const WARM_FILL = new Color("#6b4a3a");
@@ -486,7 +489,7 @@ const BEAM = new ShaderMaterial({
 });
 function Haze({ meta }: { meta: BakedMeta }) {
   const invalidate = useThree((s) => s.invalidate);
-  const { beam, dust, seeds } = useMemo(() => {
+  const { beam, groups } = useMemo(() => {
     const port = new Vector3(...(meta.port ?? [0, meta.screen.zc + 1.8, meta.allseats.look[2] - 6]) as [number, number, number]);
     const { w, h, zc } = meta.screen, z = meta.screen.z - 0.03, bottom = zc - h / 2;
     const corner = ([sx, sy]: number[]) => new Vector3((sx * w) / 2, bottom + sy * h, z);
@@ -506,9 +509,17 @@ function Haze({ meta }: { meta: BakedMeta }) {
       const target = new Vector3((r(5 * i) - 0.5) * w, bottom + r(5 * i + 1) * h, z);
       return { base: port.clone().lerp(target, 0.08 + r(5 * i + 2) * 0.85), ph: r(5 * i + 3) * 6.28, sp: 0.15 + r(5 * i + 4) * 0.35 };
     });
-    const dust = new Geometry();
-    dust.setAttribute("position", new Float32BufferAttribute(seeds.flatMap((s) => s.base.toArray()), 3));
-    return { beam, dust, seeds };
+    // each speck's size class from its own fixed draw, so the classes are mixed through the whole beam
+    let from = 0;
+    const groups = DUST_SIZES.map(([share, size, opacity], k) => {
+      const to = k === DUST_SIZES.length - 1 ? 1 : from + share;
+      const mine = seeds.filter((_, i) => { const u = r(7 * i + 11); return u >= from && u < to; });
+      from = to;
+      const dust = new Geometry();
+      dust.setAttribute("position", new Float32BufferAttribute(mine.flatMap((s) => s.base.toArray()), 3));
+      return { dust, seeds: mine, size, opacity };
+    });
+    return { beam, groups };
   }, [meta]);
   const dot = useMemo(() => {
     const c = document.createElement("canvas");
@@ -525,26 +536,33 @@ function Haze({ meta }: { meta: BakedMeta }) {
   // display frame (owner, 2026-11-22: "lightweight"). Slow drifting specks read the same at 24.
   const next = useRef(0);
   useEffect(() => () => clearTimeout(next.current), []);
-  const specks = useRef<{ color: Color } | null>(null);
+  const specks = useRef<({ color: Color } | null)[]>([]);
   useFrame(({ clock }) => {
     // the beam and its dust carry the picture's light: whiter than the picture (a projector beam is mostly white
     // light), brighter for a bright frame
     BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar((0.55 + 0.9 * SCREEN_LIGHT.luma) * SCREEN_LIGHT.flick);
-    specks.current?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55);
+    // the specks are only seen in the beam's light, so they flicker with the projector (flicker.ts) like the beam does
+    for (const m of specks.current) m?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55).multiplyScalar(SCREEN_LIGHT.flick);
     if (still) return;
-    const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
-    seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
-      s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
-    a.needsUpdate = true;
+    const t = clock.getElapsedTime();
+    for (const { dust, seeds } of groups) {
+      const a = dust.attributes.position as BufferAttribute;
+      seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
+        s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
+      a.needsUpdate = true;
+    }
     clearTimeout(next.current);
     next.current = window.setTimeout(invalidate, 42);
   });
   return (
     <>
       <mesh geometry={beam} material={BEAM} renderOrder={2} />
-      <points geometry={dust} renderOrder={3}>
-        <pointsMaterial ref={specks} size={0.016} map={dot} transparent depthWrite={false} blending={AdditiveBlending} color="#d9e4ff" opacity={0.55} toneMapped={false} />
-      </points>
+      {groups.map((g, k) => (
+        <points key={k} geometry={g.dust} renderOrder={3}>
+          <pointsMaterial ref={(m) => void (specks.current[k] = m)} size={g.size} map={dot} transparent depthWrite={false}
+                          blending={AdditiveBlending} color="#d9e4ff" opacity={g.opacity} toneMapped={false} />
+        </points>
+      ))}
     </>
   );
 }
@@ -737,6 +755,8 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
     }
     if (settling || dimming || flickering) invalidate();
   });
+  // leaving mid-flicker must not leave the next hall's screen, beam and dust dimmed (SCREEN_LIGHT is shared)
+  useEffect(() => () => void (SCREEN_LIGHT.flick = 1), []);
   // a new film: the projector stutters back on (not with reduced motion)
   useEffect(() => {
     if (!film || reducedMotion()) return;
