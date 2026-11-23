@@ -252,6 +252,26 @@ it `Blocked` with a note and surface it.
 
 **A test that reads the wall clock is a defect.** Time is injected.
 
+## You are the eyes: check every visible change yourself, in a real browser (owner, 2026-11-23)
+
+The owner's words: "I do not want to be your eyes, everything you build you will check it yourself so it gets built
+perfect the first time." Nothing that changes what a customer sees or feels is reported as done until Claude has
+watched it work in a browser itself. Tests passing is not "it looks right".
+
+- **How:** a Playwright script in `e2e/` (pattern: `e2e/lib.mjs`, `e2e/walk_cr011.mjs`), run in its own browser,
+  never only the shared MCP browser window. That window may be unfocused and then runs no animation frames, so 3D and
+  motion look frozen in it and prove nothing.
+- **Stills:** screenshots at 1440 x 900 and 390 x 844, signed in and signed out where it differs. Look at every one.
+- **Motion** (transitions, the door, the walk-in, camera moves, loading): record it (`recordVideo` on the context),
+  cut the video into frames with ffmpeg (`fps=8`, a contact sheet), and read them in time order. Name every frozen
+  frame, blank box, pop-in, jump, flicker or half-drawn state and fix it before reporting. Time the waits (from the
+  click to the first useful frame) and state them.
+- **Real conditions:** check a cold load (fresh context, no cache) as well as a warm one. Check the slow path too:
+  throttle `/halls/*` and `/art/*`, and make a request fail, so the cap and the fallback are seen working.
+- **Report:** the frames or screenshots looked at, the timings, and anything still not right. If a check could not be
+  done, say so plainly. Never write "should work" in place of having seen it.
+- **Evidence:** saved under `e2e/evidence/<change>/`.
+
 ## The concurrency proof — never waivable
 
 `scripts/stress_seats.py` fires **50 simultaneous requests for one seat and asserts exactly one
