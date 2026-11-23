@@ -1,5 +1,5 @@
 // CR-005: the landing at `/` (and `/browse`). You sit locked in the hall's default seat (the back row's seat 1). The
-// films run down a rail on the left; the one chosen plays on the screen. The landing is a showcase (owner, 2026-11-23:
+// films run down a rail on the left; the one clicked plays on the screen (scrolling only scrolls - owner, 2026-11-23). The landing is a showcase (owner, 2026-11-23:
 // "load all the movies in the theatre hall 6 ... when they are actually going to book the seats then only show them
 // their real halls"): every film plays in Hall 6, so changing film never loads another hall - the projector flickers
 // and the screen lights up with the new film (hall3d/flicker.ts). "Book tickets" goes to the seat page of the chosen
@@ -11,14 +11,14 @@
 // movies they'll have to hit on all films"): the rail holds the 10 best-rated films that are out (discover.ts sidebarTop),
 // then "All films".
 // Reads only the public read path, once per choice; nothing polls.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatPaise } from "../admin/money";
 import { leaveForSignIn, signInHref, takeNotice } from "../auth/session";
 import { get, query, type Film, type Showtime } from "../browse/api";
 import { runtimeName, showtimeName, timeLabel } from "../browse/logic";
 import { Poster } from "../browse/Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
-import { railPick, railTop, sidebarTop } from "../discover/discover";
+import { sidebarTop } from "../discover/discover";
 import { Discover } from "../discover/Rows";
 import { HallStage } from "../hall3d/HallStage";
 import { navigate } from "../../router";
@@ -37,7 +37,6 @@ export function Landing() {
   const [listed, setListed] = useState<Listed | null>(null);
   const [st, setSt] = useState<Showtime | null>(null);
   const [leaving, setLeaving] = useState<Leaving>(null);
-  const rail = useRef<HTMLUListElement>(null);
   const [saved, toggle] = useSaved(); // CR-008 T4: Save for the film on the screen
   const [notice] = useState(() => {
     try {
@@ -70,34 +69,6 @@ export function Landing() {
     return () => ctl.abort();
   }, [filmId]);
 
-  // Scrolling the rail changes the film (desktop; on phones the rail is a wrapping grid that does not scroll and a tap
-  // chooses): top = the first film, bottom = the last (discover.ts railPick). Read once the scroll settles, so a
-  // fast flick does not flicker the projector through every film.
-  useEffect(() => {
-    const ul = rail.current;
-    if (!ul || !films?.length) return;
-    let t = 0;
-    const settle = () => {
-      clearTimeout(t);
-      t = window.setTimeout(() => {
-        const ids = films.map((f) => f.id);
-        setFilmId((id) => ids[railPick(ul.scrollTop, ul.scrollHeight - ul.clientHeight, ids.length, ids.indexOf(id ?? -1))] ?? id);
-      }, 150);
-    };
-    ul.addEventListener("scroll", settle, { passive: true });
-    return () => {
-      ul.removeEventListener("scroll", settle);
-      clearTimeout(t);
-    };
-  }, [films]);
-  // a tap chooses, and the rail scrolls to where scrolling would have chosen the same film
-  const choose = (id: number) => {
-    setFilmId(id);
-    const ul = rail.current, i = films?.findIndex((f) => f.id === id) ?? -1;
-    const max = ul ? ul.scrollHeight - ul.clientHeight : 0;
-    if (ul && films && i >= 0 && max > 1) ul.scrollTo({ top: railTop(i, max, films.length), behavior: "smooth" });
-  };
-
   const book = async () => {
     if (!st || leaving) return;
     const to = `/showtimes/${st.id}`;
@@ -129,11 +100,11 @@ export function Landing() {
         {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
         {failed ? <p className="fr-state">The listing could not be loaded.</p>
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}
-        <ul ref={rail} className="fr-rail-films">
+        <ul className="fr-rail-films">
           {films?.map((f, i) => (
             // the same view-transition name as its /films card: the browser glides each film to its place in the grid
             <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}`, ["--i" as string]: i }}>
-              <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => choose(f.id)}>
+              <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => setFilmId(f.id)}>
                 <Poster src={f.poster_url} title={f.title} />
                 <span className="fr-rail-title">{f.title}</span>
                 <span className="fr-meta">

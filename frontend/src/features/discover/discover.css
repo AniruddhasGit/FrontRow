@@ -740,12 +740,16 @@
   background: rgba(255, 255, 255, 0.92);
   color: var(--fr-ink-on-ticket);
 }
-.fr-book {
-  justify-self: start;
-  width: auto;
-  min-width: 14rem;
-  text-align: center;
-  text-decoration: none;
+.fr-movie-about {
+  margin: 0;
+  max-width: 40rem;
+  line-height: 1.55;
+  opacity: 0.92;
+}
+/* the corridor door: below the facts on narrow screens, the hero's right third on wide ones (Door.tsx, door.css) */
+.fr-movie-hero .fr-movie-door {
+  grid-column: 1 / -1;
+  margin: 0 calc(-1 * var(--fr-space-5)) calc(-1 * var(--fr-space-5));
 }
 .fr-movie-hero .fr-movie-actions {
   grid-column: 1 / -1;
@@ -765,7 +769,8 @@
   .fr-movie-hero .fr-rate-box,
   .fr-movie-hero .fr-movie-meta,
   .fr-movie-hero .fr-movie-chips,
-  .fr-movie-hero .fr-book {
+  .fr-movie-hero .fr-movie-about,
+  .fr-movie-hero .fr-door-note {
     grid-column: 1 / -1;
   }
   .fr-movie-hero h1,
@@ -774,8 +779,8 @@
     grid-row: 1;
     align-self: end;
   }
-  .fr-book {
-    justify-self: stretch;
+  .fr-movie-hero .fr-movie-door {
+    margin: 0 calc(-1 * var(--fr-space-4)) calc(-1 * var(--fr-space-4));
   }
 }
 @media (min-width: 60rem) {
@@ -785,7 +790,15 @@
     right: var(--fr-space-4);
   }
   .fr-movie-hero-inner {
+    grid-template-columns: minmax(7rem, 15rem) minmax(0, 1fr) minmax(16rem, 32%);
     padding: var(--fr-space-7) var(--fr-space-6);
+  }
+  .fr-movie-hero .fr-movie-door {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: stretch;
+    min-height: 22rem;
+    margin: calc(-1 * var(--fr-space-7)) calc(-1 * var(--fr-space-6)) calc(-1 * var(--fr-space-7)) 0;
   }
 }
 

@@ -66,30 +66,28 @@ test("F4/F5: review bounds, initials, the adults-only notice, and the door opens
   assert.equal(d.initials(" mira  hale jones"), "MH");
   assert.deepEqual(["A", "R", "18+", "nc-17"].map(d.adultsOnly), [true, true, true, true]);
   assert.deepEqual(["UA", "PG", "U/A 13+"].map(d.adultsOnly), [false, false, false]);
-  const open = d.pressDoor({ kind: "closed" }, 7);
-  assert.deepEqual(open, { kind: "opening", showtimeId: 7 });
-  assert.equal(d.pressDoor(open, 8), open, "a second press while it swings changes nothing");
+  const s7 = { id: 7, starts_at: "", screen: { id: 1, name: "SCREEN 1" }, sales_closed: false };
+  const flying = d.pressDoor({ kind: "closed" }, s7);
+  assert.deepEqual(flying, { kind: "flying", show: s7 });
+  assert.equal(d.pressDoor(flying, { ...s7, id: 8 }), flying, "a second press while it flies changes nothing");
 });
 
-test("F5: the door is one real button named for the show, with ENTER above it and the screen and time", () => {
+test("the hero door's show: the chosen one if open, else the first open one, else none", () => {
+  const s = (id, closed = false) => ({ id, starts_at: "", screen: { id: 1, name: "SCREEN 1" }, sales_closed: closed });
+  assert.equal(d.doorShow([s(1, true), s(2), s(3)], 3).id, 3);
+  assert.equal(d.doorShow([s(1, true), s(2), s(3)], null).id, 2);
+  assert.equal(d.doorShow([s(1, true), s(2)], 1).id, 2, "a closed choice falls back to an open show");
+  assert.equal(d.doorShow([s(1, true)], null), null);
+});
+
+test("the hero door is one real button named for the show, the screen above it, ENTER below, and the time", () => {
   const show = { id: 7, starts_at: "2026-11-22T19:30:00+05:30", screen: { id: 3, name: "SCREEN 3" }, sales_closed: false };
-  const doc = render(TheatreDoor, { show, film: { title: "Silent Sky", certification: { id: 1, name: "A" } }, now: Date.parse("2026-11-22T12:00:00+05:30") });
+  const doc = render(TheatreDoor, { show, film: { title: "Silent Sky" } });
   const buttons = all(doc, (e) => role(e) === "button");
   assert.equal(buttons.length, 1);
   assert.equal(name(buttons[0], doc), "Enter SCREEN 3 for Silent Sky at 7:30 pm");
   assert.match(text(doc), /ENTER/);
   assert.match(text(doc), /SCREEN 3/);
   assert.match(text(doc), /7:30 pm/);
-  assert.match(text(doc), /adults only/i);
 });
 
-// The landing rail: scrolling chooses the film, top = first, bottom = last, no empty tail needed (owner, 2026-11-23)
-import { railPick, railTop } from "./discover.ts";
-test("the rail's scroll position picks the film, and the ends reach the first and the last", () => {
-  assert.equal(railPick(0, 600, 10, 4), 0);
-  assert.equal(railPick(600, 600, 10, 4), 9);
-  assert.equal(railPick(300, 600, 10, 0), 5);
-  assert.equal(railPick(900, 600, 10, 0), 9);
-  assert.equal(railPick(0, 0, 10, 3), 3); // a list that fits keeps the choice
-  for (let i = 0; i < 10; i++) assert.equal(railPick(railTop(i, 600, 10), 600, 10, -1), i);
-});

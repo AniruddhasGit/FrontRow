@@ -294,23 +294,18 @@ export function reviewText(raw: string): { ok: true; text: string } | { ok: fals
   return { ok: true, text };
 }
 
-/** F5/F6: the door's one status. `closed` until pressed; `opening` plays the swing, then the page leaves (an exit that
- *  always fires: a timer, never an event that might not come). */
-export type Door = { kind: "closed" } | { kind: "opening"; showtimeId: number };
-export const DOOR_OPEN_MS = 700;
-export function pressDoor(d: Door, showtimeId: number): Door {
-  return d.kind === "opening" ? d : { kind: "opening", showtimeId };
+/** The hero door's one status (owner, 2026-11-23). `closed` until pressed; `flying` plays the fly-through while the
+ *  hall loads, then the page leaves - after FLY_MS, or at most PREFETCH_CAP_MS later if the hall is slow (an exit that
+ *  always fires: timers, never only an event that might not come). A second press while flying changes nothing. */
+export type DoorShow = { id: number; starts_at: string; screen: { id: number; name: string }; sales_closed: boolean };
+export type Door = { kind: "closed" } | { kind: "flying"; show: DoorShow };
+export const FLY_MS = 1400;
+export const PREFETCH_CAP_MS = 4000;
+export function pressDoor(d: Door, show: DoorShow): Door {
+  return d.kind === "flying" ? d : { kind: "flying", show };
 }
-
-/** The landing rail (owner, 2026-11-23): scrolling the list changes the film, and the list ends at its last film (no
- *  empty tail), so the scroll position picks the film by how far down the list it is: the top is the first film, the
- *  bottom the last. `max` is scrollHeight - clientHeight; a list that does not scroll keeps `current`. */
-export function railPick(scrollTop: number, max: number, n: number, current: number): number {
-  if (n <= 0) return -1;
-  if (!(max > 1)) return current;
-  return Math.round(Math.min(1, Math.max(0, scrollTop / max)) * (n - 1));
-}
-/** The scroll position that shows film `i` of `n` as the chosen one (the inverse of railPick). */
-export function railTop(i: number, max: number, n: number): number {
-  return n > 1 ? (i / (n - 1)) * max : 0;
+/** The show behind the hero door: the one chosen, if it is open, else the first open one listed. */
+export function doorShow<T extends DoorShow>(shows: T[], chosen: number | null): T | null {
+  const picked = shows.find((s) => s.id === chosen);
+  return picked && !picked.sales_closed ? picked : shows.find((s) => !s.sales_closed) ?? null;
 }

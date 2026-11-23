@@ -5,7 +5,9 @@
 // CR-011 F3 (the owner's reference: a big film page): a hero over the film's own poster light - poster, the rating box
 // with Rate now, runtime / genres / certificate / release date, the formats and language, Book tickets and Share; then
 // the showtimes for the chosen date grouped by screen; About, cast and crew, ratings and reviews; You might also like.
-// F5: choosing a time does not jump to the seats - it shows that screen's door (Door.tsx), and the door walks you in.
+// The hero (owner, 2026-11-23): the description where Book tickets was, and on the right a dim corridor ending in the
+// show's door (Door.tsx) - the chosen time's, else the first open one. Choosing a time points the door at it and brings
+// it into view; pressing the door flies through it into that show's hall (the page's other parts slide away first).
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { formatPaise } from "../admin/money";
 import { Link, navigate } from "../../router";
@@ -15,7 +17,7 @@ import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logi
 import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import { FilmTile, releaseLabel, ShareButton } from "../discover/Bits";
-import { byScreen, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
+import { adultsOnly, byScreen, doorShow, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
 import { TheatreDoor } from "../discover/Door";
 import { FilmDetails } from "../discover/FilmDetails";
 import "./browse.css";
@@ -49,6 +51,12 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
   const [all, setAll] = useState<Film[]>([]); // CR-011 F3: the listing, for You might also like
   const door = useRef<HTMLDivElement>(null);
   const toDoor = useRef(false);
+  const [flying, setFlying] = useState(false); // the door was pressed: everything but the corridor slides away
+  useEffect(() => {
+    if (!flying) return;
+    document.documentElement.dataset.flying = "";
+    return () => void delete document.documentElement.dataset.flying;
+  }, [flying]);
 
   useEffect(() => {
     get<{ movies: Film[] }>("/api/movies").then((r) => r.ok && setAll(r.body.movies));
@@ -57,7 +65,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
     if (!toDoor.current || chosen === null) return;
     toDoor.current = false;
     door.current?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    door.current?.querySelector<HTMLButtonElement>(".fr-door")?.focus({ preventScroll: true });
+    door.current?.querySelector<HTMLButtonElement>(".fr-corridor-door")?.focus({ preventScroll: true });
   }, [chosen]);
 
   useEffect(() => {
@@ -105,12 +113,13 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
     );
   }
   const selected = date ?? listed?.date ?? null;
-  const show = listed?.showtimes.find((t) => t.id === chosen) ?? null;
+  const show = doorShow(listed?.showtimes ?? [], chosen);
+  const started = !!show && Date.parse(show.starts_at) <= now();
   const also = film ? recommended(film, all) : [];
   const days = film ? movieStrip(now(), film.display_until) : [];
 
   return (
-    <section className="fr-movie">
+    <section className="fr-movie" data-flying={flying || undefined}>
       {film ? (
         <header className="fr-movie-hero">
           <div className="fr-movie-backdrop" aria-hidden="true" style={{ backgroundImage: `url(${film.poster_url})` }} />
@@ -145,10 +154,14 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
                 {formats(listed?.showtimes ?? []).map((f) => <span key={f} className="fr-chip">{f}</span>)}
                 <span className="fr-chip">{film.language.name}</span>
               </p>
-              {film.coming_soon ? null : (
-                <a className="fr-action fr-book" href="#showtimes" onClick={(e) => jump(e, "showtimes")}>Book tickets</a>
-              )}
+              <p className="fr-movie-about">{film.synopsis || "No description yet."}</p>
+              {started ? <p className="fr-door-note">This show started at {timeLabel(show!.starts_at)}. Seats stay on sale until sales close.</p> : null}
+              {adultsOnly(film.certification.name)
+                ? <p className="fr-door-note">Rated {film.certification.name}: adults only. Carry a photo ID to the show.</p> : null}
             </div>
+            {film.coming_soon ? null : (
+              <div ref={door} className="fr-movie-door"><TheatreDoor show={show} film={film} onFly={setFlying} /></div>
+            )}
             <div className="fr-movie-actions">
               <BookmarkToggle movieId={film.id} title={film.title} state={saved} toggle={toggle} />
               <ShareButton title={film.title} text={`${film.title} at FrontRow`} path={`/movies/${film.id}`} />
@@ -190,7 +203,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
                 <ul className="fr-times">
                   {g.shows.map((st) => (
                     <li key={st.id}>
-                      <ShowtimeButton st={st} chosen={st.id === chosen} onChoose={pick} />
+                      <ShowtimeButton st={st} chosen={st.id === show?.id} onChoose={pick} />
                     </li>
                   ))}
                 </ul>
@@ -203,7 +216,6 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
               Next: {dayLabel(listed.next_date_with_showtimes)}
             </button>
           ) : null}
-          {film && show && !show.sales_closed ? <div ref={door}><TheatreDoor show={show} film={film} now={now()} /></div> : null}
         </>
       )}
       </section>
