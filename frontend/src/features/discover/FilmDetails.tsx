@@ -22,7 +22,7 @@ type Write = { kind: "idle" } | { kind: "saving" } | { kind: "failed"; message: 
 export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: (f: FilmDetail) => void }) {
   const [mine, setMine] = useState<Mine>({ kind: "loading" });
   const [write, setWrite] = useState<Write>({ kind: "idle" });
-  const [draft, setDraft] = useState<string | null>(null); // the review form's text while it is open
+  const [draft, setDraft] = useState<string | null>(null); // the review box's text once edited (else the saved review)
   const [posted, setPosted] = useState(0); // bumped after a review is saved, so the list re-reads once
   useEffect(() => {
     const ctl = new AbortController();
@@ -43,8 +43,10 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
     onChanged({ ...film, rating: r.body.rating });
   };
   const review = async () => {
-    if (mine.kind !== "ready" || !mine.me.score || draft === null || write.kind === "saving") return;
-    const t = reviewText(draft);
+    if (mine.kind !== "ready" || write.kind === "saving") return;
+    // owner, 2026-11-23 ("Where is the option to write the review?"): the box is always there; a score comes first
+    if (!mine.me.score) return setWrite({ kind: "failed", message: "Choose a score first, then post your review." });
+    const t = reviewText(draft ?? mine.me.review ?? "");
     if (!t.ok) return setWrite({ kind: "failed", message: t.message });
     setWrite({ kind: "saving" });
     const r = await send<{ review_id: number; score: number; text: string; rating: FilmDetail["rating"] }>(
@@ -73,7 +75,7 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
   ];
   const mineBlock = (
     <div className="fr-my" id="film-rate">
-      <h3>{film.coming_soon ? "Want to see it?" : "Your rating"}</h3>
+      <h3>{film.coming_soon ? "Want to see it?" : "Rate and review"}</h3>
       {mine.kind === "loading" ? <p>Checking your account…</p>
         : mine.kind === "error" ? <p>Your rating cannot be loaded right now.</p>
         : mine.kind === "guest" ? (
@@ -92,21 +94,19 @@ export function FilmDetails({ film, onChanged }: { film: FilmDetail; onChanged: 
                         disabled={write.kind === "saving"} onClick={() => void rate(n)}>{n}</button>
               ))}
             </div>
-            {/* CR-011 F4: the review goes with the score; editing reopens the same form */}
-            {!mine.me.score ? null : draft === null ? (
-              <button type="button" className="fr-action-secondary fr-review-open" onClick={() => setDraft(mine.me.review ?? "")}>
-                {mine.me.review ? "Edit your review" : "Write a review"}
-              </button>
-            ) : (
-              <form className="fr-review-form" onSubmit={(e) => { e.preventDefault(); void review(); }}>
-                <label htmlFor="review-text">Your review ({mine.me.score} out of 10)</label>
-                <textarea id="review-text" rows={4} maxLength={2000} value={draft} onChange={(e) => setDraft(e.target.value)} />
-                <div className="fr-review-actions">
-                  <button type="submit" className="fr-action" disabled={write.kind === "saving"}>Post review</button>
-                  <button type="button" className="fr-action-secondary" onClick={() => setDraft(null)}>Cancel</button>
-                </div>
-              </form>
-            )}
+            {/* the review box is always shown under the scores (owner, 2026-11-23: it was hidden until a score was chosen) */}
+            <form className="fr-review-form" onSubmit={(e) => { e.preventDefault(); void review(); }}>
+              <label htmlFor="review-text">
+                {mine.me.score ? `Your review (${mine.me.score} out of 10)` : "Write a review (choose a score above first)"}
+              </label>
+              <textarea id="review-text" rows={4} maxLength={2000} placeholder="What did you think of it?"
+                        value={draft ?? mine.me.review ?? ""} onChange={(e) => setDraft(e.target.value)} />
+              <div className="fr-review-actions">
+                <button type="submit" className="fr-action" disabled={write.kind === "saving"}>
+                  {mine.me.review ? "Update review" : "Post review"}
+                </button>
+              </div>
+            </form>
           </>
         ) : <p>Ratings open once the film is out.</p>}
       <p role="status" className="fr-share-note">{write.kind === "failed" ? write.message : write.kind === "saving" ? "Saving…" : ""}</p>

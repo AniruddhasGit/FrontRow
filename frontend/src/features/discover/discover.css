@@ -1027,9 +1027,6 @@
   flex-wrap: wrap;
   gap: var(--fr-space-2);
 }
-.fr-review-open {
-  margin-top: var(--fr-space-3);
-}
 
 /* You might also like */
 .fr-also {
