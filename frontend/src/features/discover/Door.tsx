@@ -51,9 +51,9 @@ function walkIn(showtimeId: number) {
 // one strip of 12 frames of that door swinging open, cropped to the doorway - played in place over the still.
 const still = (n: number) => `/art/corridor/screen${n}.webp`;
 const SWING = "/art/corridor/swing.webp";
-const READY_CAP_MS = 6000;
+const READY_CAP_MS = 6000; // owner, 2026-11-23: nothing shows or moves before it has loaded - and every wait has an exit
 const SWING_FRAMES = 12;
-const PEEK = 4; // the swing frame a hovered door opens to // owner, 2026-11-23: nothing shows or moves before it has loaded - and every wait has an exit
+const PEEK = 4; // the swing frame a hovered door opens to
 
 /** Both images decoded (or the cap passed): only then does the corridor show, and the door work. Never rejects. */
 function decoded(srcs: string[]): Promise<void> {
