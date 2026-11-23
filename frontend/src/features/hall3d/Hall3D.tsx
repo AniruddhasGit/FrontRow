@@ -148,7 +148,8 @@ export function Hall3D({ map, film = null, mine, onTap }: {
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
             <HallScene map={map} film={film} mine={mine} mode={mode} seatId={seatId} onTap={onTap} onLook={look}
-                       onHover={setHover} onMoving={onMoving} meta={arrival ?? null} hallNo={hallNo} />
+                       onHover={setHover} onMoving={onMoving} meta={arrival ?? null} hallNo={hallNo}
+                       houseDown={mode === "seat"} /* owner, 2026-11-23: sitting in a seat, the house lights go down; All seats brings them up */ />
           </Suspense>
         </Guard>
         <div ref={tip} className="fr-hall3d-tip" hidden={!hover || moving}>

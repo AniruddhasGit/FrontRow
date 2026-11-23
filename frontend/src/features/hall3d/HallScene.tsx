@@ -613,7 +613,7 @@ const GLOW_APPLY = `outgoingLight *= uHouse;
 
 /** House lights (owner, 2026-11-22): up while seats are being chosen, down once the film's still is on the screen.
  *  "down" is the level the room's baked light, the downlights and the wall strips sink to; the exit and entry signs, the
- *  step lights and the projector port stay lit, as they do in a real cinema. Eased over ~1.5 s, like a dimmer. */
+ *  step lights and the projector port stay lit, as they do in a real cinema. Eased over ~1 s, like a dimmer; also down while you sit in a seat on the seat page. */
 const HOUSE_DOWN = 0.55;
 const DIMMED = /^emit_(dl|led_strip)/;
 
@@ -718,7 +718,8 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
     const k = 1 - Math.exp(-Math.min(delta, 0.1) * 3); // ~1 s to settle on a new picture
     const level = down ? HOUSE_DOWN : 1;
     const dimming = Math.abs(glowU.uHouse.value - level) > 1e-3;
-    glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 2));
+    // ~1 s to settle (owner, 2026-11-23: "slowly dim the lighting in 1 second"), eased like a dimmer: 97% by 1 s
+    glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 3.5));
     for (const l of lamps.current) l.material.color.copy(l.full).multiplyScalar(glowU.uHouse.value);
     const t = target.current;
     const off = (c: Color, v: Glow["left"]) => Math.abs(c.r - v[0]) + Math.abs(c.g - v[1]) + Math.abs(c.b - v[2]);
