@@ -22,12 +22,17 @@ import { sidebarTop } from "../discover/discover";
 import { Discover } from "../discover/Rows";
 import { HallStage } from "../hall3d/HallStage";
 import { navigate } from "../../router";
+import { decoded } from "../browse/reveal";
 import "../browse/browse.css";
 
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
 type Leaving = null | "films";
 const SHOWCASE_HALL = 6; // the biggest room; the landing never switches halls
 const EXPAND_MS = 600; // the rail's ground wiping across the page (immersive.css .fr-landing::after), before /films takes over
+// 2026-11-23 (owner: nothing spawns in mid-animation): the rail's films pop in once their posters are decoded, and All
+// films waits for the listing's posters, each wait capped so a slow poster only costs this long
+const RAIL_POSTERS_MS = 2500;
+const FILMS_POSTERS_MS = 1500;
 
 export function Landing() {
   const [films, setFilms] = useState<Film[] | null>(null); // the rail: what is showing
@@ -37,6 +42,7 @@ export function Landing() {
   const [listed, setListed] = useState<Listed | null>(null);
   const [st, setSt] = useState<Showtime | null>(null);
   const [leaving, setLeaving] = useState<Leaving>(null);
+  const [railReady, setRailReady] = useState(false);
   const [saved, toggle] = useSaved(); // CR-008 T4: Save for the film on the screen
   const [notice] = useState(() => {
     try {
@@ -53,6 +59,7 @@ export function Landing() {
       setAll(r.body.movies);
       setFilms(showing);
       setFilmId((id) => id ?? showing[0]?.id ?? null);
+      void decoded(showing.map((f) => f.poster_url), RAIL_POSTERS_MS).then(() => setRailReady(true));
     });
   }, []);
   useEffect(() => {
@@ -86,9 +93,15 @@ export function Landing() {
   useEffect(() => {
     if (leaving !== "films") return;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const t = setTimeout(() => navigate("/films"), reduced ? 0 : EXPAND_MS);
-    return () => clearTimeout(t);
-  }, [leaving]);
+    // the cards the films glide into (and the ones that fade in) carry their posters when /films takes over: the first
+    // two rows of the grid, what is on screen when it opens (the rest fade in as they decode, Poster.tsx)
+    let live = true;
+    const wipe = new Promise((r) => setTimeout(r, reduced ? 0 : EXPAND_MS));
+    void Promise.all([wipe, decoded(all.filter((f) => !f.coming_soon).slice(0, 8).map((f) => f.poster_url), FILMS_POSTERS_MS)]).then(() => live && navigate("/films"));
+    return () => {
+      live = false;
+    };
+  }, [leaving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const film = films?.find((f) => f.id === filmId) ?? null;
   return (
@@ -100,7 +113,7 @@ export function Landing() {
         {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
         {failed ? <p className="fr-state">The listing could not be loaded.</p>
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}
-        <ul className="fr-rail-films">
+        <ul className="fr-rail-films" data-ready={railReady || undefined}>
           {films?.map((f, i) => (
             // the same view-transition name as its /films card: the browser glides each film to its place in the grid
             <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}`, ["--i" as string]: i }}>
@@ -121,7 +134,8 @@ export function Landing() {
         </button>
       </aside>
       <div className="fr-landing-stage">
-        <HallStage hallNo={SHOWCASE_HALL} film={film} />
+        {/* undefined while the listing is still coming: the hall waits for the film before it shows */}
+        <HallStage hallNo={SHOWCASE_HALL} film={films === null && !failed ? undefined : film} />
         {film ? (
           <div className="fr-landing-bar">
             <p className="fr-landing-now">{film.title}</p>

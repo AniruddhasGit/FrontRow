@@ -125,6 +125,9 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
           <span>Title</span>
           <input type="search" value={narrow.q ?? ""} placeholder="Search titles" onChange={(e) => narrowBy("q", e.target.value)} />
         </label>
+        {/* the choices come in together with the films they are drawn from, below the search: arriving one by one they
+            pushed each other down the column (CLS, 2026-11-23) */}
+        {films === null && !failed ? null : <>
         {genres.length >= 2 ? (
           <ChoiceGroup label="Genre" className="fr-pick" selected={narrow.genre_id} onSelect={(v) => narrowBy("genre_id", v)}
                        choices={[{ value: null, label: "Any genre" }, ...genres.map((g) => ({ value: String(g.id), label: g.name }))]} />
@@ -149,6 +152,7 @@ export function ListingScreen({ now = wallClock, seed }: { now?: () => number; s
             Clear filters
           </button>
         ) : null}
+        </>}
       </div>
       {controls.unavailable ? <p className="fr-filters-down">Filters are unavailable right now.</p> : null}
       </div>

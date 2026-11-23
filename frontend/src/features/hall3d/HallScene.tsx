@@ -5,7 +5,7 @@
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BufferAttribute, CanvasTexture, Color, DataTexture, FloatType, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D,
   PMREMGenerator, RGBAFormat, RingGeometry, SRGBColorSpace, ShaderChunk, TextureLoader, Vector3, type BufferGeometry, type Group, type Material, type Mesh,
@@ -19,6 +19,7 @@ import { stillPath } from "./still";
 import { FLICKER_S, flickerLevel } from "./flicker";
 import { DOUBLE_MS, seatAction, type SeatGesture } from "./gestures";
 import { hallDrawn } from "./hallReady";
+import { HALL_CAP_MS, readiness, settled, type PartState, type Parts } from "./readiness";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
@@ -76,9 +77,11 @@ function pin(controls: Orbit | null, camera: PerspectiveCamera, look: Vector3) {
   controls.update();
 }
 
-function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: {
+function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked, go }: {
   hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void; bakedViews: BakedViews;
   intro: { eye: number[]; look: number[] }[] | null; wall: number | null; locked: boolean;
+  /** false until the whole hall is in and drawn (readiness.ts): the camera waits on its first pose, nothing flies */
+  go: boolean;
 }) {
   const camera = useThree((s) => s.camera as PerspectiveCamera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
@@ -155,9 +158,10 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: 
     gl.domElement.addEventListener("pointerdown", skip);
     return () => gl.domElement.removeEventListener("pointerdown", skip);
   }, [gl, invalidate]);
+  useEffect(() => void (go && invalidate()), [go, invalidate]);
   useFrame(() => {
     const g = glide.current;
-    if (!g) return;
+    if (!g || !go) return;
     g.t0 ??= performance.now();
     const k = Math.min(1, Math.max(0, performance.now() - g.t0 - (g.hold ?? 0)) / g.ms);
     const e = ease(k);
@@ -210,9 +214,9 @@ function lightSeats(m: Material, shU: Record<string, { value: unknown }>, glow: 
   m.customProgramCacheKey = () => "seat-probes";
 }
 
-function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
+function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit, mark }: {
   kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
-  baked: boolean; lit: SeatLit | null;
+  baked: boolean; lit: SeatLit | null; mark: Mark;
 }) {
   const ref = useRef<InstancedMesh>(null);
   const frameRef = useRef<InstancedMesh>(null);
@@ -259,13 +263,14 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
   useEffect(() => {
     let live = true;
     void seatGeometry(kind).then((g) => {
-      if (live) setGeo(g);
-      else { g.body.dispose(); g.frame?.dispose(); }
+      if (!live) return void (g.body.dispose(), g.frame?.dispose());
+      setGeo(g);
+      mark(`seat:${kind}`, "loaded"); // seatGeometry never rejects: a missing file is the stand-in
     });
     return () => {
       live = false;
     };
-  }, [kind]);
+  }, [kind, mark]);
   useEffect(() => () => { geo.body.dispose(); geo.frame?.dispose(); }, [geo]);
   useEffect(() => () => { material.dispose(); frameMaterial.dispose(); }, [material, frameMaterial]);
 
@@ -356,6 +361,8 @@ function Halos({ placed, mine, tone }: { placed: Placed[]; mine: ReadonlySet<num
 }
 
 export type Film = { id: number; title: string };
+/** Reports one part of the hall loaded or failed (readiness.ts). */
+type Mark = (part: string, state: PartState) => void;
 
 /** The title card: the film's name in the display face over a dark cinematic gradient, at the screen's 2.39:1. */
 function titleCard(title: string, tone: Tones): Texture {
@@ -399,7 +406,9 @@ function titleCard(title: string, tone: Tones): Texture {
 }
 
 /** What the screen shows: /art/screen_<movieId>.jpg when that still is deployed, else the title card. */
-function useScreenArt(film: Film | null, tone: Tones): Texture | null {
+/** `film` undefined: the page does not know the film yet, so nothing is drawn (and "still" stays loading) until it does.
+ *  "still" is reported once the title card is made and the still has loaded or is known to be absent (the card stays). */
+function useScreenArt(film: Film | null | undefined, tone: Tones, mark: Mark): Texture | null {
   const invalidate = useThree((s) => s.invalidate);
   const [art, setArt] = useState<Texture | null>(null);
   useEffect(() => {
@@ -414,26 +423,27 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
       setArt(t);
       invalidate();
     };
+    if (film === undefined) return;
     const title = film?.title ?? "";
-    void Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
+    const card = Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
       .catch(() => null).then(() => show(titleCard(title, tone), false));
-    if (film) {
-      // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
-      // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
-      void stillPath(film.id, (u, init) => fetch(u, init)).then((path) => {
-        if (!path || !live) return;
-        new TextureLoader().load(path, (t) => {
-          t.colorSpace = SRGBColorSpace;
-          t.userData.still = true; // the film is on: the house lights may go down
-          show(t, true);
-        }, undefined, () => null);
-      }).catch(() => null);
-    }
+    // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
+    // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
+    const pic = !film ? null : stillPath(film.id, (u, init) => fetch(u, init)).then((path) => new Promise<void>((done) => {
+      if (!path || !live) return done();
+      new TextureLoader().load(path, (t) => {
+        t.colorSpace = SRGBColorSpace;
+        t.userData.still = true; // the film is on: the house lights may go down
+        show(t, true);
+        done();
+      }, undefined, () => done());
+    })).catch(() => null);
+    void Promise.all([card, pic]).then(() => live && mark("still", "loaded"));
     return () => {
       live = false;
       made.forEach((t) => t.dispose());
     };
-  }, [film?.id, film?.title, tone, invalidate]);
+  }, [film === undefined, film?.id, film?.title, tone, invalidate, mark]); // eslint-disable-line react-hooks/exhaustive-deps
   return art;
 }
 
@@ -630,7 +640,7 @@ function glowUniforms(meta: BakedMeta) {
 type GlowU = ReturnType<typeof glowUniforms>;
 
 /** CR-010 L2: the hall's Cycles panorama (/halls/hallN_env.hdr), pre-filtered for the seats' reflections. */
-function useHallEnv(file: string | undefined): Texture | null {
+function useHallEnv(file: string | undefined, mark: Mark): Texture | null {
   const gl = useThree((s) => s.gl);
   const [env, setEnv] = useState<Texture | null>(null);
   useEffect(() => {
@@ -641,23 +651,24 @@ function useHallEnv(file: string | undefined): Texture | null {
       made = pm.fromEquirectangular(t).texture;
       pm.dispose();
       t.dispose();
-      if (live) setEnv(made);
-      else made.dispose();
-    }, undefined, () => null); // no panorama: the seats keep their probe light, without reflections
+      if (!live) return made.dispose();
+      setEnv(made);
+      mark("env", "loaded");
+    }, undefined, () => live && mark("env", "failed")); // no panorama: the seats keep their probe light, without reflections
     return () => {
       live = false;
       made?.dispose();
     };
-  }, [file, gl]);
+  }, [file, gl, mark]);
   return env;
 }
 
-function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
-  n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean; glowU: GlowU;
+function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU, mark }: {
+  n: number; film: Film | null | undefined; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean; glowU: GlowU; mark: Mark;
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const painted = usePainted(paint, meta.screen.w / meta.screen.h);
-  const still = useScreenArt(film, tone);
+  const still = useScreenArt(film, tone, mark);
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
@@ -702,12 +713,13 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
         }
       });
       setRoom(g.scene);
+      mark("room", "loaded"); // GLTFLoader answers once the room's textures are in too
       invalidate();
-    }, undefined, () => null); // no room file: the seats still draw
+    }, undefined, () => live && mark("room", "failed")); // no room file: the page's fallback (readiness.ts)
     return () => {
       live = false;
     };
-  }, [n, invalidate, glowU]);
+  }, [n, invalidate, glowU, mark]);
   useEffect(() => {
     target.current = sampleGlow(art);
     invalidate();
@@ -772,13 +784,6 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
     shown.current = { material, base };
     invalidate();
   }, [art, room, tone, invalidate]);
-  // the first frame with the room in it tells a waiting page change it may show this page now (hallReady.ts)
-  const told = useRef(false);
-  useFrame(() => {
-    if (!room || told.current) return;
-    told.current = true;
-    requestAnimationFrame(hallDrawn);
-  });
   const look = meta.allseats.look;
   return (
     <group>
@@ -795,10 +800,10 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
 }
 
 /** Floor tiers on the rake, the stage floor, dark walls, the glowing screen, brass step lights in every aisle. */
-function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film | null; paint: Paint | null }) {
+function Room({ hall, tone, film, paint, mark }: { hall: Hall; tone: Tones; film: Film | null | undefined; paint: Paint | null; mark: Mark }) {
   const ref = useRef<InstancedMesh>(null);
   const painted = usePainted(paint, 2.39);
-  const still = useScreenArt(film, tone);
+  const still = useScreenArt(film, tone, mark);
   const art = painted ?? still;
   const w = hall.halfWidth + 1.8;
   const { screen, depth, top } = hall;
@@ -876,25 +881,66 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
 }
 
 /** Every seat model's instances; a probe-lit hall (CR-010) also loads its reflection panorama here, once. */
-function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env }: {
+function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env, mark }: {
   byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
-  baked: boolean; glow: GlowU | null; env: string | undefined;
+  baked: boolean; glow: GlowU | null; env: string | undefined; mark: Mark;
 }) {
-  const map = useHallEnv(glow ? env : undefined);
+  const map = useHallEnv(glow ? env : undefined, mark);
   const lit = useMemo(() => (glow ? { glow, env: map } : null), [glow, map]);
   return <>{KINDS.map((k) => (byKind[k].length ? (
-    <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={onPick} onHover={onHover} baked={baked} lit={lit} />
+    <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={onPick} onHover={onHover} baked={baked} lit={lit} mark={mark} />
   ) : null))}</>;
 }
 
-export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false }: {
-  map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
+/** Readiness, step two: once every part is in (readiness.ts), the GPU is warmed while the canvas is still invisible -
+ *  every texture uploaded and every shader compiled (gl.compileAsync), then two frames drawn, so the post-processing
+ *  passes compile too - and only then `onShown`: the canvas fades in and the camera may move. The warm-up is capped
+ *  (WARM_CAP_MS) in case compileAsync never answers. */
+const WARM_CAP_MS = 1500;
+function Warm({ on, onShown }: { on: boolean; onShown: () => void }) {
+  const { gl, scene, camera, invalidate } = useThree();
+  const stage = useRef<"wait" | "compiling" | "drawing" | "done">("wait");
+  const frames = useRef(0);
+  useEffect(() => {
+    if (!on || stage.current !== "wait") return;
+    stage.current = "compiling";
+    const draw = () => {
+      if (stage.current !== "compiling") return;
+      stage.current = "drawing";
+      invalidate();
+    };
+    scene.traverse((o) => {
+      for (const m of [(o as Mesh).material].flat() as (Material & { map?: Texture | null; envMap?: Texture | null })[]) {
+        for (const t of [m?.map, m?.envMap]) if (t?.isTexture) gl.initTexture(t);
+      }
+    });
+    gl.compileAsync(scene, camera).then(draw, draw);
+    const cap = setTimeout(draw, WARM_CAP_MS);
+    return () => {
+      clearTimeout(cap);
+      if (stage.current === "compiling") stage.current = "wait"; // StrictMode's second run starts it again
+    };
+  }, [on, gl, scene, camera, invalidate]);
+  useFrame(() => {
+    if (stage.current !== "drawing") return;
+    if (++frames.current < 2) return void invalidate();
+    stage.current = "done";
+    onShown();
+  });
+  return null;
+}
+
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false, since }: {
+  /** `film` undefined: not known yet (the page is still asking); the hall waits for it before it shows (readiness.ts) */
+  map: SeatMap; film: Film | null | undefined; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
   onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null; paint?: Paint | null;
   /** CR-005: the landing's seat - no seat to click, no hover, no dragging; the camera moves only when told to. */
   locked?: boolean;
   /** The house lights go down once the film's still is on the screen (the landing); up while choosing seats. */
   houseDown?: boolean;
+  /** performance.now() when the page started loading this hall (its .json fetch); the cap counts from here. */
+  since?: number;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
@@ -943,17 +989,48 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
     document.body.style.cursor = "";
   }, []);
 
+  // Owner, 2026-11-23: nothing of the hall shows and no camera moves until every part of it is in (readiness.ts).
+  // The parts are fixed at mount: a later film change on the landing swaps the still in a shown hall (the flicker).
+  const [t0] = useState(() => since ?? performance.now());
+  const [parts, setParts] = useState<Parts>(() => {
+    const p: Parts = { still: "loading" };
+    if (baked) p.room = "loading";
+    if (baked?.meta.probe?.env?.file) p.env = "loading";
+    for (const k of KINDS) if (byKind[k].length) p[`seat:${k}`] = "loading";
+    return p;
+  });
+  const mark = useCallback<Mark>((part, state) => setParts((p) => (p[part] === "loading" ? { ...p, [part]: state } : p)), []);
+  const [, setCapped] = useState(false); // a render at the cap, so the status below is read again then
+  useEffect(() => {
+    const t = setTimeout(() => setCapped(true), Math.max(0, t0 + HALL_CAP_MS - performance.now())); // a timer, not rAF
+    return () => clearTimeout(t);
+  }, [t0]);
+  const status = readiness(parts, performance.now() - t0, baked ? ["room"] : []);
+  const [shown, setShown] = useState(false);
+  const onShown = useCallback(() => {
+    setShown(true);
+    requestAnimationFrame(hallDrawn); // a waiting page change may show this page now (hallReady.ts)
+  }, []);
+  useEffect(() => {
+    if (status === "failed") hallDrawn(); // nothing to wait for: the page shows its fallback
+  }, [status]);
+  // the Guard around this scene renders the page's fallback (the 2D map, the landing's empty stage)
+  if (status === "failed" && !shown) throw new Error(`hall ${hallNo ?? "procedural"}: a required part did not load`);
+
   return (
     <Canvas frameloop="demand" dpr={[1, 1.25]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
+            className="fr-hall-canvas" data-shown={shown || undefined}
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
+      <Warm on={settled(status)} onShown={onShown} />
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
-      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} glowU={glowU!} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} glowU={glowU!} mark={mark} />
+        : <Room hall={hall} tone={tone} film={film} paint={paint} mark={mark} />}
       <Seats byKind={byKind} colourOf={colourOf} onPick={locked ? () => undefined : pick} onHover={locked ? () => undefined : hoverSeat}
-             baked={!!baked} glow={baked?.meta.probe ? glowU : null} env={baked?.meta.probe?.env?.file} />
+             baked={!!baked} glow={baked?.meta.probe ? glowU : null} env={baked?.meta.probe?.env?.file} mark={mark} />
       <Halos placed={placed} mine={mine} tone={tone} />
       <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={baked?.meta.intro ?? null}
-           wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} />
+           wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} go={shown} />
       <EffectComposer multisampling={0}>
         <Bloom mipmapBlur luminanceThreshold={1} intensity={baked ? 0.6 : 0.9} />
         <Vignette offset={0.3} darkness={0.55} />

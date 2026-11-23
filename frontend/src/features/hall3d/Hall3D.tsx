@@ -2,14 +2,16 @@
 // complete beneath it. This file is small and loads with the seat page; three.js and the scene load only when
 // this mounts, through the lazy import below.
 // Shown only when it can work: WebGL present (phones included, CR-003). Otherwise, or when the scene fails to
-// load or throws, this renders nothing and the 2D map alone carries the page - nothing is lost. It renders nothing on
-// the first render too (the decision is an effect), so the server-side render harness sees the 2D page unchanged.
+// load or throws, this renders nothing and the 2D map alone carries the page - nothing is lost. The WebGL check runs
+// in the first render (2026-11-23): deciding it in an effect drew the panel full width for one frame, then pushed it
+// into its column (CLS 0.68). The server-side render harness has no document, so it still sees the 2D page.
 import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatPaise } from "../admin/money";
 import { seatLabel, selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { screenFirst, screenNumber, seatTip, stateWord, type BakedMeta, type Mode } from "./hall";
 import type { Film } from "./HallScene";
 import { WALKIN } from "./hallReady";
+import { HALL_CAP_MS } from "./readiness";
 import "./hall3d.css";
 
 const HallScene = lazy(() => import("./HallScene"));
@@ -42,10 +44,11 @@ export class Guard extends Component<{ children: ReactNode; onFail: () => void }
   }
 }
 
-export function Hall3D({ map, film = null, mine, onTap }: {
+export function Hall3D({ map, film, mine, onTap }: {
+  /** `film` undefined: the showtime's header has not arrived yet; the hall waits for it (readiness.ts) */
   map: SeatMap | null; film?: Film | null; mine: ReadonlySet<number>; onTap: (seat: Seat, visual: Visual) => void;
 }) {
-  const [able, setAble] = useState(false);
+  const [able, setAble] = useState(canDraw);
   const [on, setOn] = useState(true);
   const [mode, setMode] = useState<Mode>("all");
   const [picked, setPicked] = useState<number | null>(null); // the seat last clicked in 3D, whose view is shown
@@ -57,11 +60,13 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   // null = none (the procedural hall). The scene waits for the answer so it mounts once, in the right mode.
   const hallNo = map ? screenNumber(map.screen.name) : null;
   const [meta, setMeta] = useState<BakedMeta | null | undefined>(undefined);
-  useEffect(() => setAble(canDraw()), []);
+  const [since] = useState(() => performance.now()); // the hall's load cap counts from here (readiness.ts)
   useEffect(() => {
     if (!hallNo) return setMeta(null);
     let live = true;
-    fetch(`/halls/hall${hallNo}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((m) => live && setMeta(m));
+    // capped like the rest of the hall: a .json that never answers is "no bake" (web-app-pitfalls 2)
+    fetch(`/halls/hall${hallNo}.json`, { signal: AbortSignal.timeout(HALL_CAP_MS) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((m) => live && setMeta(m));
     return () => {
       live = false;
     };
@@ -100,7 +105,8 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   if (!able) return null;
   // The hall's box is held empty until the map (and the baked-room answer) arrive, so the panel beside it does not
   // jump from the full width into its column when the seat-map response resolves (S-BRW-17).
-  if (!map || meta === undefined) return <section className="fr-hall3d" aria-hidden="true" />;
+  // The stage is drawn empty too, so the calm loading box (hall3d.css) is there from the first frame.
+  if (!map || meta === undefined) return <section className="fr-hall3d" aria-hidden="true"><div key="stage" className="fr-hall3d-stage" /></section>;
 
   if (!on) {
     return (
@@ -140,7 +146,7 @@ export function Hall3D({ map, film = null, mine, onTap }: {
         </div>
         <button type="button" className="fr-action-secondary" onClick={() => setOn(false)}>2D map</button>
       </div>
-      <div className="fr-hall3d-stage" aria-hidden="true" onPointerMove={(e) => {
+      <div key="stage" className="fr-hall3d-stage" aria-hidden="true" onPointerMove={(e) => {
         // The label follows the pointer by a style write, not a render: React re-renders only when the seat changes.
         const box = e.currentTarget.getBoundingClientRect();
         tip.current?.style.setProperty("transform", `translate(${e.clientX - box.left + 14}px, ${e.clientY - box.top + 18}px)`);
@@ -148,7 +154,7 @@ export function Hall3D({ map, film = null, mine, onTap }: {
         <Guard onFail={() => setAble(false)}>
           <Suspense fallback={null}>
             <HallScene map={map} film={film} mine={mine} mode={mode} seatId={seatId} onTap={onTap} onLook={look}
-                       onHover={setHover} onMoving={onMoving} meta={arrival ?? null} hallNo={hallNo}
+                       onHover={setHover} onMoving={onMoving} meta={arrival ?? null} hallNo={hallNo} since={since}
                        houseDown={mode === "seat"} /* owner, 2026-11-23: sitting in a seat, the house lights go down; All seats brings them up */ />
           </Suspense>
         </Guard>

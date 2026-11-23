@@ -51,3 +51,21 @@ h1 {
 code {
   font-family: var(--fr-font-mono);
 }
+
+/* 2026-11-23, loading without jitter (owner: "the idle when the website is loading is very jittery").
+   The scrollbar's gutter is always kept, so a page that grows past the window when its data arrives does not narrow by
+   the scrollbar's width and shift everything sideways. The seat page never scrolls (immersive.css), so it keeps none. */
+html {
+  scrollbar-gutter: stable;
+}
+html:has(.fr-seatmap.fr-immersive) {
+  scrollbar-gutter: auto;
+}
+/* An image fades in whole once decoded (browse/reveal.ts), inside a box already its final size. */
+.fr-reveal {
+  opacity: 0;
+  transition: opacity var(--fr-motion-base) var(--fr-ease-out);
+}
+.fr-reveal[data-shown] {
+  opacity: 1;
+}

@@ -168,8 +168,19 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
             </div>
           </div>
         </header>
-      ) : null}
-      <section id="showtimes" className="fr-showtimes" aria-labelledby="showtimes-title">
+      ) : (
+        // the hero's frame while the film loads, the same grid and the same 2:3 poster box, so the showtimes below do
+        // not jump down by the hero's height when it arrives (CLS 0.47, 2026-11-23)
+        <header className="fr-movie-hero" aria-hidden="true">
+          <div className="fr-movie-hero-inner">
+            <div className="fr-movie-poster fr-card-loading"><div className="fr-poster" /></div>
+            <div className="fr-movie-info" />
+            <div className="fr-movie-door" />
+          </div>
+        </header>
+      )}
+      {/* with the film: its date strip (drawn from the film's window) would otherwise land above the times and push them */}
+      {film ? <section id="showtimes" className="fr-showtimes" aria-labelledby="showtimes-title">
       <h2 id="showtimes-title">Showtimes</h2>
       {days.length > 0 ? <DayStrip label="Choose a date" days={days} selected={selected} onSelect={choose} /> : null}
       <p className="fr-visually-hidden" aria-live="polite">{announce}</p>
@@ -211,7 +222,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
           ) : null}
         </>
       )}
-      </section>
+      </section> : null}
       {film && film.rating.breakdown ? <FilmDetails film={film} onChanged={setFilm} /> : null}
       {film && also.length ? (
         <section aria-labelledby="also-like" className="fr-also">

@@ -172,6 +172,10 @@
   animation: fr-rail-pop 320ms var(--fr-ease-strong-out) both;
   animation-delay: calc(180ms + var(--i, 0) * 60ms);
 }
+/* ... but only once their posters are decoded (Landing.tsx, capped): until then each waits, invisible, on its first frame */
+.fr-rail-films:not([data-ready]) > li {
+  animation-play-state: paused;
+}
 @keyframes fr-rail-pop {
   from {
     opacity: 0;
@@ -318,6 +322,14 @@
   border-left: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
   scrollbar-width: thin;
   scrollbar-color: var(--fr-control-edge) transparent;
+}
+/* 2026-11-23, CLS: the panel keeps its scrollbar's gutter (the map arriving made it scroll, which narrowed the map), and
+   the legend and summary under the loading map wait unseen until the real map, whose height they would have followed */
+.fr-seatmap-panel {
+  scrollbar-gutter: stable;
+}
+.fr-seatmap-body:has(.fr-grid-loading) > :not(.fr-field) {
+  visibility: hidden;
 }
 .fr-seatmap-panel .fr-seatmap-head h1 {
   font-size: var(--fr-text-2xl);
