@@ -829,6 +829,7 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU, mark, door, i
     const dimming = Math.abs(glowU.uHouse.value - level) > 1e-3;
     // ~1 s to settle (owner, 2026-11-23: "slowly dim the lighting in 1 second"), eased like a dimmer: 97% by 1 s
     glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 3.5));
+    if (import.meta.env.DEV) (window as Window & { __frHouse?: number }).__frHouse = glowU.uHouse.value; // e2e: the house light, read by the dimming check
     for (const l of lamps.current) l.material.color.copy(l.full).multiplyScalar(glowU.uHouse.value);
     const t = target.current;
     const off = (c: Color, v: Glow["left"]) => Math.abs(c.r - v[0]) + Math.abs(c.g - v[1]) + Math.abs(c.b - v[2]);
