@@ -537,3 +537,10 @@ account can sign in · SES production access · 19 AWS prep-queue rows.
 
 - CR-006 demo schedule top-up + history cleanup (Neon at 0004); curtain deleted; All films wipe + View Transition; smoothness pass; ui-design redesign + one button system; S-SEA-04 focus fix.
 - **Session closed 2026-11-22 by ani87** -> handoff: handoffs/HANDOFF_2026-11-22_1530_ani87.md
+
+## 2026-11-23 (CR-012, demo crowd: reviews and sales)
+
+- `scripts/demo_reviews.py`: 700 crowd accounts; 120-450 visible ratings per released film plus a 120-day future tail; generic review text whose tone follows the score; Helpful votes. Every rating read applies `catalogue.rating_shown(t)`, so the tail appears day by day with no job.
+- `backend/app/domain/demo_fill.py`: every show's demo bookings ramp to an 80-90% average by the start, as real bookings (payment, booking, booking_seat, suppressed receipt) taken under the hold locks. It runs from the listing's existing hourly schedule check, and the one-off backfill is `scripts/demo_bookings.py`.
+- Tests: tests/demo 14/14; affected suites 132/132. Local DB: 6,964 ratings, 23,608 demo seats. Not run on Neon; not deployed.
+- Open for the owner: the storage ruling in CR-012 (demo bookings are permanent, ~1 MB/day), and the "Saw it at FrontRow" badge now also shows on crowd reviews.

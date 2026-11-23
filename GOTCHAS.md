@@ -419,3 +419,12 @@ written**, which is the only reason they surfaced at all.
 - **Parallel pytest against one shared database deadlocks on per-test truncation.** The prior project
   hit a genuine `DeadlockDetectedError` this way and no agent could get a clean full run. *Fix:* a
   per-worker database, or a lock. Do not parallelise the suite against one database. [UNPROVEN HERE]
+
+## Demo data (2026-11-23, CR-012)
+
+- **Only `scripts/seed.py` is in the api image.** `python /srv/scripts/demo_reviews.py` inside the container fails with
+  "can't open file". *Fix:* mount the folder at `/srv/demo` (so `parents[1]` is `/srv` and `app` imports):
+  `docker compose run --rm --no-deps -v "$PWD/scripts:/srv/demo:ro" -e DATABASE_URL=... --entrypoint python api /srv/demo/<script>.py`.
+- **A rating read without `catalogue.rating_shown(t)` leaks the future.** The demo crowd's ratings are dated up to 120 days
+  ahead on purpose; a new query over `movie_rating` (or `review_vote`) that forgets the `created_at <= t` predicate shows
+  next month's reviews today and inflates the counts. [UNPROVEN HERE: found by design, not by a failure]
