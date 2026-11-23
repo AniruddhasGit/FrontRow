@@ -144,6 +144,11 @@ export interface BakedMeta {
   intro?: { eye: number[]; look: number[] }[];
   /** The projector port (three.js metres): where the beam and its dust start. */
   port?: number[];
+  /** CR-014: the corridor built onto the ENTRY door - the film page's camera, and the door leaf (a node in the .glb,
+   *  origin on the hinge; angles in degrees, `sign` the way that opens it into the hall). */
+  corridor?: { eye: number[]; look: number[]; door: { node: string; ajar: number; peek: number; wide: number; sign?: number } };
+  /** CR-014: the camera's walk from the corridor through the door to the all-seats view. */
+  enter?: { eye: number[]; look: number[] }[];
 }
 /** CR-004: the seat page's arrival. Seated in the default seat, facing the film on the screen; then up and
  *  round by the far side wall (so the look point never passes through the eye, nor stares into the near wall) onto the all-seats view. */

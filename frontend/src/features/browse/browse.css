@@ -226,6 +226,38 @@
 .fr-time-at {
   font-size: var(--fr-text-md);
 }
+/* The film page's showtimes (owner, 2026-11-23): one row of small boxes, the format on top. Doubled class names:
+   premium.css loads later and sizes .fr-times / .fr-time for the bigger cards. */
+.fr-times.fr-times-flat {
+  gap: var(--fr-space-2);
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 8.5rem));
+}
+.fr-times-flat .fr-time {
+  gap: 2px;
+  padding: var(--fr-space-2) var(--fr-space-3);
+  border-radius: var(--fr-radius-md);
+}
+.fr-times-flat .fr-time .fr-time-at {
+  font-size: var(--fr-text-lg);
+  white-space: nowrap;
+}
+/* the chosen box is brass: everything in it takes the ink that reads on brass */
+.fr-times-flat .fr-time[aria-current="true"] .fr-time-at,
+.fr-times-flat .fr-time[aria-current="true"] .fr-time-hall,
+.fr-times-flat .fr-time[aria-current="true"] .fr-time-price {
+  color: var(--fr-ink-on-accent);
+}
+.fr-time-format {
+  align-self: flex-start;
+  margin-bottom: var(--fr-space-1);
+  padding: 0 var(--fr-space-1);
+  border-radius: var(--fr-radius-sm);
+  border: var(--fr-stroke-hair) solid currentColor;
+  font-size: var(--fr-text-xs);
+  font-weight: var(--fr-weight-bold);
+  letter-spacing: var(--fr-track-caps);
+  line-height: 1.5;
+}
 .fr-time-hall,
 .fr-time-price {
   font-size: var(--fr-text-xs);

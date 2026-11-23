@@ -1,0 +1,14 @@
+{
+  "throttled_seat_page_walkin": { "delays_ms": { "glb": 3000, "hdr": 5000, "still": 4000 }, "last_part_responseEnd_ms": 9219, "canvas_shown_ms": 11909, "note": "window unfocused part of the run (rAF throttled); with focus the gap from last part to shown is ~0.4 s" },
+  "throttled_landing": { "delays_ms": { "glb": 3000, "hdr": 5000, "still": 4000 }, "parts_responseEnd_ms": { "hall6.json": 986, "hall6.glb": 5936, "seat models": 3185, "still": 7144, "hall6_env.hdr": 7899 }, "canvas_shown_ms": 9638 },
+  "unthrottled_seat_page_focused": { "marks_ms": { "env(404)": 2829, "seats": 3590, "still": 3040, "room": 3658 }, "warm_start": 4030, "compiled": 4071, "shown": 4077 },
+  "failure_matrix_ms_from_goto": {
+    "seat room 404": ["fallback (2D map alone)", 3683],
+    "seat env 404": ["shown with defaults", 2965],
+    "seat still 404": ["shown with title card", 7464],
+    "seat room never answers": ["fallback at cap", 10499],
+    "seat env never answers": ["shown with defaults at cap", 10192],
+    "landing room never answers": ["fallback (empty stage, loader stopped) at cap", 13046],
+    "landing still 404": ["shown with title card", 7580]
+  }
+}

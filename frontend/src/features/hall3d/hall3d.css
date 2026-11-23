@@ -78,3 +78,55 @@
   font-size: var(--fr-text-sm);
   color: var(--fr-ink-muted);
 }
+
+/* Readiness (readiness.ts, owner 2026-11-23): the canvas stays invisible until every part of the hall is in and the
+   GPU has drawn it once, then fades in; only then does the camera move. Until then the box holds one calm loader: a
+   slow breath of screen-light where the screen will be, opacity only (it runs on the compositor, so a busy main thread
+   parsing the room does not stutter it). The box keeps its size the whole time. */
+.fr-hall-canvas {
+  opacity: 0;
+  transition: opacity 450ms var(--fr-ease-out);
+}
+.fr-hall-canvas[data-shown] {
+  opacity: 1;
+}
+.fr-stage::before,
+.fr-hall3d-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 45% 28% at 50% 32%, var(--fr-screen-glow), transparent 70%);
+  opacity: 0.35;
+  animation: fr-hall-breathe 2.4s ease-in-out infinite alternate;
+}
+.fr-stage[data-off]::before,
+.fr-stage:has(.fr-hall-canvas[data-shown])::before,
+.fr-hall3d-stage:has(.fr-hall-canvas[data-shown])::before {
+  animation: none;
+  opacity: 0;
+}
+@keyframes fr-hall-breathe {
+  to {
+    opacity: 0.8;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-stage::before,
+  .fr-hall3d-stage::before {
+    animation: none;
+  }
+}
+
+/* CR-014: the app's one hall (host.tsx) - its canvas fills whichever slot holds it */
+.fr-hall-host,
+.fr-hall-slot {
+  position: absolute;
+  inset: 0;
+}
+/* A box that grows (the film page's walk) is redrawn at its new size a frame later; meanwhile the last frame is
+   stretched to the box instead of leaving a dark margin. */
+.fr-hall-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+}

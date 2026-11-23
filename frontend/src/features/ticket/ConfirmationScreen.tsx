@@ -5,6 +5,7 @@ import { Link, navigate } from "../../router";
 import { formatPaise } from "../admin/money";
 import { get } from "../browse/api";
 import { dayLabel, timeLabel } from "../browse/logic";
+import { reveal } from "../browse/reveal";
 import "../booking/booking.css";
 import { ShareButton } from "../discover/Bits";
 import { bookingIcs } from "../discover/discover";
@@ -48,7 +49,7 @@ export function ConfirmationScreen({ reference }: { reference: string }) {
       {booking ? <Extras booking={booking as Booking & { showtime_ends_at?: string }} /> : null}
       {booking && hallViewSrc(booking.hall_name) ? (
         <figure className="fr-hall-view">
-          <img src={hallViewSrc(booking.hall_name)!} alt={`The screen as seen from the middle of ${booking.hall_name}`}
+          <img ref={reveal} className="fr-reveal" src={hallViewSrc(booking.hall_name)!} alt={`The screen as seen from the middle of ${booking.hall_name}`}
                loading="lazy" width={1600} height={900} onError={(e) => ((e.currentTarget.parentElement as HTMLElement).hidden = true)} />
           <figcaption>Your view on the night: {booking.hall_name}, from the middle of the hall.</figcaption>
         </figure>

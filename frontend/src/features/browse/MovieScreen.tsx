@@ -17,7 +17,7 @@ import { countLine, dayLabel, movieStrip, showtimeName, timeLabel } from "./logi
 import { Poster } from "./Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import { FilmTile, releaseLabel, ShareButton } from "../discover/Bits";
-import { adultsOnly, byScreen, doorShow, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
+import { adultsOnly, doorShow, pushRecent, ratingName, ratingText, recentStore, recommended } from "../discover/discover";
 import { TheatreDoor } from "../discover/Door";
 import { FilmDetails } from "../discover/FilmDetails";
 import "./browse.css";
@@ -142,7 +142,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
                     </span>
                   </span>
                 )}
-                <a className="fr-action-secondary fr-rate-now" href="#film-ratings" onClick={(e) => jump(e, "film-ratings")}>
+                <a className="fr-action-secondary fr-rate-now" href="#film-rate" onClick={(e) => jump(e, "film-rate")}>
                   {film.coming_soon ? "Like it" : "Rate now"}
                 </a>
               </div>
@@ -168,8 +168,19 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
             </div>
           </div>
         </header>
-      ) : null}
-      <section id="showtimes" className="fr-showtimes" aria-labelledby="showtimes-title">
+      ) : (
+        // the hero's frame while the film loads, the same grid and the same 2:3 poster box, so the showtimes below do
+        // not jump down by the hero's height when it arrives (CLS 0.47, 2026-11-23)
+        <header className="fr-movie-hero" aria-hidden="true">
+          <div className="fr-movie-hero-inner">
+            <div className="fr-movie-poster fr-card-loading"><div className="fr-poster" /></div>
+            <div className="fr-movie-info" />
+            <div className="fr-movie-door" />
+          </div>
+        </header>
+      )}
+      {/* with the film: its date strip (drawn from the film's window) would otherwise land above the times and push them */}
+      {film ? <section id="showtimes" className="fr-showtimes" aria-labelledby="showtimes-title">
       <h2 id="showtimes-title">Showtimes</h2>
       {days.length > 0 ? <DayStrip label="Choose a date" days={days} selected={selected} onSelect={choose} /> : null}
       <p className="fr-visually-hidden" aria-live="polite">{announce}</p>
@@ -195,21 +206,14 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
         </div>
       ) : (
         <>
-          {/* CR-011 F3: one card per screen, its times as buttons; choosing one opens that screen's door below */}
-          <div className="fr-screens">
-            {byScreen(listed.showtimes).map((g) => (
-              <div key={g.screen.id} className="fr-screen-card">
-                <h3>{g.screen.name} {formats(g.shows).map((f) => <span key={f} className="fr-chip">{f}</span>)}</h3>
-                <ul className="fr-times">
-                  {g.shows.map((st) => (
-                    <li key={st.id}>
-                      <ShowtimeButton st={st} chosen={st.id === show?.id} onChoose={pick} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
+          {/* owner, 2026-11-23: one row of small boxes - format on top, the time, the screen - not a card per screen */}
+          <ul className="fr-times fr-times-flat">
+            {[...listed.showtimes].sort((x, y) => Date.parse(x.starts_at) - Date.parse(y.starts_at)).map((st) => (
+              <li key={st.id}>
+                <ShowtimeButton st={st} chosen={st.id === show?.id} onChoose={pick} />
+              </li>
             ))}
-          </div>
+          </ul>
           {listed.next_date_with_showtimes && listed.showtimes.every((s) => s.sales_closed) ? (
             // Every showtime here is closed: the list stays, and the next buyable date is offered (P-BRW-06 1a).
             <button type="button" className="fr-clear" onClick={() => choose(listed.next_date_with_showtimes)}>
@@ -218,7 +222,7 @@ export function MovieScreen({ movieId, now = wallClock, seed }: { movieId: strin
           ) : null}
         </>
       )}
-      </section>
+      </section> : null}
       {film && film.rating.breakdown ? <FilmDetails film={film} onChanged={setFilm} /> : null}
       {film && also.length ? (
         <section aria-labelledby="also-like" className="fr-also">
@@ -250,6 +254,7 @@ function ShowtimeButton({ st, chosen, onChoose }: { st: Showtime; chosen: boolea
   const name = showtimeName(st, formatPaise);
   const body = (
     <>
+      {st.format?.name ? <span className="fr-time-format">{st.format.name}</span> : null}
       <span className="fr-mono fr-time-at">{timeLabel(st.starts_at)}</span>
       <span className="fr-time-hall">{st.screen.name}</span>
       {st.sales_closed ? <span className="fr-time-closed">Closed</span> : <span className="fr-mono fr-time-price">{formatPaise(st.base_price_paise)}</span>}

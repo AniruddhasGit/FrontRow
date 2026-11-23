@@ -258,18 +258,6 @@ export function genresOf(films: Film[]): { id: number; name: string }[] {
   return [...all].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** F3: a date's showtimes grouped by screen, screens in name order (SCREEN 2 before SCREEN 10), times in order. */
-export function byScreen<S extends { starts_at: string; screen: { id: number; name: string } }>(shows: S[]): { screen: S["screen"]; shows: S[] }[] {
-  const groups = new Map<number, { screen: S["screen"]; shows: S[] }>();
-  for (const s of shows) {
-    if (!groups.has(s.screen.id)) groups.set(s.screen.id, { screen: s.screen, shows: [] });
-    groups.get(s.screen.id)!.shows.push(s);
-  }
-  const out = [...groups.values()];
-  out.forEach((g) => g.shows.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at)));
-  return out.sort((a, b) => a.screen.name.localeCompare(b.screen.name, undefined, { numeric: true }));
-}
-
 /** Two letters for a portrait-less person tile: "Mira Hale" -> "MH", "Cher" -> "C". */
 export function initials(name: string): string {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
@@ -281,9 +269,28 @@ export function adultsOnly(certificate: string): boolean {
 }
 
 /** F4: the film page's reviews - one status for the list, one for a write (no flags). */
-export type Review = { id: number; author: string; score: number; text: string; written_at: string; helpful: number };
+export type Review = { id: number; author: string; score: number; text: string; written_at: string; helpful: number;
+                       verified: boolean };
 export type ReviewList = { kind: "loading" } | { kind: "error" } | { kind: "ready"; count: number; items: Review[] };
 export type ReviewSort = "newest" | "helpful";
+
+/** CR-013 (owner, 2026-11-23): the star filter's bands of the 1-10 score, best first - the server's `band` values. */
+export const REVIEW_BANDS = ["9-10", "7-8", "5-6", "3-4", "1-2"] as const;
+export type ReviewBand = (typeof REVIEW_BANDS)[number];
+export type BandCounts = Record<ReviewBand, number>;
+
+/** One star per two points of the band's top score: 9-10 is five stars, 1-2 is one. */
+export function bandStars(band: ReviewBand): string {
+  return "★".repeat(Number(band.split("-")[1]) / 2);
+}
+/** "9–10" for the eye (an en dash; the wire value keeps the hyphen). */
+export function bandRange(band: ReviewBand): string {
+  return band.replace("-", "–");
+}
+/** A filter button: "★★★★★ 9–10 (123)"; the count is left off until the first answer brings it. */
+export function bandLabel(band: ReviewBand, counts: BandCounts | null): string {
+  return `${bandStars(band)} ${bandRange(band)}${counts ? ` (${counts[band]})` : ""}`;
+}
 export const REVIEW_MAX = 2000;
 
 /** A review's text as the form sends it, or the reason it cannot be sent (the server checks the same bounds). */
@@ -294,15 +301,38 @@ export function reviewText(raw: string): { ok: true; text: string } | { ok: fals
   return { ok: true, text };
 }
 
-/** The hero door's one status (owner, 2026-11-23). `closed` until pressed; `flying` plays the fly-through while the
- *  hall loads, then the page leaves - after FLY_MS, or at most PREFETCH_CAP_MS later if the hall is slow (an exit that
- *  always fires: timers, never only an event that might not come). A second press while flying changes nothing. */
+/** The hero door's one status (CR-014, web-app-pitfalls 3). The hall behind the door is live 3D (hall3d/host.tsx):
+ *  `waiting` while it loads (the corridor picture stands in), `live` once it shows, `fallback` when it cannot (no WebGL,
+ *  no hall file, no corridor in it, a part that failed): the picture stays and the door goes straight to the seat page.
+ *  A press before the hall is live is `queued`: it walks the moment the hall is live, or leaves straight away if the
+ *  hall fails. `walking` follows the camera route; `leaving` is the one place the page changes (`how` says which way).
+ *  Every state has an exit: the hall's own cap (readiness.ts) ends `waiting`/`queued`, and Door.tsx caps `walking`. */
 export type DoorShow = { id: number; starts_at: string; screen: { id: number; name: string }; sales_closed: boolean };
-export type Door = { kind: "closed" } | { kind: "flying"; show: DoorShow };
-export const FLY_MS = 1400;
-export const PREFETCH_CAP_MS = 4000;
-export function pressDoor(d: Door, show: DoorShow): Door {
-  return d.kind === "flying" ? d : { kind: "flying", show };
+export type Door =
+  | { kind: "waiting" } | { kind: "live" } | { kind: "fallback" }
+  | { kind: "queued"; show: DoorShow } | { kind: "walking"; show: DoorShow }
+  | { kind: "leaving"; show: DoorShow; how: "walked" | "direct" };
+export type DoorEvent =
+  | { type: "ready" } | { type: "failed" } | { type: "landed" } | { type: "reset" }
+  | { type: "press"; show: DoorShow; reduced: boolean };
+
+export function door(d: Door, ev: DoorEvent): Door {
+  switch (ev.type) {
+    case "press":
+      if (d.kind === "queued" || d.kind === "walking" || d.kind === "leaving") return d; // once
+      if (ev.reduced || d.kind === "fallback") return { kind: "leaving", show: ev.show, how: "direct" };
+      return d.kind === "live" ? { kind: "walking", show: ev.show } : { kind: "queued", show: ev.show };
+    case "ready":
+      if (d.kind === "queued") return { kind: "walking", show: d.show };
+      return d.kind === "waiting" || d.kind === "fallback" ? { kind: "live" } : d;
+    case "failed":
+      if (d.kind === "queued" || d.kind === "walking") return { kind: "leaving", show: d.show, how: "direct" };
+      return d.kind === "leaving" ? d : { kind: "fallback" };
+    case "landed":
+      return d.kind === "walking" ? { kind: "leaving", show: d.show, how: "walked" } : d;
+    case "reset": // another screen's hall behind the door
+      return d.kind === "waiting" || d.kind === "live" || d.kind === "fallback" ? { kind: "waiting" } : d;
+  }
 }
 /** The show behind the hero door: the one chosen, if it is open, else the first open one listed. */
 export function doorShow<T extends DoorShow>(shows: T[], chosen: number | null): T | null {

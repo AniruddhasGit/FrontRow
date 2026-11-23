@@ -5,7 +5,7 @@
 // `Give up these seats` releases the whole hold. Choosing seats still sends nothing: the selection lives in
 // sessionStorage `fr.selection`, the hold in `fr.hold` (sessionStorage, which dies with the tab - P-HLD-09). Closing the
 // tab sends nothing either: there is no unload handler, and the hold's TTL is what releases it.
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { formatPaise } from "../admin/money";
 import { forgetBooking } from "../booking/checkout";
 import { navigate } from "../../router";
@@ -336,7 +336,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
 
   return (
     <section className="fr-seatmap fr-immersive">
-      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
+      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} showtimeId={id} />
       {/* CR-004: the hall fills the screen; the heading, the 2D map and the summary ride in this panel on its right */}
       <div className="fr-seatmap-panel">
       <SeatMapHeading header={header} />
@@ -442,12 +442,15 @@ function SeatMapHeading({ header }: { header: Header | null }) {
   );
 }
 
-/** The box's content width, kept current by a ResizeObserver (an event, never a timer). 0 until measured. */
+/** The box's content width, kept current by a ResizeObserver (an event, never a timer). 0 until measured. Measured
+ *  once before the first paint too, so the map is drawn at its fitted size at once instead of resizing a frame later. */
 function useWidth(ref: { current: HTMLElement | null }): number {
   const [width, setWidth] = useState(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+    const cs = getComputedStyle(el);
+    setWidth(Math.floor(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)));
     const seen = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)));
     seen.observe(el);
     return () => seen.disconnect();

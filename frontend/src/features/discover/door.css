@@ -1,10 +1,8 @@
-/* The film page's hero door (owner, 2026-11-23): a Cycles render of a dim cinema corridor (claude_leash
-   Graphics/FrontRow corridor_render.py, one per screen, door ajar and open), fading into the hero box from the left,
-   with a full-width Book button under it. The whole picture is the door's button. Pressing either: the corridor leaves
-   the flow where it was (position fixed), grows to the window, the door swings open (the open render fades in) and the
-   camera flies into the doorway (a scale about it) while the hall loads. The doorway's middle is at 50% 56.3% of the
-   render (corridor.json), and object-position pins that point to the same place in the box at any aspect, so the
-   zoom always lands in the doorway. Reduced motion: no flight (Door.tsx goes straight to the seat page). */
+/* The film page's hero door (CR-014): the show's hall live in 3D from its own corridor (Door.tsx, hall3d/host.tsx),
+   fading into the hero box from the left, with a full-width Book button under it. The whole view is the door's button.
+   Until the hall is ready, its corridor render stands in, `object-fit: cover` and centred - the live camera uses the
+   same lens for the box's shape (walk.ts corridorFov), so the picture fades off a view that matches it. Pressing: the
+   box leaves the flow where it was (position fixed) and grows to the window while the camera walks in. */
 
 .fr-movie-door {
   position: relative;
@@ -21,7 +19,6 @@
   height: 100%;
 }
 .fr-corridor {
-  --door-at: 50% 56.3%;
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -29,8 +26,6 @@
   background: #0b0704;
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%);
   mask-image: linear-gradient(90deg, transparent 0, #000 30%);
-  transition: left 520ms var(--fr-ease-move), top 520ms var(--fr-ease-move), width 520ms var(--fr-ease-move),
-    height 520ms var(--fr-ease-move);
 }
 .fr-corridor-door {
   all: unset;
@@ -46,10 +41,15 @@
   outline: 2px solid var(--fr-focus-ring);
   outline-offset: -4px;
 }
-.fr-corridor-zoom {
+.fr-corridor {
+  overflow: hidden;
+}
+.fr-corridor-frame,
+.fr-corridor-live,
+.fr-corridor-pic,
+.fr-corridor-frame .fr-hall-slot {
   position: absolute;
   inset: 0;
-  transform-origin: var(--door-at);
 }
 .fr-corridor-shot {
   position: absolute;
@@ -57,16 +57,25 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: var(--door-at);
-  filter: brightness(0.92);
-  transition: filter 300ms ease;
+  object-position: 50% 50%;
+  transition: opacity 400ms ease; /* back over the hall at once when another screen's show is chosen */
 }
-.fr-corridor-opened {
+.fr-corridor-pic {
+  animation: fr-corridor-in 300ms ease both; /* decoded before it is shown, so it never draws in line by line */
+}
+/* the live hall has faded in under it (hall3d.css, 450 ms): now the picture fades off it */
+.fr-corridor-shot[data-live] {
+  opacity: 0;
+  transition: opacity 400ms ease 450ms;
+}
+.fr-corridor-live {
+  transition: opacity 220ms ease;
+}
+.fr-corridor-live[data-settling] {
   opacity: 0;
 }
-.fr-corridor-door:not(:disabled):hover .fr-corridor-shot,
-.fr-corridor-door:focus-visible .fr-corridor-shot {
-  filter: brightness(1.06);
+@keyframes fr-corridor-in {
+  from { opacity: 0; }
 }
 .fr-movie-door .fr-corridor-book {
   box-sizing: border-box;
@@ -80,25 +89,16 @@
   color: #ffd9a3;
 }
 
-/* ---- the fly-through ---- */
+/* ---- the walk ---- */
 .fr-corridor[data-door="flying"] {
   z-index: 60;
 }
 .fr-corridor[data-full] {
   -webkit-mask-image: none;
   mask-image: none;
-}
-/* the door swings open as the corridor fills the window */
-.fr-corridor[data-door="flying"] .fr-corridor-opened {
-  opacity: 1;
-  transition: opacity 380ms ease 300ms;
-}
-.fr-corridor[data-full] .fr-corridor-zoom {
-  transform: scale(12); /* the dark doorway fills the window before the hall takes over */
-  /* once the corridor fills the window, accelerate into the door, like walking faster towards it; the blur and the
-     dimming read as rushing into the dark hall, and hide that the render is magnified far past its pixels */
-  filter: blur(10px) brightness(0.45);
-  transition: transform 950ms cubic-bezier(0.55, 0, 0.85, 0.35) 420ms, filter 600ms ease-in 770ms;
+  /* only the grow is animated: the step out of the flow (absolute -> fixed at the same place) is not */
+  transition: left 520ms var(--fr-ease-out), top 520ms var(--fr-ease-out), width 520ms var(--fr-ease-out),
+    height 520ms var(--fr-ease-out);
 }
 /* everything else on the page leaves: the poster and facts slide left, the actions up, the rest down, the header up */
 .fr-movie > *,
@@ -107,7 +107,7 @@
 .fr-movie-actions,
 .fr-movie-backdrop,
 .fr-corridor-book {
-  transition: opacity 380ms ease, transform 480ms var(--fr-ease-move);
+  transition: opacity 380ms ease, transform 480ms var(--fr-ease-out);
 }
 .fr-movie[data-flying] .fr-movie-poster { opacity: 0; transform: translateX(-80px); }
 .fr-movie[data-flying] .fr-movie-info { opacity: 0; transform: translateX(-40px); }
@@ -119,7 +119,7 @@ html[data-flying] .fr-header,
 html[data-flying] .fr-footer {
   opacity: 0;
   transform: translateY(-30px);
-  transition: opacity 300ms ease, transform 400ms var(--fr-ease-move);
+  transition: opacity 300ms ease, transform 400ms var(--fr-ease-out);
 }
 /* Save and Share sit over the corridor's ceiling, not under it */
 .fr-movie-hero .fr-movie-actions {

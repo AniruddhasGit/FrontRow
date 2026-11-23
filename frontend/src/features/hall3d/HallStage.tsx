@@ -9,6 +9,7 @@ import { bakedSeatMap } from "../wake/wakeup";
 import { Guard, canDraw } from "./Hall3D";
 import type { BakedMeta } from "./hall";
 import type { Film } from "./HallScene";
+import { HALL_CAP_MS } from "./readiness";
 import "./hall3d.css";
 
 const HallScene = lazy(() => import("./HallScene"));
@@ -16,17 +17,18 @@ const NONE: ReadonlySet<number> = new Set();
 const PAN_CAP_MS = 7000; // the pan takes ~4.2 s; past this the page moves on anyway
 
 export function HallStage({ hallNo, film, map: real = null, fallback = null, pan = false, onPanned }: {
-  hallNo: number; film: Film | null; map?: SeatMap | null; fallback?: ReactNode; pan?: boolean; onPanned?: () => void;
+  /** undefined while the page is still finding the film: the hall waits for it before it shows (readiness.ts) */
+  hallNo: number; film: Film | null | undefined; map?: SeatMap | null; fallback?: ReactNode; pan?: boolean; onPanned?: () => void;
 }) {
-  const [able, setAble] = useState(false);
+  const [able] = useState(canDraw); // in the first render, so the stage does not switch state a frame later
   const [meta, setMeta] = useState<BakedMeta | null | undefined>(undefined);
+  const [since] = useState(() => performance.now()); // the hall's load cap counts from here
   const started = useRef(false);
   const told = useRef(false);
-  useEffect(() => setAble(canDraw()), []);
   useEffect(() => {
     let live = true;
     setMeta(undefined);
-    fetch(`/halls/hall${hallNo}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    fetch(`/halls/hall${hallNo}.json`, { signal: AbortSignal.timeout(HALL_CAP_MS) }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
       // no arrival route here: the visitor is already sitting down
       .then((m: BakedMeta | null) => live && setMeta(m?.seats?.length ? { ...m, intro: undefined } : null));
     return () => {
@@ -53,7 +55,7 @@ export function HallStage({ hallNo, film, map: real = null, fallback = null, pan
     else if (started.current) done();
   }, [pan, done]);
 
-  if (!able || meta === null) return <div className="fr-stage">{fallback}</div>;
+  if (!able || meta === null) return <div className="fr-stage" data-off="">{fallback}</div>; // no hall coming: no loader
   if (!meta || !map) return <div className="fr-stage" />;
   return (
     <div className="fr-stage">
@@ -63,7 +65,7 @@ export function HallStage({ hallNo, film, map: real = null, fallback = null, pan
             <HallScene map={map} film={film} mine={NONE} mode={pan ? "all" : "seat"} seatId={null} locked
                        houseDown={!pan} /* watching: lights down; Book tickets brings them up for choosing seats */
                        onTap={() => undefined} onLook={() => undefined} onHover={() => undefined}
-                       onMoving={onMoving} meta={meta} hallNo={hallNo} />
+                       onMoving={onMoving} meta={meta} hallNo={hallNo} since={since} />
           </Suspense>
         </Guard>
       </div>

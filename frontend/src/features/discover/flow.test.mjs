@@ -52,13 +52,6 @@ test("F3: You might also like shares a genre, most shared first, then rating, th
   assert.deepEqual(d.recommended(film(9, { genres: [] }), films), []);
 });
 
-test("F3: a date's showtimes group by screen in numeric name order, times in order", () => {
-  const st = (id, at, sid, name) => ({ id, starts_at: at, screen: { id: sid, name } });
-  const groups = d.byScreen([st(1, "2026-11-22T21:00:00+05:30", 10, "SCREEN 10"), st(2, "2026-11-22T18:00:00+05:30", 2, "SCREEN 2"),
-    st(3, "2026-11-22T12:00:00+05:30", 10, "SCREEN 10")]);
-  assert.deepEqual(groups.map((x) => [x.screen.name, x.shows.map((s) => s.id)]), [["SCREEN 2", [2]], ["SCREEN 10", [3, 1]]]);
-});
-
 test("F4/F5: review bounds, initials, the adults-only notice, and the door opens once", () => {
   assert.deepEqual(d.reviewText("  Loved it  "), { ok: true, text: "Loved it" });
   assert.equal(d.reviewText("   ").ok, false);
@@ -66,10 +59,44 @@ test("F4/F5: review bounds, initials, the adults-only notice, and the door opens
   assert.equal(d.initials(" mira  hale jones"), "MH");
   assert.deepEqual(["A", "R", "18+", "nc-17"].map(d.adultsOnly), [true, true, true, true]);
   assert.deepEqual(["UA", "PG", "U/A 13+"].map(d.adultsOnly), [false, false, false]);
+});
+
+// CR-014: the hero door's one status. Every state has an exit and a press happens once.
+test("CR-014 door: live hall -> walk -> leave walked; a second press while walking changes nothing", () => {
   const s7 = { id: 7, starts_at: "", screen: { id: 1, name: "SCREEN 1" }, sales_closed: false };
-  const flying = d.pressDoor({ kind: "closed" }, s7);
-  assert.deepEqual(flying, { kind: "flying", show: s7 });
-  assert.equal(d.pressDoor(flying, { ...s7, id: 8 }), flying, "a second press while it flies changes nothing");
+  const press = (show = s7, reduced = false) => ({ type: "press", show, reduced });
+  let st = d.door({ kind: "waiting" }, { type: "ready" });
+  assert.deepEqual(st, { kind: "live" });
+  st = d.door(st, press());
+  assert.deepEqual(st, { kind: "walking", show: s7 });
+  assert.equal(d.door(st, press({ ...s7, id: 8 })), st, "a second press while it walks changes nothing");
+  assert.equal(d.door(st, { type: "reset" }), st, "another screen chosen mid-walk changes nothing");
+  st = d.door(st, { type: "landed" });
+  assert.deepEqual(st, { kind: "leaving", show: s7, how: "walked" });
+  assert.equal(d.door(st, press()), st, "leaving is final");
+  assert.equal(d.door(st, { type: "failed" }), st);
+});
+
+test("CR-014 door: a press before the hall is ready waits for it, or leaves straight away if it fails", () => {
+  const s7 = { id: 7, starts_at: "", screen: { id: 1, name: "SCREEN 1" }, sales_closed: false };
+  const q = d.door({ kind: "waiting" }, { type: "press", show: s7, reduced: false });
+  assert.deepEqual(q, { kind: "queued", show: s7 });
+  assert.deepEqual(d.door(q, { type: "ready" }), { kind: "walking", show: s7 }, "nothing moves until the hall is ready");
+  assert.deepEqual(d.door(q, { type: "failed" }), { kind: "leaving", show: s7, how: "direct" });
+  assert.deepEqual(d.door({ kind: "walking", show: s7 }, { type: "failed" }), { kind: "leaving", show: s7, how: "direct" },
+    "the hall dying mid-walk still gets you to the seats");
+});
+
+test("CR-014 door: no live hall (404, no WebGL) - the picture stays and the door goes straight to the seats; reduced motion never walks", () => {
+  const s7 = { id: 7, starts_at: "", screen: { id: 1, name: "SCREEN 1" }, sales_closed: false };
+  const fb = d.door({ kind: "waiting" }, { type: "failed" });
+  assert.deepEqual(fb, { kind: "fallback" });
+  assert.deepEqual(d.door(fb, { type: "press", show: s7, reduced: false }), { kind: "leaving", show: s7, how: "direct" });
+  assert.deepEqual(d.door({ kind: "live" }, { type: "press", show: s7, reduced: true }), { kind: "leaving", show: s7, how: "direct" });
+  assert.deepEqual(d.door({ kind: "waiting" }, { type: "press", show: s7, reduced: true }), { kind: "leaving", show: s7, how: "direct" });
+  assert.deepEqual(d.door({ kind: "live" }, { type: "reset" }), { kind: "waiting" }, "another screen: back to the picture");
+  assert.deepEqual(d.door(fb, { type: "reset" }), { kind: "waiting" });
+  assert.deepEqual(d.door({ kind: "live" }, { type: "landed" }), { kind: "live" }, "a stray landing does not leave");
 });
 
 test("the hero door's show: the chosen one if open, else the first open one, else none", () => {
@@ -90,3 +117,12 @@ test("the hero door: the corridor picture is a button named for the show, and a 
   assert.match(text(doc), /SCREEN 3/);
 });
 
+
+test("CR-013: the star bands are the server's five, best first, labelled with stars, range and review count", () => {
+  assert.deepEqual([...d.REVIEW_BANDS], ["9-10", "7-8", "5-6", "3-4", "1-2"]);
+  assert.deepEqual(d.REVIEW_BANDS.map(d.bandStars), ["★★★★★", "★★★★", "★★★", "★★", "★"]);
+  const counts = { "9-10": 123, "7-8": 4, "5-6": 0, "3-4": 1, "1-2": 2 };
+  assert.equal(d.bandLabel("9-10", counts), "★★★★★ 9–10 (123)");
+  assert.equal(d.bandLabel("5-6", counts), "★★★ 5–6 (0)");
+  assert.equal(d.bandLabel("1-2", null), "★ 1–2", "no count until the list has answered");
+});

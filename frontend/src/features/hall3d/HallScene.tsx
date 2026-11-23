@@ -5,20 +5,22 @@
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BufferAttribute, CanvasTexture, Color, DataTexture, FloatType, InstancedMesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D,
-  PMREMGenerator, RGBAFormat, RingGeometry, SRGBColorSpace, ShaderChunk, TextureLoader, Vector3, type BufferGeometry, type Group, type Material, type Mesh,
+  PMREMGenerator, Quaternion, RGBAFormat, RingGeometry, SRGBColorSpace, ShaderChunk, TextureLoader, Vector3, type BufferGeometry, type Group, type Material, type Mesh,
   type PerspectiveCamera, type Texture,
 } from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, packSH } from "./seatLight";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { stillPath } from "./still";
 import { FLICKER_S, flickerLevel } from "./flicker";
+import { NO_COVER, WALK_MS, corridorFov, hallFov, seen, walkEase, walkRoute, walker, type Cover, type Pose, type Walker } from "./walk";
 import { DOUBLE_MS, seatAction, type SeatGesture } from "./gestures";
-import { hallDrawn } from "./hallReady";
+import { forgetRoom, loadRoom } from "./preload";
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { HALL_CAP_MS, readiness, settled, type PartState, type Parts } from "./readiness";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
 import { PITCH_Z, bakedHall, computeHall, modelKind, views, type BakedMeta, type Hall, type Mode, type ModelKind, type Placed, type View } from "./hall";
@@ -56,6 +58,8 @@ type Tones = ReturnType<typeof tones>;
 
 const ease = (t: number) => 1 - (1 - t) ** 4; // one ease, close to --fr-ease-out
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// CR-014: phones get live 3D too (owner's choice), drawn at one device pixel per CSS pixel
+const PHONE = typeof matchMedia === "function" && matchMedia("(max-width: 56rem), (pointer: coarse)").matches;
 
 type BakedViews = ((seatId: number | null) => Record<Mode, View>) | null;
 type Orbit = { target: Vector3; minAzimuthAngle: number; maxAzimuthAngle: number; minPolarAngle: number; maxPolarAngle: number; update: () => void };
@@ -76,21 +80,26 @@ function pin(controls: Orbit | null, camera: PerspectiveCamera, look: Vector3) {
   controls.update();
 }
 
-function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: {
-  hall: Hall; mode: Mode; seatId: number | null; onMoving: (moving: boolean) => void; bakedViews: BakedViews;
+const COVER_MS = 600;
+const panelEase = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2); // in and out: the panel's curve
+type Glide = { at0: Vector3; look0: Vector3; t0: number | null; ms: number; hold?: number; route?: [CatmullRomCurve3, CatmullRomCurve3]; walk?: Walker };
+function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked, go, corridor, enter, walk, onWalked, cover }: {
+  hall: Hall; mode: Mode | "corridor"; seatId: number | null; onMoving: (moving: boolean) => void; bakedViews: BakedViews;
   intro: { eye: number[]; look: number[] }[] | null; wall: number | null; locked: boolean;
+  /** false until the whole hall is in and drawn (readiness.ts): the camera waits on its first pose, nothing flies */
+  go: boolean;
+  /** CR-014: the film page's view from the corridor, and the walk from it into the hall (hallN.json corridor, enter) */
+  corridor: View | null; enter: Pose[] | null; walk: boolean; onWalked: () => void;
+  /** the part of the canvas a page covers (the seat page's panel): the hall is framed in what is left */
+  cover: Cover;
 }) {
   const camera = useThree((s) => s.camera as PerspectiveCamera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const view = useMemo(() => (bakedViews ? bakedViews(seatId) : views(hall, seatId, aspect))[mode], [hall, seatId, aspect, mode, bakedViews]);
-  useLayoutEffect(() => {
-    if (!bakedViews) return;
-    // the entrance clip's lens (90 deg across at 16:9); a wider stage crops top and bottom, as the video does
-    // portrait (a phone held upright): as wide as a 95 deg tall lens allows; the clip shows whole, letterboxed
-    const deg = (2 * Math.atan(1 / aspect) * 180) / Math.PI;
-    camera.fov = aspect >= 16 / 9 ? deg : aspect >= 1 ? 58.72 : Math.min(95, deg);
-    camera.updateProjectionMatrix();
-  }, [bakedViews, aspect, camera]);
+  const inCorridor = mode === "corridor" && !!corridor;
+  const view = useMemo(() => (inCorridor ? corridor! : (bakedViews ? bakedViews(seatId) : views(hall, seatId, aspect))[mode === "corridor" ? "all" : mode]),
+    [hall, seatId, aspect, mode, bakedViews, corridor, inCorridor]);
+  // the lens is set here, every frame (below): the page's cover and the walk change it, so R3F must not reset it
+  useLayoutEffect(() => void ((camera as PerspectiveCamera & { manual?: boolean }).manual = true), [camera]);
   const controls = useThree((s) => s.controls) as unknown as Orbit | null;
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
@@ -98,24 +107,45 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: 
   // where the orbit pivot goes: the look point itself, or (a baked hall) 1 cm ahead of the eye
   const settle = () => (bakedViews ? pin(controls, camera, look.current) : controls?.target.copy(look.current));
   // t0 is stamped on the first frame drawn, so a slow first frame (shader compile) does not eat the move.
-  const glide = useRef<{ at0: Vector3; look0: Vector3; t0: number | null; ms: number; hold?: number; route?: [CatmullRomCurve3, CatmullRomCurve3] } | null>(null);
+  const glide = useRef<Glide | null>(null);
   const shown = useRef<View | null>(null);
-  useEffect(() => {
+  const was = useRef<Mode | "corridor" | null>(null); // the camera's last mode, for the cut to and from the corridor
+  const goNow = useRef(go);
+  goNow.current = go;
+  const walked = useRef(onWalked);
+  walked.current = onWalked;
+  // a layout effect: a cut (Back to the corridor) is in place before the page change is painted (SyncSize draws it)
+  useLayoutEffect(() => {
     if (shown.current === view) { // the controls arriving re-runs this; the camera already has its orders
       if (!glide.current) settle();
       return;
     }
-    const first = shown.current === null;
+    // before the hall has shown, a new view is its first pose: nothing was seen, so nothing glides to it
+    const first = shown.current === null || !goNow.current;
+    const from = was.current;
     shown.current = view;
-    if (first || reducedMotion()) {
-      const fly = first && !reducedMotion() && !bakedViews; // reduced motion cuts (CR-001 B.5)
+    was.current = inCorridor ? "corridor" : mode;
+    const corridorChange = from === "corridor" || inCorridor;
+    const walking = !first && !reducedMotion() && walk && from === "corridor" && !inCorridor;
+    if (walking) {
+      // CR-014: the walk - one move along `enter`, from the corridor through the door to this view
+      const w = walker(walkRoute(enter ?? [], { eye: corridor!.at, look: corridor!.look }, { eye: view.at, look: view.look }));
+      glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: WALK_MS, walk: w };
+      onMoving(true);
+      invalidate();
+      return;
+    }
+    if (first || reducedMotion() || corridorChange) { // reduced motion cuts (CR-001 B.5), and so does Back to the corridor
+      const fresh = first && !reducedMotion() && !inCorridor;
+      const fly = fresh && !bakedViews;
       // a baked hall arrives along the route it is given (Hall3D: screen first, then the seats), flown live (no video)
-      const arrive = !!(first && !reducedMotion() && bakedViews && intro && intro.length > 1);
+      const arrive = !!(fresh && bakedViews && intro && intro.length > 1);
       camera.position.set(...((arrive ? intro![0].eye : view.at) as [number, number, number]));
       if (fly) camera.position.add(FLY_FROM);
       look.current.set(...((arrive ? intro![0].look : view.look) as [number, number, number]));
       camera.lookAt(look.current);
       settle();
+      glide.current = null;
       if (fly) {
         glide.current = { at0: camera.position.clone(), look0: look.current.clone(), t0: null, ms: FLY_MS };
         onMoving(true);
@@ -129,24 +159,24 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: 
       return;
     }
     // a glide starts from where the visitor looks now (a baked hall's pivot is 1 cm away, so read the camera instead)
-    const from = bakedViews ? camera.position.clone().add(camera.getWorldDirection(new Vector3()).multiplyScalar(10))
+    const fromLook = bakedViews ? camera.position.clone().add(camera.getWorldDirection(new Vector3()).multiplyScalar(10))
       : (controls?.target ?? look.current).clone();
     // A baked hall's turn that faces the other way (a seat to the all-seats view, or back) is flown like the arrival:
     // up, and round by the side wall, so the look point never passes through the eye.
     const to = new Vector3(...view.at), toLook = new Vector3(...view.look);
-    const flips = from.clone().sub(camera.position).dot(toLook.clone().sub(to)) < 0;
+    const flips = fromLook.clone().sub(camera.position).dot(toLook.clone().sub(to)) < 0;
     if (bakedViews && wall !== null && flips) {
       const mid = camera.position.clone().add(to).multiplyScalar(0.5);
       mid.y = Math.max(camera.position.y, to.y) + 0.3;
       const c = (pts: Vector3[]) => new CatmullRomCurve3(pts, false, "centripetal");
-      glide.current = { at0: camera.position.clone(), look0: from, t0: null, ms: PAN_MS,
+      glide.current = { at0: camera.position.clone(), look0: fromLook, t0: null, ms: PAN_MS,
                         // the far wall: the turn sweeps across the room, never into the wall beside a corner seat
-                        route: [c([camera.position.clone(), mid, to]), c([from, new Vector3(-Math.sign(camera.position.x || 1) * wall, mid.y, mid.z), toLook])] };
-    } else glide.current = { at0: camera.position.clone(), look0: from, t0: null, ms: GLIDE_MS };
+                        route: [c([camera.position.clone(), mid, to]), c([fromLook, new Vector3(-Math.sign(camera.position.x || 1) * wall, mid.y, mid.z), toLook])] };
+    } else glide.current = { at0: camera.position.clone(), look0: fromLook, t0: null, ms: GLIDE_MS };
     onMoving(true);
     invalidate();
-  }, [view, camera, controls, invalidate, onMoving]);
-  // any tap or drag during the arrival skips it to the all-seats view
+  }, [view, camera, controls, invalidate, onMoving]); // eslint-disable-line react-hooks/exhaustive-deps
+  // any tap or drag during the arrival skips it to the all-seats view (not the walk: the page changes when it lands)
   useEffect(() => {
     const skip = () => {
       if (glide.current?.route) glide.current.t0 = -1e9;
@@ -155,28 +185,67 @@ function Rig({ hall, mode, seatId, onMoving, bakedViews, intro, wall, locked }: 
     gl.domElement.addEventListener("pointerdown", skip);
     return () => gl.domElement.removeEventListener("pointerdown", skip);
   }, [gl, invalidate]);
-  useFrame(() => {
+  useEffect(() => void (go && invalidate()), [go, invalidate]);
+  useEffect(() => invalidate(), [cover.right, cover.bottom, invalidate]);
+  // the cover the lens uses: once the hall is up, a new cover is eased in over COVER_MS, as the seat page's panel slides
+  // in over the hall (immersive.css fr-panel-in, the same time and curve); before that it is set at once
+  const covered = useRef<{ from: Cover; to: Cover; t0: number } | null>(null);
+  useFrame((state) => {
     const g = glide.current;
-    if (!g) return;
-    g.t0 ??= performance.now();
-    const k = Math.min(1, Math.max(0, performance.now() - g.t0 - (g.hold ?? 0)) / g.ms);
-    const e = ease(k);
-    if (g.route && k < 1) {
-      camera.position.copy(g.route[0].getPointAt(e));
-      look.current.copy(g.route[1].getPointAt(e));
-    } else if (g.route) {
-      camera.position.set(...view.at);
-      look.current.set(...view.look);
-    } else {
-      camera.position.lerpVectors(g.at0, new Vector3(...view.at), e);
-      look.current.lerpVectors(g.look0, new Vector3(...view.look), e);
+    let k = 1;
+    if (g && go) {
+      g.t0 ??= performance.now();
+      k = Math.min(1, Math.max(0, performance.now() - g.t0 - (g.hold ?? 0)) / g.ms);
+      if (g.walk) {
+        const p = g.walk(walkEase(k));
+        camera.position.copy(p.eye);
+        look.current.copy(p.look);
+      } else if (g.route && k < 1) {
+        const e = ease(k);
+        camera.position.copy(g.route[0].getPointAt(e));
+        look.current.copy(g.route[1].getPointAt(e));
+      } else if (g.route) {
+        camera.position.set(...view.at);
+        look.current.set(...view.look);
+      } else {
+        const e = ease(k);
+        camera.position.lerpVectors(g.at0, new Vector3(...view.at), e);
+        look.current.lerpVectors(g.look0, new Vector3(...view.look), e);
+      }
+      camera.lookAt(look.current);
+      settle();
     }
-    camera.lookAt(look.current);
-    settle();
-    if (k < 1) invalidate();
-    else {
+    // The lens. The corridor's matches its stand-in picture (walk.ts corridorFov); the hall's is CR-003's; the walk
+    // blends one into the other. The page's cover eases in (~0.5 s) once the hall is up, and is set at once before.
+    const { width, height } = state.size;
+    const now = performance.now();
+    let cv = covered.current;
+    const kc = (x: { t0: number }) => panelEase(Math.min(1, (now - x.t0) / COVER_MS));
+    const at = (x: { from: Cover; to: Cover; t0: number }) => {
+      const e = kc(x);
+      return { right: x.from.right + (x.to.right - x.from.right) * e, bottom: x.from.bottom + (x.to.bottom - x.from.bottom) * e };
+    };
+    if (!cv || !go || inCorridor) cv = { from: cover, to: cover, t0: 0 }; // the corridor is a cut: no panel to ease
+    else if (cv.to.right !== cover.right || cv.to.bottom !== cover.bottom) cv = { from: at(cv), to: cover, t0: now };
+    covered.current = cv;
+    const c = at(cv);
+    const frame = seen(width, height, c);
+    const a = frame.w / frame.h;
+    const fov = !bakedViews ? 50 : g?.walk && go ? corridorFov(a) + (hallFov(a) - corridorFov(a)) * walkEase(k) : inCorridor ? corridorFov(a) : hallFov(a);
+    const off = Math.abs(width - frame.w) > 0.5 || Math.abs(height - frame.h) > 0.5;
+    if (camera.fov !== fov || camera.aspect !== a || off !== !!camera.view?.enabled || (off && camera.view && camera.view.fullWidth !== frame.w)) {
+      camera.fov = fov;
+      camera.aspect = a;
+      if (off) camera.setViewOffset(frame.w, frame.h, 0, 0, width, height);
+      else camera.clearViewOffset();
+      camera.updateProjectionMatrix();
+    }
+    const easing = kc(cv) < 1;
+    if ((g && go && k < 1) || easing) invalidate();
+    else if (g && go) {
       glide.current = null;
       onMoving(false);
+      if (g.walk) walked.current();
     }
   });
   // Procedural hall: orbit the all-seats view only. Baked hall: turn on the spot (pin) in every view, from your seat too.
@@ -210,9 +279,9 @@ function lightSeats(m: Material, shU: Record<string, { value: unknown }>, glow: 
   m.customProgramCacheKey = () => "seat-probes";
 }
 
-function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
+function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit, mark }: {
   kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
-  baked: boolean; lit: SeatLit | null;
+  baked: boolean; lit: SeatLit | null; mark: Mark;
 }) {
   const ref = useRef<InstancedMesh>(null);
   const frameRef = useRef<InstancedMesh>(null);
@@ -259,13 +328,14 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
   useEffect(() => {
     let live = true;
     void seatGeometry(kind).then((g) => {
-      if (live) setGeo(g);
-      else { g.body.dispose(); g.frame?.dispose(); }
+      if (!live) return void (g.body.dispose(), g.frame?.dispose());
+      setGeo(g);
+      mark(`seat:${kind}`, "loaded"); // seatGeometry never rejects: a missing file is the stand-in
     });
     return () => {
       live = false;
     };
-  }, [kind]);
+  }, [kind, mark]);
   useEffect(() => () => { geo.body.dispose(); geo.frame?.dispose(); }, [geo]);
   useEffect(() => () => { material.dispose(); frameMaterial.dispose(); }, [material, frameMaterial]);
 
@@ -356,6 +426,8 @@ function Halos({ placed, mine, tone }: { placed: Placed[]; mine: ReadonlySet<num
 }
 
 export type Film = { id: number; title: string };
+/** Reports one part of the hall loaded or failed (readiness.ts). */
+type Mark = (part: string, state: PartState) => void;
 
 /** The title card: the film's name in the display face over a dark cinematic gradient, at the screen's 2.39:1. */
 function titleCard(title: string, tone: Tones): Texture {
@@ -399,7 +471,9 @@ function titleCard(title: string, tone: Tones): Texture {
 }
 
 /** What the screen shows: /art/screen_<movieId>.jpg when that still is deployed, else the title card. */
-function useScreenArt(film: Film | null, tone: Tones): Texture | null {
+/** `film` undefined: the page does not know the film yet, so nothing is drawn (and "still" stays loading) until it does.
+ *  "still" is reported once the title card is made and the still has loaded or is known to be absent (the card stays). */
+function useScreenArt(film: Film | null | undefined, tone: Tones, mark: Mark): Texture | null {
   const invalidate = useThree((s) => s.invalidate);
   const [art, setArt] = useState<Texture | null>(null);
   useEffect(() => {
@@ -414,26 +488,27 @@ function useScreenArt(film: Film | null, tone: Tones): Texture | null {
       setArt(t);
       invalidate();
     };
+    if (film === undefined) return;
     const title = film?.title ?? "";
-    void Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
+    const card = Promise.all([document.fonts.load(`800 120px "Inter Tight"`), document.fonts.load(`400 40px "JetBrains Mono"`)])
       .catch(() => null).then(() => show(titleCard(title, tone), false));
-    if (film) {
-      // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
-      // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
-      void stillPath(film.id, (u, init) => fetch(u, init)).then((path) => {
-        if (!path || !live) return;
-        new TextureLoader().load(path, (t) => {
-          t.colorSpace = SRGBColorSpace;
-          t.userData.still = true; // the film is on: the house lights may go down
-          show(t, true);
-        }, undefined, () => null);
-      }).catch(() => null);
-    }
+    // CR-006: a demo film's poster redirects to /art/films/<slug>.webp; its screen still sits beside it as
+    // <slug>-still.webp. Any other poster (the bucket's) has no still: the title card stays.
+    const pic = !film ? null : stillPath(film.id, (u, init) => fetch(u, init)).then((path) => new Promise<void>((done) => {
+      if (!path || !live) return done();
+      new TextureLoader().load(path, (t) => {
+        t.colorSpace = SRGBColorSpace;
+        t.userData.still = true; // the film is on: the house lights may go down
+        show(t, true);
+        done();
+      }, undefined, () => done());
+    })).catch(() => null);
+    void Promise.all([card, pic]).then(() => live && mark("still", "loaded"));
     return () => {
       live = false;
       made.forEach((t) => t.dispose());
     };
-  }, [film?.id, film?.title, tone, invalidate]);
+  }, [film === undefined, film?.id, film?.title, tone, invalidate, mark]); // eslint-disable-line react-hooks/exhaustive-deps
   return art;
 }
 
@@ -613,9 +688,16 @@ const GLOW_APPLY = `outgoingLight *= uHouse;
 
 /** House lights (owner, 2026-11-22): up while seats are being chosen, down once the film's still is on the screen.
  *  "down" is the level the room's baked light, the downlights and the wall strips sink to; the exit and entry signs, the
- *  step lights and the projector port stay lit, as they do in a real cinema. Eased over ~1.5 s, like a dimmer. */
+ *  step lights and the projector port stay lit, as they do in a real cinema. Eased over ~1 s, like a dimmer; also down while you sit in a seat on the seat page. */
 const HOUSE_DOWN = 0.55;
-const DIMMED = /^emit_(dl|led_strip)/;
+
+/** CR-014: the door leaf's swing - eased in and out, longer for a wider swing (the peek ~0.4 s, ajar to wide ~0.8 s). */
+type DoorSwing = { from: number; to: number; t0: number; ms: number };
+const UP_AXIS = new Vector3(0, 1, 0);
+const doorEase = (k: number) => k * k * (3 - 2 * k);
+const swingMs = (from: number, to: number) => (from === to ? 0 : 300 + 7 * Math.abs(to - from));
+const DIMMED = /^emit_(dl|led_strip)/; // the corridor's own lamps (emit_corr_*) are not house lights
+const CORRIDOR = /^bake_(corr|leaf)/;
 
 /** The light on the room now (BakedRoom eases it toward the light the current picture casts); the probe-lit seats
  *  (CR-010) take the same uniforms, so they dim and tint with the room. */
@@ -630,7 +712,7 @@ function glowUniforms(meta: BakedMeta) {
 type GlowU = ReturnType<typeof glowUniforms>;
 
 /** CR-010 L2: the hall's Cycles panorama (/halls/hallN_env.hdr), pre-filtered for the seats' reflections. */
-function useHallEnv(file: string | undefined): Texture | null {
+function useHallEnv(file: string | undefined, mark: Mark): Texture | null {
   const gl = useThree((s) => s.gl);
   const [env, setEnv] = useState<Texture | null>(null);
   useEffect(() => {
@@ -641,23 +723,26 @@ function useHallEnv(file: string | undefined): Texture | null {
       made = pm.fromEquirectangular(t).texture;
       pm.dispose();
       t.dispose();
-      if (live) setEnv(made);
-      else made.dispose();
-    }, undefined, () => null); // no panorama: the seats keep their probe light, without reflections
+      if (!live) return made.dispose();
+      setEnv(made);
+      mark("env", "loaded");
+    }, undefined, () => live && mark("env", "failed")); // no panorama: the seats keep their probe light, without reflections
     return () => {
       live = false;
       made?.dispose();
     };
-  }, [file, gl]);
+  }, [file, gl, mark]);
   return env;
 }
 
-function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
-  n: number; film: Film | null; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean; glowU: GlowU;
+function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU, mark, door, inCorridor }: {
+  n: number; film: Film | null | undefined; tone: Tones; meta: BakedMeta; paint: Paint | null; houseDown: boolean; glowU: GlowU; mark: Mark;
+  /** CR-014: the corridor door leaf's angle in degrees (signed), or undefined to leave it as baked */
+  door: number | undefined; inCorridor: boolean;
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const painted = usePainted(paint, meta.screen.w / meta.screen.h);
-  const still = useScreenArt(film, tone);
+  const still = useScreenArt(film, tone, mark);
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
@@ -665,20 +750,43 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
   const flickFrom = useRef(-1); // performance.now() of the film change; -1 when no flicker is running
   const target = useRef<Glow>(NO_GLOW);
   const lamps = useRef<{ material: MeshBasicMaterial; full: Color }[]>([]);
+  // CR-014: the door leaf (hallN.json corridor.door.node), swung about the vertical axis through its origin (the hinge)
+  const leaf = useRef<{ node: Object3D; rest: Quaternion } | null>(null);
+  const swing = useRef<DoorSwing>({ from: 0, to: 0, t0: 0, ms: 0 });
+  const wasCorridor = useRef(inCorridor);
   const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
   const fill = useRef<{ color: Color; intensity: number } | null>(null);
   const house = useRef<{ color: Color; intensity: number } | null>(null);
   useEffect(() => {
     let live = true;
-    new GLTFLoader().load(`/halls/hall${n}.glb`, (g) => {
+    // the parse may already be done: the film page starts it (preload.ts); the clone keeps the cached scene untouched
+    // GLTFLoader answers even when a texture could not be decoded (seen once on a loaded machine: every bake_ texture
+    // failed and the room drew white); such a room is loaded again once, then counts as failed (readiness.ts)
+    const whole = (gl: GLTF) => {
+      let ok = true;
+      gl.scene.traverse((o) => void ((o as Mesh).isMesh && o.name.startsWith("bake_") && !((o as Mesh).material as MeshStandardMaterial).map && (ok = false)));
+      return ok;
+    };
+    loadRoom(n).then((gl) => (whole(gl) ? gl : (forgetRoom(n), loadRoom(n)))).then((gl) => {
       if (!live) return;
+      if (!whole(gl)) {
+        forgetRoom(n);
+        return mark("room", "failed");
+      }
+      const g = { scene: gl.scene.clone(true) };
+      const leafNode = meta.corridor ? g.scene.getObjectByName(meta.corridor.door.node) ?? null : null;
+      const onLeaf = new Set<Object3D>();
+      leafNode?.traverse((o) => void onLeaf.add(o));
+      leaf.current = leafNode ? { node: leafNode, rest: leafNode.quaternion.clone() } : null;
       g.scene.traverse((o) => {
         const m = o as Mesh;
         if (!m.isMesh) return;
         const was = m.material as MeshStandardMaterial;
-        if (m.name.startsWith("bake_")) {
+        // the leaf is baked like the room (CR-014), whatever its mesh is called
+        if (m.name.startsWith("bake_") || (onLeaf.has(m) && (m.material as MeshStandardMaterial).map)) {
           const lit = new MeshBasicMaterial({ map: was.map, color: new Color(ROOM_GAIN, ROOM_GAIN, ROOM_GAIN), toneMapped: false });
-          lit.onBeforeCompile = (sh) => {
+          // CR-014: the corridor and its door are outside the hall - the film's light and the house lights stay off them
+          if (!CORRIDOR.test(m.name) && !onLeaf.has(m)) lit.onBeforeCompile = (sh) => {
             Object.assign(sh.uniforms, glowU);
             sh.vertexShader = "varying vec3 vRoomW;\n" + sh.vertexShader.replace("#include <begin_vertex>", GLOW_VERT);
             sh.fragmentShader = GLOW_FRAG + sh.fragmentShader.replace("#include <opaque_fragment>", GLOW_APPLY);
@@ -702,12 +810,13 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
         }
       });
       setRoom(g.scene);
+      mark("room", "loaded"); // GLTFLoader answers once the room's textures are in too
       invalidate();
-    }, undefined, () => null); // no room file: the seats still draw
+    }, () => live && mark("room", "failed")); // no room file: the page's fallback (readiness.ts)
     return () => {
       live = false;
     };
-  }, [n, invalidate, glowU]);
+  }, [n, invalidate, glowU, mark]);
   useEffect(() => {
     target.current = sampleGlow(art);
     invalidate();
@@ -718,7 +827,9 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
     const k = 1 - Math.exp(-Math.min(delta, 0.1) * 3); // ~1 s to settle on a new picture
     const level = down ? HOUSE_DOWN : 1;
     const dimming = Math.abs(glowU.uHouse.value - level) > 1e-3;
-    glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 2));
+    // ~1 s to settle (owner, 2026-11-23: "slowly dim the lighting in 1 second"), eased like a dimmer: 97% by 1 s
+    glowU.uHouse.value += (level - glowU.uHouse.value) * (1 - Math.exp(-Math.min(delta, 0.1) * 3.5));
+    if (import.meta.env.DEV) (window as Window & { __frHouse?: number }).__frHouse = glowU.uHouse.value; // e2e: the house light, read by the dimming check
     for (const l of lamps.current) l.material.color.copy(l.full).multiplyScalar(glowU.uHouse.value);
     const t = target.current;
     const off = (c: Color, v: Glow["left"]) => Math.abs(c.r - v[0]) + Math.abs(c.g - v[1]) + Math.abs(c.b - v[2]);
@@ -753,8 +864,26 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
       flickering = e < FLICKER_S;
       if (!flickering) flickFrom.current = -1;
     }
-    if (settling || dimming || flickering) invalidate();
+    let swinging = false;
+    if (leaf.current) {
+      const sw = swing.current;
+      const k = sw.ms > 0 ? Math.min(1, (performance.now() - sw.t0) / sw.ms) : 1;
+      const deg = sw.from + (sw.to - sw.from) * doorEase(k);
+      leaf.current.node.quaternion.copy(leaf.current.rest).premultiply(new Quaternion().setFromAxisAngle(UP_AXIS, (deg * Math.PI) / 180));
+      swinging = k < 1;
+    }
+    if (settling || dimming || flickering || swinging) invalidate();
   });
+  useEffect(() => {
+    const sw = swing.current;
+    const now = performance.now();
+    const at = sw.ms > 0 ? sw.from + (sw.to - sw.from) * doorEase(Math.min(1, (now - sw.t0) / sw.ms)) : sw.to;
+    const target = door ?? 0;
+    const cut = (inCorridor && !wasCorridor.current) || reducedMotion() || !leaf.current;
+    wasCorridor.current = inCorridor;
+    swing.current = cut ? { from: target, to: target, t0: now, ms: 0 } : { from: at, to: target, t0: now, ms: swingMs(at, target) };
+    invalidate();
+  }, [door, inCorridor, room, invalidate]);
   // leaving mid-flicker must not leave the next hall's screen, beam and dust dimmed (SCREEN_LIGHT is shared)
   useEffect(() => () => void (SCREEN_LIGHT.flick = 1), []);
   // a new film: the projector stutters back on (not with reduced motion)
@@ -771,13 +900,6 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
     shown.current = { material, base };
     invalidate();
   }, [art, room, tone, invalidate]);
-  // the first frame with the room in it tells a waiting page change it may show this page now (hallReady.ts)
-  const told = useRef(false);
-  useFrame(() => {
-    if (!room || told.current) return;
-    told.current = true;
-    requestAnimationFrame(hallDrawn);
-  });
   const look = meta.allseats.look;
   return (
     <group>
@@ -794,10 +916,10 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
 }
 
 /** Floor tiers on the rake, the stage floor, dark walls, the glowing screen, brass step lights in every aisle. */
-function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film | null; paint: Paint | null }) {
+function Room({ hall, tone, film, paint, mark }: { hall: Hall; tone: Tones; film: Film | null | undefined; paint: Paint | null; mark: Mark }) {
   const ref = useRef<InstancedMesh>(null);
   const painted = usePainted(paint, 2.39);
-  const still = useScreenArt(film, tone);
+  const still = useScreenArt(film, tone, mark);
   const art = painted ?? still;
   const w = hall.halfWidth + 1.8;
   const { screen, depth, top } = hall;
@@ -875,25 +997,94 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
 }
 
 /** Every seat model's instances; a probe-lit hall (CR-010) also loads its reflection panorama here, once. */
-function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env }: {
+function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env, mark }: {
   byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
-  baked: boolean; glow: GlowU | null; env: string | undefined;
+  baked: boolean; glow: GlowU | null; env: string | undefined; mark: Mark;
 }) {
-  const map = useHallEnv(glow ? env : undefined);
+  const map = useHallEnv(glow ? env : undefined, mark);
   const lit = useMemo(() => (glow ? { glow, env: map } : null), [glow, map]);
   return <>{KINDS.map((k) => (byKind[k].length ? (
-    <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={onPick} onHover={onHover} baked={baked} lit={lit} />
+    <SeatKind key={k} kind={k} items={byKind[k]} colourOf={colourOf} onPick={onPick} onHover={onHover} baked={baked} lit={lit} mark={mark} />
   ) : null))}</>;
 }
 
-export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false }: {
-  map: SeatMap; film: Film | null; mine: ReadonlySet<number>; mode: Mode; seatId: number | null;
+/** CR-014: the canvas follows its box in the same frame. R3F measures the box after the frame is painted, so a box that
+ *  grows (the walk) or a canvas moved into a page's slot (Back) showed the last frame at the old size for a frame or
+ *  more. A ResizeObserver runs after layout and before paint: the new size is set and one frame drawn there. */
+function SyncSize() {
+  const gl = useThree((s) => s.gl);
+  const get = useThree((s) => s.get);
+  useLayoutEffect(() => {
+    const box = gl.domElement.parentElement;
+    if (!box) return;
+    const ro = new ResizeObserver(([e]) => {
+      const { width, height } = e.contentRect;
+      const s = get();
+      if (!width || !height || (Math.abs(s.size.width - width) < 0.5 && Math.abs(s.size.height - height) < 0.5)) return;
+      s.setSize(width, height, s.size.top, s.size.left);
+      s.advance(performance.now());
+    });
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [gl, get]);
+  return null;
+}
+
+/** Readiness, step two: once every part is in (readiness.ts), the GPU is warmed while the canvas is still invisible -
+ *  every texture uploaded and every shader compiled (gl.compileAsync), then two frames drawn, so the post-processing
+ *  passes compile too - and only then `onShown`: the canvas fades in and the camera may move. The warm-up is capped
+ *  (WARM_CAP_MS) in case compileAsync never answers. */
+const WARM_CAP_MS = 1500;
+function Warm({ on, onShown }: { on: boolean; onShown: () => void }) {
+  const { gl, scene, camera, invalidate } = useThree();
+  const stage = useRef<"wait" | "compiling" | "drawing" | "done">("wait");
+  const frames = useRef(0);
+  useEffect(() => {
+    if (!on || stage.current !== "wait") return;
+    stage.current = "compiling";
+    const draw = () => {
+      if (stage.current !== "compiling") return;
+      stage.current = "drawing";
+      invalidate();
+    };
+    scene.traverse((o) => {
+      for (const m of [(o as Mesh).material].flat() as (Material & { map?: Texture | null; envMap?: Texture | null })[]) {
+        for (const t of [m?.map, m?.envMap]) if (t?.isTexture) gl.initTexture(t);
+      }
+    });
+    gl.compileAsync(scene, camera).then(draw, draw);
+    const cap = setTimeout(draw, WARM_CAP_MS);
+    return () => {
+      clearTimeout(cap);
+      if (stage.current === "compiling") stage.current = "wait"; // StrictMode's second run starts it again
+    };
+  }, [on, gl, scene, camera, invalidate]);
+  useFrame(() => {
+    if (stage.current !== "drawing") return;
+    if (++frames.current < 2) return void invalidate();
+    stage.current = "done";
+    onShown();
+  });
+  return null;
+}
+
+const NO_WALK = () => undefined;
+export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook, onHover, onMoving, meta = null, hallNo = null, paint = null, locked = false, houseDown = false, since,
+  door, walk = false, onWalked = NO_WALK, intro, cover = NO_COVER, onShown: told }: {
+  /** `film` undefined: not known yet (the page is still asking); the hall waits for it before it shows (readiness.ts) */
+  map: SeatMap; film: Film | null | undefined; mine: ReadonlySet<number>; mode: Mode | "corridor"; seatId: number | null;
   onTap: (seat: Seat, visual: Visual) => void; onLook: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
   onMoving: (moving: boolean) => void; meta?: BakedMeta | null; hallNo?: number | null; paint?: Paint | null;
   /** CR-005: the landing's seat - no seat to click, no hover, no dragging; the camera moves only when told to. */
   locked?: boolean;
   /** The house lights go down once the film's still is on the screen (the landing); up while choosing seats. */
   houseDown?: boolean;
+  /** performance.now() when the page started loading this hall (its .json fetch); the cap counts from here. */
+  since?: number;
+  /** CR-014 (hall3d/host.tsx): the corridor door's angle (degrees, signed), the walk along `enter` when the mode leaves
+   *  "corridor", told when it lands; the arrival route if not the file's own (null: none); the page's cover; told when
+   *  the hall first shows */
+  door?: number; walk?: boolean; onWalked?: () => void; intro?: Pose[] | null; cover?: Cover; onShown?: () => void;
 }) {
   const [tone] = useState(tones);
   const [hover, setHover] = useState<number | null>(null);
@@ -903,6 +1094,8 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
   const baked = useMemo(() => (meta && hallNo ? bakedHall(map.seats, meta) : null), [shape, meta, hallNo]);
   const glowU = useMemo(() => (baked ? glowUniforms(baked.meta) : null), [baked?.meta]);
   const placed = baked?.placed ?? hall.placed;
+  const c = baked?.meta.corridor;
+  const corridor = useMemo<View | null>(() => (c ? { at: [c.eye[0], c.eye[1], c.eye[2]], look: [c.look[0], c.look[1], c.look[2]] } : null), [c]);
   const byKind = useMemo(() => {
     const name = new Map(map.categories.map((c) => [c.id, c.name]));
     const out: Record<ModelKind, Placed[]> = { standard: [], premium: [], recliner: [] };
@@ -942,17 +1135,50 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
     document.body.style.cursor = "";
   }, []);
 
+  // Owner, 2026-11-23: nothing of the hall shows and no camera moves until every part of it is in (readiness.ts).
+  // The parts are fixed at mount: a later film change on the landing swaps the still in a shown hall (the flicker).
+  const [t0] = useState(() => since ?? performance.now());
+  const [parts, setParts] = useState<Parts>(() => {
+    const p: Parts = { still: "loading" };
+    if (baked) p.room = "loading";
+    if (baked?.meta.probe?.env?.file) p.env = "loading";
+    for (const k of KINDS) if (byKind[k].length) p[`seat:${k}`] = "loading";
+    return p;
+  });
+  const mark = useCallback<Mark>((part, state) => setParts((p) => (p[part] === "loading" ? { ...p, [part]: state } : p)), []);
+  const [, setCapped] = useState(false); // a render at the cap, so the status below is read again then
+  useEffect(() => {
+    const t = setTimeout(() => setCapped(true), Math.max(0, t0 + HALL_CAP_MS - performance.now())); // a timer, not rAF
+    return () => clearTimeout(t);
+  }, [t0]);
+  const status = readiness(parts, performance.now() - t0, baked ? ["room"] : []);
+  const [shown, setShown] = useState(false);
+  const toldRef = useRef(told);
+  toldRef.current = told;
+  const onShown = useCallback(() => {
+    setShown(true);
+    toldRef.current?.();
+  }, []);
+  // the Guard around this scene renders the page's fallback (the 2D map, the landing's empty stage)
+  if (status === "failed" && !shown) throw new Error(`hall ${hallNo ?? "procedural"}: a required part did not load`);
+
   return (
-    <Canvas frameloop="demand" dpr={[1, 1.25]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
+    <Canvas frameloop="demand" dpr={PHONE ? 1 : [1, 1.25]} camera={{ fov: 50, near: 0.05, far: 200 }} flat={!!baked}
+            className="fr-hall-canvas" data-shown={shown || undefined}
             gl={{ antialias: false, powerPreference: "high-performance" }} onPointerMissed={() => hoverSeat(null)}>
+      <Warm on={settled(status)} onShown={onShown} />
+      <SyncSize />
       <color attach="background" args={[baked ? "#000000" : tone.field]} />
       {baked ? null : <fog attach="fog" args={[tone.field, 22, 70]} />}
-      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} glowU={glowU!} /> : <Room hall={hall} tone={tone} film={film} paint={paint} />}
+      {baked ? <BakedRoom n={hallNo!} film={film} tone={tone} meta={baked.meta} paint={paint} houseDown={houseDown} glowU={glowU!} mark={mark}
+                           door={door} inCorridor={mode === "corridor"} />
+        : <Room hall={hall} tone={tone} film={film} paint={paint} mark={mark} />}
       <Seats byKind={byKind} colourOf={colourOf} onPick={locked ? () => undefined : pick} onHover={locked ? () => undefined : hoverSeat}
-             baked={!!baked} glow={baked?.meta.probe ? glowU : null} env={baked?.meta.probe?.env?.file} />
+             baked={!!baked} glow={baked?.meta.probe ? glowU : null} env={baked?.meta.probe?.env?.file} mark={mark} />
       <Halos placed={placed} mine={mine} tone={tone} />
-      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={baked?.meta.intro ?? null}
-           wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} />
+      <Rig hall={hall} mode={mode} seatId={seatId} onMoving={onMoving} bakedViews={baked?.views ?? null} intro={intro !== undefined ? intro : baked?.meta.intro ?? null}
+           corridor={corridor} enter={baked?.meta.enter ?? null} walk={walk} onWalked={onWalked} cover={cover}
+           wall={baked ? Math.max(...baked.meta.seats.map((s) => Math.abs(s.pos[0]))) + 2 : null} locked={locked} go={shown} />
       <EffectComposer multisampling={0}>
         <Bloom mipmapBlur luminanceThreshold={1} intensity={baked ? 0.6 : 0.9} />
         <Vignette offset={0.3} darkness={0.55} />

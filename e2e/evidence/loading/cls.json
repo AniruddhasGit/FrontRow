@@ -1,0 +1,11 @@
+{
+  "method": "PerformanceObserver('layout-shift', buffered: true), entries with hadRecentInput excluded, summed over 9 s after navigation; Playwright Chromium, 1440x900, Vite dev server",
+  "before": { "/": 0.0005, "/films": 0.291, "/movies/24": 0.4918, "/showtimes/757": 0.7007 },
+  "after_signed_in": { "/": 0, "/films": 0, "/movies/24": 0, "/showtimes/757": 0 },
+  "after_fresh_context_signed_out": { "/": 0, "/films": 0, "/movies/24": 0, "/showtimes/757": 0 },
+  "causes_before": {
+    "/films": "footer pushed off screen as the cards arrived; the header narrowed by the scrollbar width when the page started to scroll; the Genre choices arrived with the films and pushed Rating/Date down the filter column",
+    "/movies/24": "the hero rendered only once the film arrived (showtimes jumped ~490 px down); the date strip then landed above the times; footer + scrollbar as on /films",
+    "/showtimes/757": "Hall3D rendered null on its first render (WebGL check in an effect): the panel drew full width, then jumped into its column (0.68); the empty hall section's stage div was reused as the toolbar; the legend/summary followed the loading map's height; the 2D map measured its width a frame late and resized"
+  }
+}

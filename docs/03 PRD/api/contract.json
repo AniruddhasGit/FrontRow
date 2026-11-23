@@ -1222,7 +1222,7 @@
       "id": "EP-ACC-20",
       "method": "PUT",
       "path": "/api/me/ratings/{movie_id}",
-      "summary": "Rate a film 1 to 10 after a show of it that the caller booked has started",
+      "summary": "Rate a released film 1 to 10 (any signed-in customer, CR-013)",
       "auth": "authenticated",
       "roles": [
         "customer",
@@ -1253,7 +1253,7 @@
           "description": "No valid session"
         },
         "403": {
-          "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+          "description": "The film is coming soon (CR-013: no booking is needed for a released film)"
         },
         "404": {
           "description": "No visible film with that id"
@@ -1361,7 +1361,8 @@
           "movie_id": "integer, positive, a film a customer can currently see"
         },
         "query": {
-          "sort": "newest (default) | helpful"
+          "sort": "newest (default) | helpful",
+          "band": "optional: 9-10 | 7-8 | 5-6 | 3-4 | 1-2 (CR-013)"
         }
       },
       "responses": {
@@ -1369,15 +1370,16 @@
           "description": "At most 50 reviews and the total",
           "body": {
             "movie_id": "integer",
-            "count": "integer - every review of the film",
-            "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer}"
+            "count": "integer - every review of the film in the band (every review when no band)",
+            "bands": "object {9-10, 7-8, 5-6, 3-4, 1-2: integer} - reviews with text in each band, whatever the band asked",
+            "items": "array of {id, author (display name or FrontRow viewer), score 1..10, text, written_at (cinema offset), helpful integer, verified boolean}"
           }
         },
         "404": {
           "description": "No visible film with that id"
         },
         "422": {
-          "description": "sort is not newest or helpful"
+          "description": "sort is not newest or helpful, or band is not one of the five"
         },
         "503": {
           "description": "Postgres is unreachable"
@@ -1404,7 +1406,7 @@
       "id": "EP-ACC-23",
       "method": "PUT",
       "path": "/api/me/reviews/{movie_id}",
-      "summary": "Write or edit the caller's review (score and text) of a film they have seen here",
+      "summary": "Write or edit the caller's review (score and text) of a released film (CR-013)",
       "auth": "authenticated",
       "roles": [
         "customer",
@@ -1438,7 +1440,7 @@
           "description": "No valid session"
         },
         "403": {
-          "description": "The caller has no confirmed, captured booking for a showtime of this film that has started"
+          "description": "The film is coming soon (CR-013: no booking is needed for a released film)"
         },
         "404": {
           "description": "No visible film with that id"
@@ -1458,7 +1460,7 @@
       ],
       "idempotency": "Idempotent: one upsert on UNIQUE(user_id, movie_id) of movie_rating; the same body twice leaves the same state and one row.",
       "rate_limit": "none",
-      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's EXISTS over the caller's own bookings, in the write's transaction.",
+      "authorisation_rule": "The /api/me router dependency (app/api/me.py caller) resolves the session once; every statement filters on that user id in its own WHERE (P-ACC-12). The gate is the rating's: the film is released (CR-013), in the write's transaction.",
       "satisfies": [
         "P-ACC-18",
         "P-ACC-12"

@@ -1,0 +1,22 @@
+[
+ {
+  "ms": 1612,
+  "what": "film page: open (cold)"
+ },
+ {
+  "ms": 6097,
+  "what": "film page: corridor live (cold) - 4.50 s after open"
+ },
+ {
+  "ms": 6170,
+  "what": "hover the door"
+ },
+ {
+  "ms": 7784,
+  "what": "press Book"
+ },
+ {
+  "ms": 7923,
+  "what": "URL is the seat page - 0.14 s after the press"
+ }
+]

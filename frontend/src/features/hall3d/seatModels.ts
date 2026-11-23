@@ -147,14 +147,18 @@ function splitBack(g: BufferGeometry, hx: number): [BufferGeometry | null, Buffe
   return [shell, rest];
 }
 
-/** The geometry for one model: the file's, else the stand-in. Never rejects. */
+/** The geometry for one model: the file's, else the stand-in. Never rejects. Built once per kind (the film page starts
+ *  it early: preload.ts); every caller gets its own copy, because a hall disposes its geometry when it closes. */
+const built = new Map<ModelKind, Promise<SeatGeo>>();
 export async function seatGeometry(kind: ModelKind): Promise<SeatGeo> {
-  try {
-    return normalise(await fromFile(kind));
-  } catch {
+  let p = built.get(kind);
+  if (!p) {
+    p = fromFile(kind).then(normalise).catch(() => normalise({ body: placeholder(kind), frame: null }));
     // No file (a 404, or the SPA fallback's index.html), or a file three cannot read: draw the stand-in.
-    return normalise({ body: placeholder(kind), frame: null });
+    built.set(kind, p);
   }
+  const g = await p;
+  return { ...g, body: g.body.clone(), frame: g.frame ? g.frame.clone() : null };
 }
 
 /** Synchronous stand-in, so the hall draws at once while the files load. */

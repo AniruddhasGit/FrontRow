@@ -1,5 +1,6 @@
 // The app: the shell around whichever screen the path selects. Feature screens live in
 // src/features/<feature>/ and register their paths in that feature's routes.tsx.
+import { HallHost } from "./features/hall3d/host";
 import { Shell } from "./Shell";
 import { Link, Outlet, allRoutes } from "./router";
 
@@ -16,8 +17,11 @@ function NotFound() {
 
 export function App() {
   return (
-    <Shell>
-      <Outlet routes={allRoutes()} notFound={<NotFound />} />
-    </Shell>
+    // CR-014: the one live 3D hall, above the pages, so it outlives a page change (film page -> seat page and back)
+    <HallHost>
+      <Shell>
+        <Outlet routes={allRoutes()} notFound={<NotFound />} />
+      </Shell>
+    </HallHost>
   );
 }

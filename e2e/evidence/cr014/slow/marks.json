@@ -1,0 +1,22 @@
+[
+ {
+  "ms": 1491,
+  "what": "film page: open (cold)"
+ },
+ {
+  "ms": 4392,
+  "what": "door state before the press: waiting"
+ },
+ {
+  "ms": 4432,
+  "what": "pressed while loading - door state: queued"
+ },
+ {
+  "ms": 13656,
+  "what": "the walk starts - 12.20 s after open"
+ },
+ {
+  "ms": 17294,
+  "what": "URL is the seat page"
+ }
+]

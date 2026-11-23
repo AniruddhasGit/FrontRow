@@ -811,31 +811,6 @@
   color: var(--fr-ink-strong);
   margin: 0 0 var(--fr-space-3);
 }
-.fr-screens {
-  display: grid;
-  gap: var(--fr-space-3);
-  margin-top: var(--fr-space-4);
-}
-.fr-screen-card {
-  padding: var(--fr-space-4);
-  border-radius: var(--fr-radius-lg);
-  background: var(--fr-surface-raised);
-  border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
-  box-shadow: var(--fr-shadow-card);
-}
-.fr-screen-card h3 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--fr-space-2);
-  margin: 0 0 var(--fr-space-3);
-  font-size: var(--fr-text-md);
-  letter-spacing: var(--fr-track-caps);
-  color: var(--fr-ink-strong);
-}
-.fr-screen-card .fr-times {
-  margin: 0;
-}
 .fr-time[aria-current="true"] {
   background: var(--fr-surface-accent);
   border-color: var(--fr-surface-accent);
@@ -877,39 +852,91 @@
   display: grid;
   gap: var(--fr-space-3);
 }
-.fr-review-cards {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  gap: var(--fr-space-3);
+/* CR-013: the viewer's own rating on top, then one scrolling list; each score sits beside its comment */
+.fr-reviews {
+  grid-template-columns: minmax(0, 1fr); /* the score buttons' auto-fill grid must not widen the column on a phone */
 }
-.fr-review-card {
-  display: grid;
-  gap: var(--fr-space-3);
-  align-content: start;
-  padding: var(--fr-space-4);
+.fr-reviews .fr-my {
+  padding: var(--fr-space-4) var(--fr-space-5);
   border-radius: var(--fr-radius-lg);
   background: var(--fr-surface-raised);
   border: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
   box-shadow: var(--fr-shadow-card);
+  scroll-margin-top: var(--fr-space-7);
+}
+.fr-reviews .fr-scores {
+  grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+  max-width: 34rem;
+}
+.fr-reviews .fr-row-head h3 {
+  margin: 0;
+  font-size: var(--fr-text-md);
+  color: var(--fr-ink-strong);
+}
+.fr-review-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fr-space-2) var(--fr-space-5);
+  align-items: center;
   min-width: 0;
 }
-.fr-review-who {
+.fr-review-tools .fr-pick {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.fr-review-scroll {
+  max-height: 32rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  border-top: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+}
+@media (max-width: 36rem) {
+  .fr-review-scroll {
+    max-height: 26rem;
+  }
+}
+.fr-review-scroll:focus-visible {
+  outline: var(--fr-stroke-bold) solid var(--fr-focus-ring);
+  outline-offset: 2px;
+}
+.fr-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fr-review-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--fr-space-3);
+  grid-template-areas: "avatar who score" "avatar text score" "avatar foot foot";
+  gap: var(--fr-space-1) var(--fr-space-3);
+  padding: var(--fr-space-4) var(--fr-space-2);
+  border-bottom: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
+  min-width: 0;
+}
+.fr-review-row:last-child {
+  border-bottom: 0;
+}
+.fr-review-row > .fr-avatar {
+  grid-area: avatar;
+  align-self: start;
+}
+.fr-review-who {
+  grid-area: who;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: var(--fr-space-1) var(--fr-space-2);
+  margin: 0;
+  min-width: 0;
 }
 .fr-review-who strong {
-  display: block;
   color: var(--fr-ink-strong);
   overflow-wrap: anywhere;
 }
 .fr-review-badge {
   display: inline-block;
-  margin-top: 2px;
   padding: 0 var(--fr-space-2);
   border-radius: var(--fr-radius-pill);
   background: color-mix(in srgb, var(--fr-screen-ink) 14%, transparent);
@@ -917,22 +944,39 @@
   font-size: var(--fr-text-xs);
 }
 .fr-review-score {
+  grid-area: score;
+  align-self: start;
+  padding-left: var(--fr-space-3);
   font-weight: var(--fr-weight-bold);
+  font-family: var(--fr-font-mono);
   color: var(--fr-accent-ink);
+  white-space: nowrap;
+  text-align: right;
 }
 .fr-review-text {
+  grid-area: text;
   margin: 0;
   color: var(--fr-ink);
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
 .fr-review-foot {
+  grid-area: foot;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--fr-space-2) var(--fr-space-4);
   font-size: var(--fr-text-sm);
   color: var(--fr-ink-muted);
+}
+/* A phone: the score moves up beside the name, and the text and its line take the full width under the avatar */
+@media (max-width: 36rem) {
+  .fr-review-row {
+    grid-template-areas: "avatar who score" "text text text" "foot foot foot";
+  }
+  .fr-review-row > .fr-avatar {
+    width: 2.25rem;
+  }
 }
 .fr-helpful {
   margin-left: auto;
@@ -957,9 +1001,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--fr-space-2);
-}
-.fr-review-open {
-  margin-top: var(--fr-space-3);
 }
 
 /* You might also like */

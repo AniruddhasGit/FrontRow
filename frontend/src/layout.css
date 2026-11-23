@@ -54,6 +54,8 @@
 }
 .fr-main {
   flex: 1;
+  /* the footer starts below the fold, so content arriving never pushes it down the screen (CLS, 2026-11-23) */
+  min-height: 100dvh;
   width: 100%;
   max-width: var(--fr-page-max);
   margin: 0 auto;

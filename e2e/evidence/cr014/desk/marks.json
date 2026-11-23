@@ -1,0 +1,46 @@
+[
+ {
+  "ms": 1616,
+  "what": "film page: open (cold)"
+ },
+ {
+  "ms": 5949,
+  "what": "film page: corridor live (cold) - 4.36 s after open"
+ },
+ {
+  "ms": 6019,
+  "what": "hover the door"
+ },
+ {
+  "ms": 7643,
+  "what": "press Book"
+ },
+ {
+  "ms": 11366,
+  "what": "URL is the seat page - 3.72 s after the press"
+ },
+ {
+  "ms": 13005,
+  "what": "Back"
+ },
+ {
+  "ms": 13204,
+  "what": "film page again: corridor live"
+ },
+ {
+  "ms": 14075,
+  "what": "film page: corridor live (warm) - 0.01 s after open"
+ },
+ {
+  "ms": 14113,
+  "what": "hover the door"
+ },
+ {
+  "ms": 15739,
+  "what": "press Book"
+ },
+ {
+  "ms": 19444,
+  "what": "URL is the seat page - 3.71 s after the press"
+ }
+]

@@ -172,6 +172,10 @@
   animation: fr-rail-pop 320ms var(--fr-ease-strong-out) both;
   animation-delay: calc(180ms + var(--i, 0) * 60ms);
 }
+/* ... but only once their posters are decoded (Landing.tsx, capped): until then each waits, invisible, on its first frame */
+.fr-rail-films:not([data-ready]) > li {
+  animation-play-state: paused;
+}
 @keyframes fr-rail-pop {
   from {
     opacity: 0;
@@ -301,8 +305,9 @@
 
 /* ---- the seat page: the hall on the left, the panel (heading, 2D map, summary) on the right ---- */
 .fr-seatmap.fr-immersive {
+  --fr-panel-w: clamp(22rem, 32vw, 32rem); /* CR-008 T16: a little wider, so the fitted map is larger */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(22rem, 32vw, 32rem); /* CR-008 T16: a little wider, so the fitted map is larger */
+  grid-template-columns: minmax(0, 1fr) var(--fr-panel-w);
 }
 .fr-seatmap.fr-immersive:not(:has(.fr-hall3d)) {
   grid-template-columns: minmax(0, 1fr);
@@ -318,6 +323,14 @@
   border-left: var(--fr-stroke-hair) solid var(--fr-rule-quiet);
   scrollbar-width: thin;
   scrollbar-color: var(--fr-control-edge) transparent;
+}
+/* 2026-11-23, CLS: the panel keeps its scrollbar's gutter (the map arriving made it scroll, which narrowed the map), and
+   the legend and summary under the loading map wait unseen until the real map, whose height they would have followed */
+.fr-seatmap-panel {
+  scrollbar-gutter: stable;
+}
+.fr-seatmap-body:has(.fr-grid-loading) > :not(.fr-field) {
+  visibility: hidden;
 }
 .fr-seatmap-panel .fr-seatmap-head h1 {
   font-size: var(--fr-text-2xl);
@@ -613,5 +626,54 @@
   }
   .fr-landing[data-leaving="films"] {
     opacity: 0;
+  }
+}
+
+/* ---- CR-014: one hall from the film page's corridor to the seats ----
+   The hall's canvas runs on under the panel (Hall3D measures what it covers and the hall is framed in the rest), so the
+   canvas is the window's size here as it is at the end of the film page's walk: nothing resizes when the panel slides
+   in over it. On a phone the panel is below the hall, and the canvas runs on under its top. */
+.fr-seatmap.fr-immersive .fr-hall3d-stage {
+  right: calc(-1 * var(--fr-panel-w));
+}
+.fr-seatmap-panel {
+  position: relative;
+  z-index: 1;
+}
+/* arrived by the walk: the panel and the hall's toolbar slide in over the hall that is already there */
+.fr-seatmap:has(.fr-hall3d[data-walked]) .fr-seatmap-panel {
+  animation: fr-panel-in 600ms cubic-bezier(0.65, 0, 0.35, 1) both; /* in and out, as the hall re-frames (HallScene COVER_MS) */
+}
+.fr-hall3d[data-walked] .fr-hall3d-bar,
+.fr-hall3d[data-walked] .fr-hall3d-caption,
+.fr-hall3d[data-walked] .fr-hall3d-name,
+.fr-app:has(.fr-hall3d[data-walked]) .fr-header {
+  animation: fr-bar-in 500ms var(--fr-ease-out) 150ms both;
+}
+@keyframes fr-panel-in {
+  from { transform: translateX(100%); }
+}
+@keyframes fr-panel-up {
+  from { transform: translateY(40px); opacity: 0; }
+}
+@keyframes fr-bar-in {
+  from { transform: translateY(-14px); opacity: 0; }
+}
+@media (max-width: 56rem) {
+  .fr-seatmap.fr-immersive .fr-hall3d-stage {
+    right: 0;
+    bottom: calc(62dvh - 100dvh);
+  }
+  .fr-seatmap:has(.fr-hall3d[data-walked]) .fr-seatmap-panel {
+    animation-name: fr-panel-up;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fr-seatmap:has(.fr-hall3d[data-walked]) .fr-seatmap-panel,
+  .fr-hall3d[data-walked] .fr-hall3d-bar,
+  .fr-hall3d[data-walked] .fr-hall3d-caption,
+  .fr-hall3d[data-walked] .fr-hall3d-name,
+  .fr-app:has(.fr-hall3d[data-walked]) .fr-header {
+    animation: none;
   }
 }
