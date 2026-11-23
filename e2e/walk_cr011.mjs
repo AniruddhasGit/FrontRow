@@ -109,14 +109,14 @@ if (mode === "door") {
   await door.waitFor();
   assert.ok(await door.evaluate((b) => b === document.activeElement), "focus moved to the door");
   await page.waitForTimeout(700);
-  await page.locator(".fr-door-scene").screenshot({ path: EV + "f5-door-focus.png" });
+  await page.locator(".fr-movie-door").screenshot({ path: EV + "f5-door-focus.png" });
   await page.mouse.move(0, 0);
   await door.evaluate((b) => b.blur());
   await page.waitForTimeout(600);
-  await page.locator(".fr-door-scene").screenshot({ path: EV + "f5-door.png" });
+  await page.locator(".fr-movie-door").screenshot({ path: EV + "f5-door.png" });
   await door.hover();
   await page.waitForTimeout(600);
-  await page.locator(".fr-door-scene").screenshot({ path: EV + "f5-door-hover.png" });
+  await page.locator(".fr-movie-door").screenshot({ path: EV + "f5-door-hover.png" });
   say("F5 door:", await door.getAttribute("aria-label"));
   await door.focus();
   await page.keyboard.press("Enter"); // keyboard opens it

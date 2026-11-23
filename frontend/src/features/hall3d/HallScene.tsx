@@ -16,6 +16,8 @@ import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { EXPOSURE, SH_FRAG, SH_FRAG_PARS, SH_TEXELS, SH_VERT, SH_VERT_PARS, packSH } from "./seatLight";
 import { AdditiveBlending, BufferGeometry as Geometry, CatmullRomCurve3, DoubleSide, Float32BufferAttribute, ShaderMaterial } from "three";
 import { stillPath } from "./still";
+import { FLICKER_S, flickerLevel } from "./flicker";
+import { DOUBLE_MS, seatAction, type SeatGesture } from "./gestures";
 import { hallDrawn } from "./hallReady";
 import { NO_GLOW, glowOf, type Glow } from "./screenGlow";
 import { selectable, visualOf, type Seat, type SeatMap, type Visual } from "../seatmap/model";
@@ -209,7 +211,7 @@ function lightSeats(m: Material, shU: Record<string, { value: unknown }>, glow: 
 }
 
 function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
-  kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  kind: ModelKind; items: Placed[]; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
   baked: boolean; lit: SeatLit | null;
 }) {
   const ref = useRef<InstancedMesh>(null);
@@ -291,6 +293,9 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
   }, [items, colourOf, geo, invalidate]);
 
   const seatAt = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId === undefined ? null : items[e.instanceId]?.seat ?? null);
+  // gestures.ts: a click waits DOUBLE_MS, so the second click of a double click cancels it and the camera stays put
+  const single = useRef(0);
+  useEffect(() => () => clearTimeout(single.current), []);
   return (
     <>
     {geo.frame && <instancedMesh key={"f" + items.length} ref={frameRef} args={[geo.frame, frameMaterial, items.length]} raycast={() => null} />}
@@ -298,7 +303,22 @@ function SeatKind({ kind, items, colourOf, onPick, onHover, baked, lit }: {
       onClick={(e) => {
         e.stopPropagation();
         const s = seatAt(e);
-        if (s && e.delta < 6) onPick(s); // a drag to look around is not a tap
+        clearTimeout(single.current);
+        if (!s || e.delta >= 6 || e.nativeEvent.detail >= 2) return; // a drag to look around is not a tap
+        single.current = window.setTimeout(() => onPick(s, "click"), DOUBLE_MS);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        clearTimeout(single.current);
+        const s = seatAt(e);
+        if (s) onPick(s, "double");
+      }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        const s = seatAt(e);
+        if (!s) return;
+        e.nativeEvent.preventDefault(); // a right click on a seat is ours, not the browser's menu
+        onPick(s, "right");
       }}
       onPointerMove={(e) => {
         e.stopPropagation();
@@ -450,12 +470,15 @@ function usePainted(paint: Paint | null, aspect: number): Texture | null {
 /** The projector beam through the haze, and the dust drifting in it (the demo's, CR-003): a cone from the projector
  *  port to the screen's corners, bright where seen edge-on so it reads as a soft shaft, plus specks that drift. The
  *  dust keeps the canvas drawing every frame; with reduced motion it holds still and nothing redraws. */
-const N_DUST = 900;
+const N_DUST = 600; // owner, 2026-11-23: "reduce them a bit" (was 900)
+/** Dust sizes (owner, 2026-11-23: "some large and some fine, same size looks weird"): most specks fine, some medium, a
+ *  few large and fainter. [share of the specks, size in metres, opacity] */
+const DUST_SIZES: [number, number, number][] = [[0.7, 0.008, 0.6], [0.25, 0.016, 0.5], [0.05, 0.03, 0.35]];
 /** The light the screen casts right now (BakedRoom eases it toward each new picture); the beam and the dust read it. */
 const WHITE = new Color(1, 1, 1);
 const WARM_FILL = new Color("#6b4a3a");
 const HOUSE_WARM = new Color("#e8a868");
-const SCREEN_LIGHT = { color: new Color(0.78, 0.85, 1.0), luma: 0.25 };
+const SCREEN_LIGHT = { color: new Color(0.78, 0.85, 1.0), luma: 0.25, flick: 1 }; // flick: the projector stutter (flicker.ts)
 const BEAM = new ShaderMaterial({
   transparent: true, depthWrite: false, side: DoubleSide, blending: AdditiveBlending, vertexColors: true,
   uniforms: { uTint: { value: new Color(0.78, 0.85, 1.0) } },
@@ -466,7 +489,7 @@ const BEAM = new ShaderMaterial({
 });
 function Haze({ meta }: { meta: BakedMeta }) {
   const invalidate = useThree((s) => s.invalidate);
-  const { beam, dust, seeds } = useMemo(() => {
+  const { beam, groups } = useMemo(() => {
     const port = new Vector3(...(meta.port ?? [0, meta.screen.zc + 1.8, meta.allseats.look[2] - 6]) as [number, number, number]);
     const { w, h, zc } = meta.screen, z = meta.screen.z - 0.03, bottom = zc - h / 2;
     const corner = ([sx, sy]: number[]) => new Vector3((sx * w) / 2, bottom + sy * h, z);
@@ -486,9 +509,17 @@ function Haze({ meta }: { meta: BakedMeta }) {
       const target = new Vector3((r(5 * i) - 0.5) * w, bottom + r(5 * i + 1) * h, z);
       return { base: port.clone().lerp(target, 0.08 + r(5 * i + 2) * 0.85), ph: r(5 * i + 3) * 6.28, sp: 0.15 + r(5 * i + 4) * 0.35 };
     });
-    const dust = new Geometry();
-    dust.setAttribute("position", new Float32BufferAttribute(seeds.flatMap((s) => s.base.toArray()), 3));
-    return { beam, dust, seeds };
+    // each speck's size class from its own fixed draw, so the classes are mixed through the whole beam
+    let from = 0;
+    const groups = DUST_SIZES.map(([share, size, opacity], k) => {
+      const to = k === DUST_SIZES.length - 1 ? 1 : from + share;
+      const mine = seeds.filter((_, i) => { const u = r(7 * i + 11); return u >= from && u < to; });
+      from = to;
+      const dust = new Geometry();
+      dust.setAttribute("position", new Float32BufferAttribute(mine.flatMap((s) => s.base.toArray()), 3));
+      return { dust, seeds: mine, size, opacity };
+    });
+    return { beam, groups };
   }, [meta]);
   const dot = useMemo(() => {
     const c = document.createElement("canvas");
@@ -505,26 +536,33 @@ function Haze({ meta }: { meta: BakedMeta }) {
   // display frame (owner, 2026-11-22: "lightweight"). Slow drifting specks read the same at 24.
   const next = useRef(0);
   useEffect(() => () => clearTimeout(next.current), []);
-  const specks = useRef<{ color: Color } | null>(null);
+  const specks = useRef<({ color: Color } | null)[]>([]);
   useFrame(({ clock }) => {
     // the beam and its dust carry the picture's light: whiter than the picture (a projector beam is mostly white
     // light), brighter for a bright frame
-    BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar(0.55 + 0.9 * SCREEN_LIGHT.luma);
-    specks.current?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55);
+    BEAM.uniforms.uTint.value.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.45).multiplyScalar((0.55 + 0.9 * SCREEN_LIGHT.luma) * SCREEN_LIGHT.flick);
+    // the specks are only seen in the beam's light, so they flicker with the projector (flicker.ts) like the beam does
+    for (const m of specks.current) m?.color.copy(SCREEN_LIGHT.color).lerp(WHITE, 0.55).multiplyScalar(SCREEN_LIGHT.flick);
     if (still) return;
-    const t = clock.getElapsedTime(), a = dust.attributes.position as BufferAttribute;
-    seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
-      s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
-    a.needsUpdate = true;
+    const t = clock.getElapsedTime();
+    for (const { dust, seeds } of groups) {
+      const a = dust.attributes.position as BufferAttribute;
+      seeds.forEach((s, i) => a.setXYZ(i, s.base.x + Math.sin(t * s.sp + s.ph) * 0.05, s.base.y + Math.sin(t * s.sp * 0.7 + s.ph * 2) * 0.06,
+        s.base.z + Math.cos(t * s.sp * 0.5 + s.ph) * 0.05));
+      a.needsUpdate = true;
+    }
     clearTimeout(next.current);
     next.current = window.setTimeout(invalidate, 42);
   });
   return (
     <>
       <mesh geometry={beam} material={BEAM} renderOrder={2} />
-      <points geometry={dust} renderOrder={3}>
-        <pointsMaterial ref={specks} size={0.016} map={dot} transparent depthWrite={false} blending={AdditiveBlending} color="#d9e4ff" opacity={0.55} toneMapped={false} />
-      </points>
+      {groups.map((g, k) => (
+        <points key={k} geometry={g.dust} renderOrder={3}>
+          <pointsMaterial ref={(m) => void (specks.current[k] = m)} size={g.size} map={dot} transparent depthWrite={false}
+                          blending={AdditiveBlending} color="#d9e4ff" opacity={g.opacity} toneMapped={false} />
+        </points>
+      ))}
     </>
   );
 }
@@ -623,6 +661,8 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
   const art = painted ?? still;
   const [room, setRoom] = useState<Group | null>(null);
   const screen = useRef<Mesh | null>(null);
+  const shown = useRef<{ material: MeshBasicMaterial; base: Color } | null>(null);
+  const flickFrom = useRef(-1); // performance.now() of the film change; -1 when no flicker is running
   const target = useRef<Glow>(NO_GLOW);
   const lamps = useRef<{ material: MeshBasicMaterial; full: Color }[]>([]);
   const seatLight = useRef<{ color: Color; intensity: number } | null>(null);
@@ -705,11 +745,30 @@ function BakedRoom({ n, film, tone, meta, paint, houseDown, glowU }: {
       house.current.color.copy(HOUSE_WARM).lerp(seatLight.current.color, 0.35);
       house.current.intensity = 12 * glowU.uHouse.value;
     }
-    if (settling || dimming) invalidate();
+    let flickering = false;
+    if (flickFrom.current >= 0) {
+      const e = (performance.now() - flickFrom.current) / 1000;
+      SCREEN_LIGHT.flick = flickerLevel(e);
+      if (shown.current) shown.current.material.color.copy(shown.current.base).multiplyScalar(SCREEN_LIGHT.flick);
+      flickering = e < FLICKER_S;
+      if (!flickering) flickFrom.current = -1;
+    }
+    if (settling || dimming || flickering) invalidate();
   });
+  // leaving mid-flicker must not leave the next hall's screen, beam and dust dimmed (SCREEN_LIGHT is shared)
+  useEffect(() => () => void (SCREEN_LIGHT.flick = 1), []);
+  // a new film: the projector stutters back on (not with reduced motion)
+  useEffect(() => {
+    if (!film || reducedMotion()) return;
+    flickFrom.current = performance.now();
+    invalidate();
+  }, [film?.id, invalidate]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!screen.current) return;
-    screen.current.material = new MeshBasicMaterial({ map: art, color: art ? new Color(1.2, 1.2, 1.2) : tone.screen, toneMapped: false });
+    const base = art ? new Color(1.2, 1.2, 1.2) : new Color(tone.screen);
+    const material = new MeshBasicMaterial({ map: art, color: base.clone().multiplyScalar(SCREEN_LIGHT.flick), toneMapped: false });
+    screen.current.material = material;
+    shown.current = { material, base };
     invalidate();
   }, [art, room, tone, invalidate]);
   // the first frame with the room in it tells a waiting page change it may show this page now (hallReady.ts)
@@ -817,7 +876,7 @@ function Room({ hall, tone, film, paint }: { hall: Hall; tone: Tones; film: Film
 
 /** Every seat model's instances; a probe-lit hall (CR-010) also loads its reflection panorama here, once. */
 function Seats({ byKind, colourOf, onPick, onHover, baked, glow, env }: {
-  byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat) => void; onHover: (seat: Seat | null) => void;
+  byKind: Record<ModelKind, Placed[]>; colourOf: (seat: Seat) => Color; onPick: (seat: Seat, g: SeatGesture) => void; onHover: (seat: Seat | null) => void;
   baked: boolean; glow: GlowU | null; env: string | undefined;
 }) {
   const map = useHallEnv(glow ? env : undefined);
@@ -865,11 +924,13 @@ export default function HallScene({ map, film, mine, mode, seatId, onTap, onLook
     };
   }, [live, mine, hover, tone, closed, baked]);
 
-  const pick = (stale: Seat) => {
+  // owner, 2026-11-23: click = go to the seat's view; double click = choose it (stay put); right click = take it back
+  const pick = (stale: Seat, g: SeatGesture) => {
     const seat = live.get(stale.id) ?? stale;
     const v = visualOf(seat, mine);
-    if (selectable(seat, v, closed)) onTap(seat, v); // the 2D map's own guard, then its own handler
-    onLook(seat); // any seat, choosable or not, can be previewed from
+    const act = seatAction(g, v, selectable(seat, v, closed));
+    if (act === "look") onLook(seat);
+    else if (act !== "none") onTap(seat, v); // the 2D map's own handler: adds a free seat, gives back one of yours
   };
   const hoverSeat = (s: Seat | null) => {
     const seat = s ? live.get(s.id) ?? s : null;

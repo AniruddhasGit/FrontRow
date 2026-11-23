@@ -117,13 +117,6 @@
     left: calc(var(--fr-rail-w) / 2 + var(--fr-space-5));
     right: calc(var(--fr-rail-w) / 2 + var(--fr-space-5));
   }
-  /* Book tickets: the rail slides out to the left and the hall recentres on the whole window, then the camera turns */
-  .fr-landing[data-leaving="book"] .fr-rail {
-    transform: translateX(-100%);
-  }
-  .fr-landing[data-leaving="book"] .fr-landing-stage {
-    transform: none;
-  }
   /* All films: the rail's ground opens across the page (a clip-path wipe, no layout), then /films takes over */
   .fr-landing::after {
     content: "";
@@ -160,25 +153,21 @@
 .fr-rail .fr-state {
   margin: 0 var(--fr-space-5) var(--fr-space-3);
 }
-/* The films stack from the top; the list scrolls and snaps each film to the head of the rail, and the film at the head
-   is the one on the screen. The tall bottom padding lets the last film reach the head too. */
+/* The films stack from the top and scroll; a tap chooses the one on the screen. The list ends at its last film, right
+   above All films (owner, 2026-11-23: no empty space after the 10th). */
 .fr-rail-films {
   flex: 1;
   min-height: 0;
   list-style: none;
   margin: 0;
-  padding: var(--fr-space-2) var(--fr-space-4) 70vh;
-  scroll-padding-top: var(--fr-space-2);
+  padding: var(--fr-space-2) var(--fr-space-4);
   overflow-y: auto;
-  scroll-snap-type: y mandatory;
   display: grid;
   align-content: start;
   gap: var(--fr-space-3);
   scrollbar-width: none;
-  mask-image: linear-gradient(black 70%, transparent);
 }
 .fr-rail-films > li {
-  scroll-snap-align: start;
   /* on arrival (from the wake screen too) the films pop in one after another */
   animation: fr-rail-pop 320ms var(--fr-ease-strong-out) both;
   animation-delay: calc(180ms + var(--i, 0) * 60ms);
@@ -408,7 +397,6 @@
     text-align: left;
   }
   .fr-landing,
-  .fr-landing[data-leaving="book"],
   .fr-seatmap.fr-immersive {
     grid-template-columns: minmax(0, 1fr);
     height: auto;

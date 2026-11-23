@@ -114,7 +114,8 @@ export function Hall3D({ map, film = null, mine, onTap }: {
   const at = map.seats.find((s) => s.id === seatId);
   const caption = mode === "seat"
     ? (at ? `The view from row ${at.row}, seat ${at.num}.` : "Choose a seat to see the screen from it.")
-    : `${matchMedia("(hover: none)").matches ? "Tap" : "Click"} a seat to choose it and see the screen from it. The map below stays in step.`;
+    : matchMedia("(hover: none)").matches ? "Tap a seat to see the screen from it; double-tap to choose it. The map below stays in step."
+      : "Click a seat to see the screen from it, double-click to choose it, right-click to take it back. The map below stays in step.";
   const show = (m: Mode) => {
     setMode(m);
     setPicked(null);

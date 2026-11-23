@@ -128,7 +128,8 @@ async def set_bookmark(request: Request, movie_id: Id, conn: AsyncConnection = D
 # A rating needs a paid booking of the caller's for that film whose showtime has STARTED (checked in the write's own
 # transaction, never from the client); one row per caller and film, re-rating updates it. A like is for a film that
 # is not out yet (release_date after the cinema's today). Both bump the listing generation, so every card's average
-# and like count is fresh on the next read.
+# and like count is fresh on the next read. A re-rate pulls created_at back to now if it lay ahead (a demo account's
+# future-dated rating, scripts/demo_reviews.py), so the writer's own rating always shows at once.
 
 RATE_REFUSED = "You can rate a film once a show of it that you booked has started."
 LIKE_REFUSED = "Likes are for films that are not out yet. Once it is out, see it and rate it."
@@ -204,8 +205,9 @@ async def rate_film(request: Request, movie_id: Id, conn: AsyncConnection = Depe
             await conn.execute(pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score,
                                                               created_at=now, updated_at=now)
                                .on_conflict_do_update(index_elements=["user_id", "movie_id"],
-                                                      set_={"score": body.score, "updated_at": now}))
-            rating = await catalogue.rating_breakdown(conn, movie_id)
+                                                      set_={"score": body.score, "updated_at": now,
+                                                            "created_at": func.least(movie_rating.c.created_at, now)}))
+            rating = await catalogue.rating_breakdown(conn, movie_id, now)
         await cache.bump_listing_generation(request.app.state.redis)
         return {"movie_id": movie_id, "score": body.score, "rating": rating}
 
@@ -270,9 +272,10 @@ async def review_film(request: Request, movie_id: Id, conn: AsyncConnection = De
                 pg_insert(movie_rating).values(user_id=me, movie_id=movie_id, score=body.score, review_text=text,
                                                created_at=now, updated_at=now)
                 .on_conflict_do_update(index_elements=["user_id", "movie_id"],
-                                       set_={"score": body.score, "review_text": text, "updated_at": now})
+                                       set_={"score": body.score, "review_text": text, "updated_at": now,
+                                             "created_at": func.least(movie_rating.c.created_at, now)})
                 .returning(movie_rating.c.id))).scalar()
-            rating = await catalogue.rating_breakdown(conn, movie_id)
+            rating = await catalogue.rating_breakdown(conn, movie_id, now)
         await cache.bump_listing_generation(request.app.state.redis)
         return {"movie_id": movie_id, "review_id": review_id, "score": body.score, "text": text, "rating": rating}
 
@@ -288,7 +291,7 @@ async def mark_helpful(request: Request, review_id: Id, conn: AsyncConnection = 
             author = (await conn.execute(select(movie_rating.c.user_id)
                                          .select_from(movie_rating.join(movie, movie_rating.c.movie_id == movie.c.id))
                                          .where(movie_rating.c.id == review_id, movie_rating.c.review_text.is_not(None),
-                                                visible(now)))).scalar()
+                                                catalogue.rating_shown(now), visible(now)))).scalar()
             if author is None:
                 raise ApiError(404, "NOT_FOUND", NO_REVIEW)
             if author == me:
@@ -296,7 +299,7 @@ async def mark_helpful(request: Request, review_id: Id, conn: AsyncConnection = 
             await conn.execute(pg_insert(review_vote).values(rating_id=review_id, user_id=me, created_at=now)
                                .on_conflict_do_nothing(index_elements=["rating_id", "user_id"]))
             helpful = (await conn.execute(select(func.count()).select_from(review_vote)
-                                          .where(review_vote.c.rating_id == review_id))).scalar()
+                                          .where(review_vote.c.rating_id == review_id, review_vote.c.created_at <= now))).scalar()
         return {"review_id": review_id, "helpful": helpful, "voted": True}
 
     return await _guard(write())

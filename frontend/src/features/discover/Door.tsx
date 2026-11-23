@@ -1,17 +1,28 @@
-// CR-011 F5/F6 (owner: "a door which is half open which has enter written on top like a theatre door, and as soon as the
-// person hits that door then the animation that we already have kicks in"): the chosen show's door. A real <button>
-// named for the show; ENTER lit above it, the screen and time on its plate; hover or focus swings it a little wider.
-// Pressing it swings it open and floods the page with the hall's light, then the seat page opens and its hall plays the
-// walk-in (WALKIN, read once by Hall3D). One status (discover.ts Door); the exit is a timer, so it can never stick.
-// Reduced motion: no swing, no flood - straight to the seat page, whose hall then cuts to the seats.
-import { useEffect, useState } from "react";
+// The film page's door (owner, 2026-11-23, replacing CR-011 F5's door below the showtimes): at the right of the hero,
+// a dim corridor fades into the box, and at its end a door - the screen's name lit yellow above it, a green ENTER below.
+// The door is a real <button> named for the show. Pressing it is a fly-through: the page's other parts slide away
+// (MovieScreen, data-flying), the corridor grows to fill the window and the camera flies into the door while the hall
+// is fetched (prefetchHall); then the seat page opens on that frame and its hall plays the walk-in from the entry
+// door (WALKIN, read once by Hall3D; the router holds this frame until the hall has drawn, so nothing flashes).
+// One status (discover.ts Door). Every wait has an exit: the flight leaves after FLY_MS plus at most PREFETCH_CAP_MS.
+// Reduced motion: no flight - straight to the seat page, whose hall then cuts to the seats.
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { navigate } from "../../router";
 import { timeLabel } from "../browse/logic";
+import { screenNumber } from "../hall3d/hall";
 import { nextHallDrawn, WALKIN } from "../hall3d/hallReady";
-import { adultsOnly, DOOR_OPEN_MS, pressDoor, type Door } from "./discover";
+import { FLY_MS, PREFETCH_CAP_MS, pressDoor, type Door, type DoorShow } from "./discover";
 import "./door.css";
 
-type Show = { id: number; starts_at: string; screen: { id: number; name: string }; sales_closed: boolean };
+/** Everything the seat page's hall needs, into the browser's cache while the flight plays. Never rejects. */
+function prefetchHall(show: DoorShow): Promise<unknown> {
+  const n = screenNumber(show.screen.name);
+  const files = n ? [`/halls/hall${n}.json`, `/halls/hall${n}.glb`, `/halls/hall${n}_env.hdr`] : [];
+  return Promise.all([
+    ...files.map((f) => fetch(f).then((r) => r.arrayBuffer()).catch(() => null)),
+    import("../hall3d/HallScene").catch(() => null),
+  ]);
+}
 
 function walkIn(showtimeId: number) {
   try {
@@ -22,43 +33,70 @@ function walkIn(showtimeId: number) {
   navigate(`/showtimes/${showtimeId}`, nextHallDrawn());
 }
 
-export function TheatreDoor({ show, film, now }: { show: Show; film: { title: string; certification: { name: string } }; now: number }) {
+// Cycles renders of the corridor, per screen, with the door ajar and open (claude_leash Graphics/FrontRow,
+// corridor_render.py). The doorway sits at DOORWAY in the image; object-position pins it there in the box too.
+const art = (n: number, state: "ajar" | "open") => `/art/corridor/screen${n}_${state}.webp`;
+
+export function TheatreDoor({ show, film, onFly }: {
+  show: DoorShow | null; film: { title: string }; onFly?: (flying: boolean) => void;
+}) {
   const [door, setDoor] = useState<Door>({ kind: "closed" });
-  useEffect(() => setDoor({ kind: "closed" }), [show.id]);
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [full, setFull] = useState(false); // the corridor has grown to the window
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => setDoor({ kind: "closed" }), [show?.id]);
   useEffect(() => {
-    if (door.kind !== "opening") return;
-    const t = window.setTimeout(() => walkIn(door.showtimeId), DOOR_OPEN_MS);
-    return () => window.clearTimeout(t);
-  }, [door]);
-  const at = timeLabel(show.starts_at);
+    if (door.kind !== "flying") return;
+    let live = true;
+    onFly?.(true);
+    // grow once the fixed corridor has painted at its old place (a timer, not two animation frames: a hidden or
+    // occluded window runs no frames, and the flight must still reach the hall)
+    const grow = window.setTimeout(() => live && setFull(true), 40);
+    const flown = new Promise((r) => setTimeout(r, FLY_MS));
+    const loaded = Promise.race([prefetchHall(door.show), new Promise((r) => setTimeout(r, FLY_MS + PREFETCH_CAP_MS))]);
+    void Promise.all([flown, loaded]).then(() => live && walkIn(door.show.id));
+    return () => {
+      live = false;
+      clearTimeout(grow);
+    };
+  }, [door, onFly]);
+  useEffect(() => () => onFly?.(false), [onFly]);
+
+  const at = show ? timeLabel(show.starts_at) : "";
+  const open = !!show && !show.sales_closed;
+  const n = (show && screenNumber(show.screen.name)) || 1;
   const press = () => {
+    if (!show || !open) return;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return walkIn(show.id);
-    setDoor((d) => pressDoor(d, show.id));
+    const r = ref.current?.getBoundingClientRect();
+    setBox(r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null);
+    setDoor((d) => pressDoor(d, show));
   };
-  const started = Date.parse(show.starts_at) <= now;
+  // flying: the corridor leaves the page's flow exactly where it was, then grows to the window (a CSS transition)
+  const flying = door.kind === "flying" && !!box;
+  const style: CSSProperties | undefined = flying ? (full
+    ? { position: "fixed", left: 0, top: 0, width: "100vw", height: "100vh" }
+    : { position: "fixed", ...box }) : undefined;
+  const busy = !open || door.kind === "flying";
   return (
-    <section className="fr-door-scene" aria-labelledby="door-title" data-door={door.kind}>
-      <h2 id="door-title" className="fr-visually-hidden">Your show: {show.screen.name}, {at}</h2>
-      <div className="fr-door-wall">
-        <p className="fr-door-sign"><span>ENTER</span></p>
-        <button type="button" className="fr-door" aria-label={`Enter ${show.screen.name} for ${film.title} at ${at}`}
-                onClick={press} disabled={door.kind === "opening"}>
-          <span className="fr-door-glow" aria-hidden="true" />
-          <span className="fr-door-leaf" aria-hidden="true">
-            <span className="fr-door-pane" />
-            <span className="fr-door-bar" />
-          </span>
-          <span className="fr-door-spill" aria-hidden="true" />
-        </button>
-        <p className="fr-door-plate"><span className="fr-door-screen">{show.screen.name}</span> · <span className="fr-mono">{at}</span></p>
+    <>
+      <div className="fr-corridor-box">
+        {flying ? <div className="fr-corridor-keep" /> : null}
+        <div ref={ref} className="fr-corridor" data-door={door.kind} data-full={full || undefined} style={style}>
+          {/* the whole picture is the door's button: the door is small in it, and the corridor is the way in */}
+          <button type="button" className="fr-corridor-door" disabled={busy} onClick={press}
+                  aria-label={open ? `Enter ${show!.screen.name} for ${film.title} at ${at}` : "No show open to enter"}>
+            <span className="fr-corridor-zoom" aria-hidden="true">
+              <img className="fr-corridor-shot" src={art(n, "ajar")} alt="" decoding="async" />
+              <img className="fr-corridor-shot fr-corridor-opened" src={art(n, "open")} alt="" decoding="async" />
+            </span>
+          </button>
+        </div>
       </div>
-      <div className="fr-door-notes">
-        <p className="fr-door-hint">{door.kind === "opening" ? "Walking in…" : "Push the door to walk in and choose your seats."}</p>
-        {started ? <p className="fr-door-note">This show started at {at}. Seats stay on sale until sales close.</p> : null}
-        {adultsOnly(film.certification.name)
-          ? <p className="fr-door-note">Rated {film.certification.name}: adults only. Carry a photo ID to the show.</p> : null}
-      </div>
-      <span className="fr-door-wash" aria-hidden="true" />
-    </section>
+      {/* the same flight, for anyone who does not think of pushing the door */}
+      <button type="button" className="fr-action fr-corridor-book" disabled={busy} onClick={press}>
+        {open ? <>Book <span className="fr-mono">· {show!.screen.name} · {at}</span></> : "Choose a showtime below"}
+      </button>
+    </>
   );
 }

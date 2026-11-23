@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.api.errors import ApiError
 from app.core import cache
 from app.core.ratelimit import Bucket, client_ip, enforce
-from app.domain import posters, schedule
+from app.domain import demo_fill, posters, schedule
 from app.domain.browse import catalogue, seatmap
 from app.models import movie
 from app.domain.money import BIGINT_MAX
@@ -111,7 +111,8 @@ def _cutoff(request: Request) -> timedelta:
 
 async def _top_up(request: Request, now) -> None:
     """CR-006: at most one schedule check an hour (a Redis key), on the listing read. Never fails the listing:
-    Redis or PostgreSQL trouble here only means the check waits for the next read."""
+    Redis or PostgreSQL trouble here only means the check waits for the next read. The same check then brings every
+    show's demo bookings up to their target for now (app/domain/demo_fill.py, owner 2026-11-23)."""
     state = request.app.state
     try:
         if not await state.redis.set("schedule:topup:checked", "1", nx=True, ex=3600):
@@ -120,6 +121,7 @@ async def _top_up(request: Request, now) -> None:
             added = await schedule.top_up(conn, now, state.settings.DEMO_SHOWTIMES_AHEAD_DAYS)
             if state.settings.DEMO_HISTORY_DAYS:
                 added += await schedule.delete_history(conn, now, state.settings.DEMO_HISTORY_DAYS)
+            await demo_fill.fill(conn, state.redis, now, horizon_days=state.settings.DEMO_SHOWTIMES_AHEAD_DAYS)
         if added:
             await cache.bump_listing_generation(state.redis)
     except Exception:  # noqa: BLE001 - a demo convenience must never take the listing down

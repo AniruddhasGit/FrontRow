@@ -1,195 +1,127 @@
-/* CR-011 F5: the theatre door. A dark foyer wall in both themes (it is a room, like the ticket is paper), a lit ENTER
-   sign, a half-open leaf on a perspective hinge with warm hall light spilling through the gap and across the floor.
-   Hover / focus opens it a little more; pressing swings it wide and the light floods the page (then the seat page).
-   Reduced motion: the leaf rests half open, nothing moves or flickers. No element is wider than its box. */
+/* The film page's hero door (owner, 2026-11-23): a Cycles render of a dim cinema corridor (claude_leash
+   Graphics/FrontRow corridor_render.py, one per screen, door ajar and open), fading into the hero box from the left,
+   with a full-width Book button under it. The whole picture is the door's button. Pressing either: the corridor leaves
+   the flow where it was (position fixed), grows to the window, the door swings open (the open render fades in) and the
+   camera flies into the doorway (a scale about it) while the hall loads. The doorway's middle is at 50% 56.3% of the
+   render (corridor.json), and object-position pins that point to the same place in the box at any aspect, so the
+   zoom always lands in the doorway. Reduced motion: no flight (Door.tsx goes straight to the seat page). */
 
-.fr-door-scene {
-  --door-w: clamp(150px, 34vw, 210px);
-  --door-h: calc(var(--door-w) * 1.62);
-  --door-warm: #ffc56b;
-  --door-hot: #ffe7b8;
+.fr-movie-door {
   position: relative;
-  display: grid;
-  justify-items: center;
-  gap: var(--fr-space-4);
-  margin-block: var(--fr-space-5);
-  padding: var(--fr-space-6) var(--fr-space-4) var(--fr-space-5);
-  border-radius: var(--fr-radius-lg);
-  overflow: hidden;
-  color: #efe6d6;
-  background:
-    radial-gradient(60% 45% at 50% 38%, rgba(255, 190, 100, 0.16), transparent 70%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 2px, transparent 2px 46px),
-    linear-gradient(180deg, #1b1512 0%, #120e0c 62%, #0b0908 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 220, 170, 0.08), var(--fr-shadow-sheet);
-}
-
-.fr-door-wall {
-  position: relative;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
   gap: var(--fr-space-3);
 }
-
-/* The lit sign: a dark box, the word glowing amber-red like an old exit lamp */
-.fr-door-sign {
-  margin: 0;
-  padding: 6px 18px 5px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #2a0f0a, #170806);
-  box-shadow: 0 0 0 1px #4a1d12, 0 0 22px rgba(255, 90, 50, 0.35), inset 0 0 12px rgba(255, 80, 40, 0.25);
-}
-.fr-door-sign span {
-  display: block;
-  font-family: var(--fr-font-display);
-  font-weight: var(--fr-weight-black, 900);
-  font-size: var(--fr-text-lg);
-  letter-spacing: 0.32em;
-  margin-right: -0.32em;
-  color: #ffd2b8;
-  text-shadow: 0 0 4px #ff7a4d, 0 0 12px #ff4d26, 0 0 26px rgba(255, 70, 30, 0.7);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .fr-door-sign span { animation: fr-door-hum 6s steps(1) infinite; }
-}
-@keyframes fr-door-hum {
-  0%, 92%, 95%, 100% { opacity: 1; }
-  93% { opacity: 0.72; }
-}
-
-/* The opening: a door-shaped hole in the wall, lit from inside, with the leaf hinged on its left edge */
-.fr-door {
+.fr-corridor-box {
   position: relative;
-  width: var(--door-w);
-  height: var(--door-h);
-  padding: 0;
-  border: 0;
-  border-radius: 3px 3px 0 0;
-  cursor: pointer;
-  perspective: 900px;
-  background:
-    radial-gradient(70% 55% at 62% 55%, var(--door-hot), var(--door-warm) 38%, #b8621f 72%, #4a2410 100%);
-  box-shadow:
-    0 0 0 6px #3a2a20, 0 0 0 7px #6f5340, /* the frame and its brass edge */
-    0 0 60px rgba(255, 180, 90, 0.35);
-  color: inherit;
+  flex: 1;
+  min-height: 15rem;
 }
-.fr-door:focus-visible {
-  outline: var(--fr-focus-ring, 3px solid #ffd27a);
-  outline-offset: 12px;
+.fr-corridor-keep {
+  height: 100%;
 }
-
-/* Light falling out of the gap: a soft bloom above, a wedge across the floor below */
-.fr-door-glow {
-  position: absolute;
-  inset: -12% -30% -4% 20%;
-  background: radial-gradient(50% 50% at 40% 50%, rgba(255, 214, 150, 0.45), transparent 70%);
-  filter: blur(8px);
-  pointer-events: none;
-}
-.fr-door-spill {
-  position: absolute;
-  left: 8%;
-  top: 100%;
-  width: 150%;
-  height: calc(var(--door-h) * 0.34);
-  background: linear-gradient(180deg, rgba(255, 200, 120, 0.55), rgba(255, 170, 80, 0) 85%);
-  clip-path: polygon(14% 0, 62% 0, 100% 100%, 0 100%);
-  filter: blur(6px);
-  opacity: 0.8;
-  pointer-events: none;
-  transition: opacity 0.5s var(--fr-ease-out, ease-out), clip-path 0.5s var(--fr-ease-out, ease-out);
-}
-
-/* The leaf: dark lacquered wood, a porthole window lit from inside, a brass push bar */
-.fr-door-leaf {
+.fr-corridor {
+  --door-at: 50% 56.3%;
   position: absolute;
   inset: 0;
-  transform-origin: left center;
-  transform: rotateY(30deg);
-  border-radius: 2px 2px 0 0;
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.45)),
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0 3px, transparent 3px 9px),
-    linear-gradient(180deg, #4a1f1a, #33140f 55%, #241009);
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.4), inset 0 0 0 10px rgba(255, 255, 255, 0.03), -6px 0 18px rgba(0, 0, 0, 0.55);
-  transition: transform 0.45s var(--fr-ease-out, cubic-bezier(0.2, 0.7, 0.2, 1));
+  overflow: hidden;
+  z-index: 1;
+  background: #0b0704;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 30%);
+  transition: left 520ms var(--fr-ease-move), top 520ms var(--fr-ease-move), width 520ms var(--fr-ease-move),
+    height 520ms var(--fr-ease-move);
 }
-.fr-door-pane {
+.fr-corridor-door {
+  all: unset;
   position: absolute;
-  left: 50%;
-  top: 16%;
-  width: 30%;
-  aspect-ratio: 1;
-  translate: -50% 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 45% 45%, var(--door-hot), var(--door-warm) 55%, #8a4b1c);
-  box-shadow: 0 0 0 4px #7a5a3c, 0 0 0 5px #2a1a10, 0 0 16px rgba(255, 190, 110, 0.6);
+  inset: 0;
+  display: block;
+  cursor: pointer;
 }
-.fr-door-bar {
+.fr-corridor-door:disabled {
+  cursor: default;
+}
+.fr-corridor-door:focus-visible {
+  outline: 2px solid var(--fr-focus-ring);
+  outline-offset: -4px;
+}
+.fr-corridor-zoom {
   position: absolute;
-  left: 14%;
-  right: 14%;
-  top: 54%;
-  height: 7px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #f3d9a0, #a77b3c 60%, #6d4c22);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  inset: 0;
+  transform-origin: var(--door-at);
 }
-
-/* A little wider on hover and focus: the room is right there */
-@media (hover: hover) {
-  .fr-door:hover .fr-door-leaf { transform: rotateY(44deg); }
-  .fr-door:hover .fr-door-spill { opacity: 1; }
+.fr-corridor-shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: var(--door-at);
+  filter: brightness(0.92);
+  transition: filter 300ms ease;
 }
-.fr-door:focus-visible .fr-door-leaf { transform: rotateY(44deg); }
-.fr-door:focus-visible .fr-door-spill { opacity: 1; }
-
-/* The plate under the door: which screen, what time */
-.fr-door-plate {
-  margin: calc(var(--door-h) * 0.14) 0 0;
-  padding: 4px 12px;
-  border-radius: var(--fr-radius-pill, 999px);
-  background: rgba(255, 230, 190, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 220, 170, 0.22);
-  font-size: var(--fr-text-sm);
-  color: #f6e8d2;
-  position: relative;
+.fr-corridor-opened {
+  opacity: 0;
 }
-.fr-door-screen {
-  font-weight: var(--fr-weight-bold, 700);
-  letter-spacing: var(--fr-track-caps, 0.08em);
+.fr-corridor-door:not(:disabled):hover .fr-corridor-shot,
+.fr-corridor-door:focus-visible .fr-corridor-shot {
+  filter: brightness(1.06);
 }
-
-.fr-door-notes {
-  display: grid;
-  gap: var(--fr-space-2);
-  justify-items: center;
+.fr-movie-door .fr-corridor-book {
+  box-sizing: border-box;
+  width: auto; /* the flex column stretches it; a 100% width plus margins ran past the box */
+  margin: 0 var(--fr-space-4) var(--fr-space-4);
   text-align: center;
-  max-width: 34rem;
 }
-.fr-door-notes p { margin: 0; }
-.fr-door-hint { color: #e6dac6; }
 .fr-door-note {
+  margin: 0;
   font-size: var(--fr-text-sm);
   color: #ffd9a3;
 }
 
-/* Pressed: the leaf swings wide, the light floods the page, then the seat page takes over (router View Transition) */
-.fr-door-wash {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  pointer-events: none;
-  opacity: 0;
-  background: radial-gradient(60% 60% at 50% 45%, #fff1d6, #ffc670 45%, #2a160a 100%);
+/* ---- the fly-through ---- */
+.fr-corridor[data-door="flying"] {
+  z-index: 60;
 }
-.fr-door-scene[data-door="opening"] .fr-door-leaf { transform: rotateY(100deg); transition-duration: 0.6s; }
-.fr-door-scene[data-door="opening"] .fr-door-spill { opacity: 1; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
-.fr-door-scene[data-door="opening"] .fr-door-wash { opacity: 1; transition: opacity 0.55s ease-in 0.15s; }
-.fr-door:disabled { cursor: default; }
-
-@media (prefers-reduced-motion: reduce) {
-  .fr-door-leaf, .fr-door-spill { transition: none; }
-  .fr-door:hover .fr-door-leaf, .fr-door:focus-visible .fr-door-leaf { transform: rotateY(30deg); }
+.fr-corridor[data-full] {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+/* the door swings open as the corridor fills the window */
+.fr-corridor[data-door="flying"] .fr-corridor-opened {
+  opacity: 1;
+  transition: opacity 380ms ease 300ms;
+}
+.fr-corridor[data-full] .fr-corridor-zoom {
+  transform: scale(12); /* the dark doorway fills the window before the hall takes over */
+  /* once the corridor fills the window, accelerate into the door, like walking faster towards it; the blur and the
+     dimming read as rushing into the dark hall, and hide that the render is magnified far past its pixels */
+  filter: blur(10px) brightness(0.45);
+  transition: transform 950ms cubic-bezier(0.55, 0, 0.85, 0.35) 420ms, filter 600ms ease-in 770ms;
+}
+/* everything else on the page leaves: the poster and facts slide left, the actions up, the rest down, the header up */
+.fr-movie > *,
+.fr-movie-poster,
+.fr-movie-info,
+.fr-movie-actions,
+.fr-movie-backdrop,
+.fr-corridor-book {
+  transition: opacity 380ms ease, transform 480ms var(--fr-ease-move);
+}
+.fr-movie[data-flying] .fr-movie-poster { opacity: 0; transform: translateX(-80px); }
+.fr-movie[data-flying] .fr-movie-info { opacity: 0; transform: translateX(-40px); }
+.fr-movie[data-flying] .fr-movie-actions { opacity: 0; transform: translateY(-40px); }
+.fr-movie[data-flying] .fr-corridor-book { opacity: 0; transform: translateY(30px); }
+.fr-movie[data-flying] .fr-movie-backdrop { opacity: 0; }
+.fr-movie[data-flying] > :not(.fr-movie-hero) { opacity: 0; transform: translateY(60px); }
+html[data-flying] .fr-header,
+html[data-flying] .fr-footer {
+  opacity: 0;
+  transform: translateY(-30px);
+  transition: opacity 300ms ease, transform 400ms var(--fr-ease-move);
+}
+/* Save and Share sit over the corridor's ceiling, not under it */
+.fr-movie-hero .fr-movie-actions {
+  z-index: 2; /* absolute from 60rem (discover.css); below that it sits in its own row */
 }

@@ -143,14 +143,22 @@ def average_tenths(total: int, n: int) -> int | None:
     return None if n == 0 else (20 * total + n) // (2 * n)
 
 
-async def _ratings(conn: AsyncConnection, movie_ids: list[int]) -> dict[int, dict]:
+def rating_shown(t: datetime):
+    """THE rating visibility predicate: a rating counts and shows from its created_at on. Every rating read applies it,
+    so the demo's future-dated ratings (scripts/demo_reviews.py) appear on their own day with no job. A customer's own
+    write stamps created_at with the clock, so it shows at once."""
+    return movie_rating.c.created_at <= t
+
+
+async def _ratings(conn: AsyncConnection, movie_ids: list[int], t: datetime) -> dict[int, dict]:
     """CR-008 T12: {movie_id: {rating: {average_tenths, count}, likes}}, aggregated on each listing build (the listing
-    cache holds the result; a rating or like write bumps the listing generation)."""
+    cache holds the result; a rating or like write bumps the listing generation, and a demo rating reaching its
+    created_at shows within the cache's TTL)."""
     out = {m: {"rating": {"average_tenths": None, "count": 0}, "likes": 0} for m in movie_ids}
     if movie_ids:
         for m, n, total in (await conn.execute(
                 select(movie_rating.c.movie_id, func.count(), func.sum(movie_rating.c.score).cast(BigInteger))
-                .where(movie_rating.c.movie_id.in_(movie_ids)).group_by(movie_rating.c.movie_id))).all():
+                .where(movie_rating.c.movie_id.in_(movie_ids), rating_shown(t)).group_by(movie_rating.c.movie_id))).all():
             out[m]["rating"] = {"average_tenths": average_tenths(total, n), "count": n}
         for m, n in (await conn.execute(select(movie_like.c.movie_id, func.count())
                                          .where(movie_like.c.movie_id.in_(movie_ids), movie_like.c.liked)
@@ -159,9 +167,10 @@ async def _ratings(conn: AsyncConnection, movie_ids: list[int]) -> dict[int, dic
     return out
 
 
-async def rating_breakdown(conn: AsyncConnection, movie_id: int) -> dict:
+async def rating_breakdown(conn: AsyncConnection, movie_id: int, t: datetime) -> dict:
     """The film page's rating block: average, count, and how many gave each score 1..10 (CR-008 T12)."""
-    counts = dict((await conn.execute(select(movie_rating.c.score, func.count()).where(movie_rating.c.movie_id == movie_id)
+    counts = dict((await conn.execute(select(movie_rating.c.score, func.count())
+                                      .where(movie_rating.c.movie_id == movie_id, rating_shown(t))
                                       .group_by(movie_rating.c.score))).all())
     n, total = sum(counts.values()), sum(s * c for s, c in counts.items())
     return {"average_tenths": average_tenths(total, n), "count": n, "breakdown": [counts.get(s, 0) for s in range(1, 11)]}
@@ -190,7 +199,7 @@ def _film(row: Any, genres: list[dict], zone: str, t: datetime, stats: dict) -> 
 async def list_movies(conn: AsyncConnection, t: datetime, f: ListingFilters, zones: dict[int, str], zone: str) -> dict:
     rows = (await conn.execute(listing_statement(t, f, zones))).all()
     ids = [r.id for r in rows]
-    genres, stats = await _genres(conn, ids), await _ratings(conn, ids)
+    genres, stats = await _genres(conn, ids), await _ratings(conn, ids, t)
     films = [_film(r, genres[r.id], zone, t, stats[r.id]) for r in rows]
     return {"count": len(films), "movies": films}
 
@@ -201,8 +210,8 @@ async def get_movie(conn: AsyncConnection, t: datetime, movie_id: int, zone: str
     row = (await conn.execute(listing_statement(t, ListingFilters(), {}).where(movie.c.id == movie_id))).first()
     if row is None:
         return None
-    film = _film(row, (await _genres(conn, [row.id]))[row.id], zone, t, (await _ratings(conn, [row.id]))[row.id])
-    return {**film, "rating": await rating_breakdown(conn, row.id), "cast": people(row.cast_members),
+    film = _film(row, (await _genres(conn, [row.id]))[row.id], zone, t, (await _ratings(conn, [row.id], t))[row.id])
+    return {**film, "rating": await rating_breakdown(conn, row.id, t), "cast": people(row.cast_members),
             "crew": people(row.crew_members)}
 
 
@@ -216,13 +225,13 @@ async def reviews(conn: AsyncConnection, t: datetime, movie_id: int, sort: str, 
     first or most helpful first (ties newest), at most REVIEW_LIMIT, with the total. None when the film is not visible."""
     if (await conn.execute(select(movie.c.id).where(movie.c.id == movie_id, visible(t)))).first() is None:
         return None
-    helpful = (select(func.count()).select_from(review_vote).where(review_vote.c.rating_id == movie_rating.c.id)
-               .scalar_subquery())
+    helpful = (select(func.count()).select_from(review_vote)
+               .where(review_vote.c.rating_id == movie_rating.c.id, review_vote.c.created_at <= t).scalar_subquery())
     written = func.coalesce(movie_rating.c.updated_at, movie_rating.c.created_at)
     order = [written.desc(), movie_rating.c.id.desc()]
     if sort == "helpful":
         order = [helpful.desc(), *order]
-    where = (movie_rating.c.movie_id == movie_id, movie_rating.c.review_text.is_not(None))
+    where = (movie_rating.c.movie_id == movie_id, movie_rating.c.review_text.is_not(None), rating_shown(t))
     total = (await conn.execute(select(func.count()).select_from(movie_rating).where(*where))).scalar()
     rows = (await conn.execute(select(movie_rating.c.id, movie_rating.c.score, movie_rating.c.review_text, written.label("at"),
                                       users.c.display_name, helpful.label("helpful"))

@@ -1,9 +1,9 @@
 // CR-005: the landing at `/` (and `/browse`). You sit locked in the hall's default seat (the back row's seat 1). The
-// films run down a rail on the left; the one centred in the rail plays on the screen - in the hall of its next show,
-// so booking happens in the room you are already in. "Book tickets":
-//   signed out - to sign-in, which returns to the seat page (its own arrival: the screen, then the seats);
-//   signed in  - one flow: the rail folds away, the camera turns from your seat onto the seats, and the seat page takes
-//                over on that same picture (fr.flown; the router holds the frame until its hall has drawn).
+// films run down a rail on the left; the one clicked plays on the screen (scrolling only scrolls - owner, 2026-11-23). The landing is a showcase (owner, 2026-11-23:
+// "load all the movies in the theatre hall 6 ... when they are actually going to book the seats then only show them
+// their real halls"): every film plays in Hall 6, so changing film never loads another hall - the projector flickers
+// and the screen lights up with the new film (hall3d/flicker.ts). "Book tickets" goes to the seat page of the chosen
+// show, which arrives in that show's real hall (signed out: through sign-in first).
 // "All films" (owner, 2026-11-22; the curtain is gone): the rail expands across the page, then the films already in it
 // glide to their places in the /films grid (a View Transition, matched by name) and the films that were not in the
 // rail fade in a moment after (immersive.css).
@@ -11,7 +11,7 @@
 // movies they'll have to hit on all films"): the rail holds the 10 best-rated films that are out (discover.ts sidebarTop),
 // then "All films".
 // Reads only the public read path, once per choice; nothing polls.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatPaise } from "../admin/money";
 import { leaveForSignIn, signInHref, takeNotice } from "../auth/session";
 import { get, query, type Film, type Showtime } from "../browse/api";
@@ -20,16 +20,13 @@ import { Poster } from "../browse/Poster";
 import { BookmarkToggle, useSaved } from "../account/Bookmark";
 import { sidebarTop } from "../discover/discover";
 import { Discover } from "../discover/Rows";
-import { FLOWN } from "../hall3d/Hall3D";
-import { screenNumber } from "../hall3d/hall";
-import { nextHallDrawn } from "../hall3d/hallReady";
 import { HallStage } from "../hall3d/HallStage";
-import { parseSeatMap, type SeatMap } from "../seatmap/model";
 import { navigate } from "../../router";
 import "../browse/browse.css";
 
 type Listed = { date: string; next_date_with_showtimes: string | null; showtimes: Showtime[] };
-type Leaving = null | "book" | "films";
+type Leaving = null | "films";
+const SHOWCASE_HALL = 6; // the biggest room; the landing never switches halls
 const EXPAND_MS = 600; // the rail's ground wiping across the page (immersive.css .fr-landing::after), before /films takes over
 
 export function Landing() {
@@ -39,10 +36,7 @@ export function Landing() {
   const [filmId, setFilmId] = useState<number | null>(null);
   const [listed, setListed] = useState<Listed | null>(null);
   const [st, setSt] = useState<Showtime | null>(null);
-  const [hall, setHall] = useState(1);
-  const [map, setMap] = useState<SeatMap | null>(null);
   const [leaving, setLeaving] = useState<Leaving>(null);
-  const rail = useRef<HTMLUListElement>(null);
   const [saved, toggle] = useSaved(); // CR-008 T4: Save for the film on the screen
   const [notice] = useState(() => {
     try {
@@ -71,56 +65,9 @@ export function Landing() {
       setListed(r.body);
       const first = r.body.showtimes.find((s) => !s.sales_closed) ?? r.body.showtimes[0] ?? null;
       setSt(first);
-      const n = first ? screenNumber(first.screen.name) : null;
-      if (n) setHall(n); // the film plays in the hall it is booked in; no show, the room stays as it is
     });
     return () => ctl.abort();
   }, [filmId]);
-  useEffect(() => {
-    setMap(null);
-    if (!st) return;
-    const ctl = new AbortController();
-    get<unknown>(`/api/showtimes/${st.id}/seatmap`, ctl.signal).then((r) => !ctl.signal.aborted && r.ok && setMap(parseSeatMap(r.body)));
-    return () => ctl.abort();
-  }, [st]);
-
-  // The film at the head of the rail is the one on the screen (desktop; on phones the rail is a wrapping grid that
-  // does not scroll - CR-008 T16 - and a tap chooses). Read once the scrolling settles, so a fast flick through
-  // the list does not load every hall on the way.
-  useEffect(() => {
-    const ul = rail.current;
-    if (!ul || !films?.length) return;
-    let t = 0;
-    const settle = () => {
-      clearTimeout(t);
-      t = window.setTimeout(() => {
-        const box = ul.getBoundingClientRect();
-        const head = box.top + parseFloat(getComputedStyle(ul).paddingTop); // where a snapped film's top sits
-        let best: HTMLElement | null = null, gap = Infinity;
-        for (const li of ul.children as HTMLCollectionOf<HTMLElement>) {
-          const r = li.getBoundingClientRect();
-          const d = Math.abs(r.top - head);
-          if (d < gap) [best, gap] = [li, d];
-        }
-        const id = Number(best?.dataset.film);
-        if (id) setFilmId(id);
-      }, 180);
-    };
-    ul.addEventListener("scroll", settle, { passive: true });
-    return () => {
-      ul.removeEventListener("scroll", settle);
-      clearTimeout(t);
-    };
-  }, [films]);
-  const centre = (id: number) => {
-    setFilmId(id);
-    const ul = rail.current;
-    // only the rail's own scroll moves (desktop); a phone's grid does not scroll, and the page must not jump
-    if (ul && ul.scrollHeight > ul.clientHeight + 1) {
-      const li = ul.querySelector<HTMLElement>(`[data-film="${id}"]`);
-      if (li) ul.scrollTo({ top: li.offsetTop - ul.offsetTop - parseFloat(getComputedStyle(ul).paddingTop), behavior: "smooth" });
-    }
-  };
 
   const book = async () => {
     if (!st || leaving) return;
@@ -134,17 +81,8 @@ export function Landing() {
       }
       return navigate(signInHref(to));
     }
-    setLeaving("book");
+    navigate(to); // the seat page arrives in the show's own hall
   };
-  const panned = useCallback(() => {
-    if (!st) return;
-    try {
-      window.sessionStorage.setItem(FLOWN, String(st.id));
-    } catch {
-      // no storage: the seat page plays its own arrival instead
-    }
-    navigate(`/showtimes/${st.id}`, nextHallDrawn());
-  }, [st]);
   useEffect(() => {
     if (leaving !== "films") return;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -162,11 +100,11 @@ export function Landing() {
         {notice ? <div className="fr-banner" role="alert"><p>{notice}</p></div> : null}
         {failed ? <p className="fr-state">The listing could not be loaded.</p>
           : films?.length === 0 ? <p className="fr-state">Nothing is showing right now.</p> : null}
-        <ul ref={rail} className="fr-rail-films">
+        <ul className="fr-rail-films">
           {films?.map((f, i) => (
             // the same view-transition name as its /films card: the browser glides each film to its place in the grid
             <li key={f.id} data-film={f.id} style={{ viewTransitionName: `film-${f.id}`, ["--i" as string]: i }}>
-              <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => centre(f.id)}>
+              <button type="button" className="fr-rail-film" aria-pressed={f.id === filmId} onClick={() => setFilmId(f.id)}>
                 <Poster src={f.poster_url} title={f.title} />
                 <span className="fr-rail-title">{f.title}</span>
                 <span className="fr-meta">
@@ -183,7 +121,7 @@ export function Landing() {
         </button>
       </aside>
       <div className="fr-landing-stage">
-        <HallStage hallNo={hall} film={film} map={map} pan={leaving === "book"} onPanned={panned} />
+        <HallStage hallNo={SHOWCASE_HALL} film={film} />
         {film ? (
           <div className="fr-landing-bar">
             <p className="fr-landing-now">{film.title}</p>
@@ -194,11 +132,7 @@ export function Landing() {
               <div role="group" aria-label="Showtimes" className="fr-landing-times">
                 {listed.showtimes.map((s) => (
                   <button key={s.id} type="button" className="fr-choice" aria-pressed={s.id === st?.id} disabled={s.sales_closed}
-                          aria-label={showtimeName(s, formatPaise)} onClick={() => {
-                            setSt(s);
-                            const n = screenNumber(s.screen.name);
-                            if (n) setHall(n);
-                          }}>
+                          aria-label={showtimeName(s, formatPaise)} onClick={() => setSt(s)}>
                     <span className="fr-mono">{timeLabel(s.starts_at)}</span>
                   </button>
                 ))}

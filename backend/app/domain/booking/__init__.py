@@ -29,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.domain import reference as refs
 from app.domain.holds import Hold
-from app.domain.pricing import UPLIFT_COLUMN
-from app.models import booking, booking_seat, idempotency_record, outbox_message, receipt_dispatch, seat
+from app.domain.pricing import UPLIFT_COLUMN, seat_price_paise
+from app.models import booking, booking_seat, idempotency_record, outbox_message, payment, receipt_dispatch, seat
 
 # The snapshot column/key for the uplift a seat was priced at; the name is built from pricing.py's, so the column
 # name appears nowhere outside pricing.py and the models (S-XCT-05).
@@ -214,6 +214,41 @@ async def insert_booking(conn: AsyncConnection, *, user_id: int, showtime_id: in
     if len(written) != len(lines):
         raise BrokenHold()
     return booking_id, ref
+
+
+async def insert_demo_bookings(conn: AsyncConnection, wanted: list[dict], draw: Callable[[], str]) -> int:
+    """The demo crowd's bookings (app/domain/demo_fill.py), in bulk, in the caller's transaction: per booking a captured
+    payment, a confirmed booking under a fresh reference, its booking_seat rows priced from the showtime's base price
+    and each seat's uplift at fill time (the same snapshot a confirm stores), and a suppressed receipt_dispatch (every
+    demo address is undeliverable, as the seed's). `wanted`: [{user_id, showtime_id, base_price_paise, at, seats:
+    [(seat_id, category_id, uplift_bp)]}]. The seat guard is the same UNIQUE: a seat sold meanwhile raises
+    IntegrityError and the caller's transaction rolls back whole. Returns the number of seats written."""
+    if not wanted:
+        return 0
+    refs_: list[str] = []
+    seen: set[str] = set()
+    while len(refs_) < len(wanted):  # fresh, distinct, and not already stored (checked in bulk, then redrawn)
+        fresh = [r for r in {draw() for _ in range(len(wanted) - len(refs_))} if r not in seen]
+        stored = set((await conn.execute(select(booking.c.reference).where(booking.c.reference.in_(fresh)))).scalars())
+        for r in fresh:
+            if r not in stored and refs.is_valid(r):
+                refs_.append(r)
+            seen.add(r)
+    lines = [[(seat_id, cat, up, seat_price_paise(w["base_price_paise"], up)) for seat_id, cat, up in w["seats"]] for w in wanted]
+    totals = [sum(line[3] for line in ls) for ls in lines]
+    payment_ids = (await conn.execute(insert(payment).returning(payment.c.id, sort_by_parameter_order=True), [
+        {"state": "captured", "amount_paise": t, "idempotency_key": f"demo-{r}", "pending_at": w["at"], "authorized_at": w["at"],
+         "captured_at": w["at"], "created_at": w["at"]} for w, r, t in zip(wanted, refs_, totals)])).scalars().all()
+    booking_ids = (await conn.execute(insert(booking).returning(booking.c.id, sort_by_parameter_order=True), [
+        {"reference": r, "user_id": w["user_id"], "showtime_id": w["showtime_id"], "payment_id": pid, "total_paise": t,
+         "status": "confirmed", "created_at": w["at"]} for w, r, pid, t in zip(wanted, refs_, payment_ids, totals)])).scalars().all()
+    rows = [{"booking_id": bid, "showtime_id": w["showtime_id"], "seat_id": seat_id, "price_paise": price,
+             "base_price_paise_applied": w["base_price_paise"], APPLIED_UPLIFT: up, "seat_category_id": cat, "created_at": w["at"]}
+            for w, bid, ls in zip(wanted, booking_ids, lines) for seat_id, cat, up, price in ls]
+    await conn.execute(insert(booking_seat), rows)
+    await conn.execute(insert(receipt_dispatch), [{"booking_id": bid, "status": "suppressed", "dispatch_seq": 1, "attempts": 0,
+                                                   "created_at": w["at"]} for w, bid in zip(wanted, booking_ids)])
+    return len(rows)
 
 
 async def sold_labels(conn: AsyncConnection, showtime_id: int, hold: Hold) -> list[str]:
