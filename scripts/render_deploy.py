@@ -130,7 +130,7 @@ def api_env(pw: dict[str, str], redis_url: str, web_url: str, existing: dict[str
         # CR-006 (owner, 2026-11-22): keep showtimes 21 days ahead and delete history older than ~5 months, both on the
         # hourly listing-read check (no timer). Needs migration 0004 applied to Neon first (DEPLOY_RENDER.md section 3).
         "DEMO_SHOWTIMES_AHEAD_DAYS": "21",
-        "DEMO_HISTORY_DAYS": "150",
+        "DEMO_HISTORY_DAYS": "180",
         "PUBLIC_BASE_URL": web_url,
         "COOKIE_SECURE": "true",
         # ponytail: Render's proxy reaches the container from its private 10/8 network; the exact hop is not published.
