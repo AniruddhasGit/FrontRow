@@ -336,7 +336,7 @@ export function SeatMapScreen({ showtimeId, seed }: { showtimeId: string; seed?:
 
   return (
     <section className="fr-seatmap fr-immersive">
-      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} />
+      <Hall3D map={map} film={header?.movie} mine={mine} onTap={tap} showtimeId={id} />
       {/* CR-004: the hall fills the screen; the heading, the 2D map and the summary ride in this panel on its right */}
       <div className="fr-seatmap-panel">
       <SeatMapHeading header={header} />

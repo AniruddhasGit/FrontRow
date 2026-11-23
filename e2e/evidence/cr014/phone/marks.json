@@ -1,0 +1,38 @@
+[
+ {
+  "ms": 1485,
+  "what": "film page: open (cold)"
+ },
+ {
+  "ms": 5647,
+  "what": "film page: corridor live (cold) - 4.19 s after open"
+ },
+ {
+  "ms": 5653,
+  "what": "press Book"
+ },
+ {
+  "ms": 9370,
+  "what": "URL is the seat page - 3.72 s after the press"
+ },
+ {
+  "ms": 10969,
+  "what": "Back"
+ },
+ {
+  "ms": 11158,
+  "what": "film page again: corridor live"
+ },
+ {
+  "ms": 12007,
+  "what": "film page: corridor live (warm) - 0.01 s after open"
+ },
+ {
+  "ms": 12010,
+  "what": "press Book"
+ },
+ {
+  "ms": 15700,
+  "what": "URL is the seat page - 3.69 s after the press"
+ }
+]

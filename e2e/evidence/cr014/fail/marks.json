@@ -1,0 +1,22 @@
+[
+ {
+  "ms": 2600,
+  "what": "film page: open (cold)"
+ },
+ {
+  "ms": 4047,
+  "what": "film page: fallback (no hall file) - the picture stays"
+ },
+ {
+  "ms": 4286,
+  "what": "hover the door"
+ },
+ {
+  "ms": 5939,
+  "what": "press Book"
+ },
+ {
+  "ms": 6166,
+  "what": "URL is the seat page - 0.23 s after the press"
+ }
+]

@@ -313,15 +313,38 @@ export function reviewText(raw: string): { ok: true; text: string } | { ok: fals
   return { ok: true, text };
 }
 
-/** The hero door's one status (owner, 2026-11-23). `closed` until pressed; `flying` plays the fly-through while the
- *  hall loads, then the page leaves - after FLY_MS, or at most PREFETCH_CAP_MS later if the hall is slow (an exit that
- *  always fires: timers, never only an event that might not come). A second press while flying changes nothing. */
+/** The hero door's one status (CR-014, web-app-pitfalls 3). The hall behind the door is live 3D (hall3d/host.tsx):
+ *  `waiting` while it loads (the corridor picture stands in), `live` once it shows, `fallback` when it cannot (no WebGL,
+ *  no hall file, no corridor in it, a part that failed): the picture stays and the door goes straight to the seat page.
+ *  A press before the hall is live is `queued`: it walks the moment the hall is live, or leaves straight away if the
+ *  hall fails. `walking` follows the camera route; `leaving` is the one place the page changes (`how` says which way).
+ *  Every state has an exit: the hall's own cap (readiness.ts) ends `waiting`/`queued`, and Door.tsx caps `walking`. */
 export type DoorShow = { id: number; starts_at: string; screen: { id: number; name: string }; sales_closed: boolean };
-export type Door = { kind: "closed" } | { kind: "flying"; show: DoorShow };
-export const FLY_MS = 1400;
-export const PREFETCH_CAP_MS = 4000;
-export function pressDoor(d: Door, show: DoorShow): Door {
-  return d.kind === "flying" ? d : { kind: "flying", show };
+export type Door =
+  | { kind: "waiting" } | { kind: "live" } | { kind: "fallback" }
+  | { kind: "queued"; show: DoorShow } | { kind: "walking"; show: DoorShow }
+  | { kind: "leaving"; show: DoorShow; how: "walked" | "direct" };
+export type DoorEvent =
+  | { type: "ready" } | { type: "failed" } | { type: "landed" } | { type: "reset" }
+  | { type: "press"; show: DoorShow; reduced: boolean };
+
+export function door(d: Door, ev: DoorEvent): Door {
+  switch (ev.type) {
+    case "press":
+      if (d.kind === "queued" || d.kind === "walking" || d.kind === "leaving") return d; // once
+      if (ev.reduced || d.kind === "fallback") return { kind: "leaving", show: ev.show, how: "direct" };
+      return d.kind === "live" ? { kind: "walking", show: ev.show } : { kind: "queued", show: ev.show };
+    case "ready":
+      if (d.kind === "queued") return { kind: "walking", show: d.show };
+      return d.kind === "waiting" || d.kind === "fallback" ? { kind: "live" } : d;
+    case "failed":
+      if (d.kind === "queued" || d.kind === "walking") return { kind: "leaving", show: d.show, how: "direct" };
+      return d.kind === "leaving" ? d : { kind: "fallback" };
+    case "landed":
+      return d.kind === "walking" ? { kind: "leaving", show: d.show, how: "walked" } : d;
+    case "reset": // another screen's hall behind the door
+      return d.kind === "waiting" || d.kind === "live" || d.kind === "fallback" ? { kind: "waiting" } : d;
+  }
 }
 /** The show behind the hero door: the one chosen, if it is open, else the first open one listed. */
 export function doorShow<T extends DoorShow>(shows: T[], chosen: number | null): T | null {

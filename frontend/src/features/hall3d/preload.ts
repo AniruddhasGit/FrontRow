@@ -8,6 +8,11 @@ import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 const rooms = new Map<number, Promise<GLTF>>();
 const KEEP = 2;
 
+/** Drop a hall's parse (one that came back incomplete), so the next loadRoom fetches it again. */
+export function forgetRoom(n: number): void {
+  rooms.delete(n);
+}
+
 export function loadRoom(n: number): Promise<GLTF> {
   let p = rooms.get(n);
   if (p) {

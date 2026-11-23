@@ -1,10 +1,8 @@
-/* The film page's hero door (owner, 2026-11-23): a Cycles render of a dim cinema corridor (claude_leash
-   Graphics/FrontRow corridor_render.py, one per screen, door ajar and open), fading into the hero box from the left,
-   with a full-width Book button under it. The whole picture is the door's button. Pressing either: the corridor leaves
-   the flow where it was (position fixed), grows to the window, the door swings open (the open render fades in) and the
-   camera flies into the doorway (a scale about it) while the hall loads. The doorway's middle is at 50% 56.3% of the
-   render (corridor.json), and object-position pins that point to the same place in the box at any aspect, so the
-   zoom always lands in the doorway. Reduced motion: no flight (Door.tsx goes straight to the seat page). */
+/* The film page's hero door (CR-014): the show's hall live in 3D from its own corridor (Door.tsx, hall3d/host.tsx),
+   fading into the hero box from the left, with a full-width Book button under it. The whole view is the door's button.
+   Until the hall is ready, its corridor render stands in, `object-fit: cover` and centred - the live camera uses the
+   same lens for the box's shape (walk.ts corridorFov), so the picture fades off a view that matches it. Pressing: the
+   box leaves the flow where it was (position fixed) and grows to the window while the camera walks in. */
 
 .fr-movie-door {
   position: relative;
@@ -22,15 +20,12 @@
 }
 .fr-corridor {
   position: absolute;
-  container-type: size; /* the frame below is sized from this box */
   inset: 0;
   overflow: hidden;
   z-index: 1;
   background: #0b0704;
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30%);
   mask-image: linear-gradient(90deg, transparent 0, #000 30%);
-  transition: left 520ms var(--fr-ease-move), top 520ms var(--fr-ease-move), width 520ms var(--fr-ease-move),
-    height 520ms var(--fr-ease-move);
 }
 .fr-corridor-door {
   all: unset;
@@ -49,51 +44,38 @@
 .fr-corridor {
   overflow: hidden;
 }
-/* The render, square, covering the box with the doorway's middle (50% 56.33% of the render) at the same point of the box
-   at any aspect - so the swing strip and the zoom, placed in the render's own percent, always land on the doorway. */
-.fr-corridor-frame {
-  --s: max(100cqw, 100cqh);
+.fr-corridor-frame,
+.fr-corridor-live,
+.fr-corridor-pic,
+.fr-corridor-frame .fr-hall-slot {
   position: absolute;
-  width: var(--s);
-  height: var(--s);
-  left: calc(50cqw - var(--s) * 0.5);
-  top: calc(56.33cqh - var(--s) * 0.5633);
-  transform-origin: 50% 56.33%;
+  inset: 0;
 }
 .fr-corridor-shot {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  filter: brightness(0.94);
-  opacity: 0; /* shown only once decoded (Door.tsx data-ready): it never draws in line by line */
-  transition: filter 300ms ease, opacity 400ms ease;
+  object-fit: cover;
+  object-position: 50% 50%;
+  transition: opacity 400ms ease; /* back over the hall at once when another screen's show is chosen */
 }
-.fr-corridor[data-ready] .fr-corridor-shot {
-  opacity: 1;
+.fr-corridor-pic {
+  animation: fr-corridor-in 300ms ease both; /* decoded before it is shown, so it never draws in line by line */
 }
-/* 12 frames of the door swinging open, side by side in one strip, over the doorway (swing.json's crop) */
-.fr-corridor-swing {
-  position: absolute;
-  left: 42.412%;
-  top: 41.438%;
-  width: 15.177%;
-  height: 29.788%;
-  background: url("/art/corridor/swing.webp") 0 0 / 1200% 100% no-repeat;
+/* the live hall has faded in under it (hall3d.css, 450 ms): now the picture fades off it */
+.fr-corridor-shot[data-live] {
+  opacity: 0;
+  transition: opacity 400ms ease 450ms;
+}
+.fr-corridor-live {
+  transition: opacity 220ms ease;
+}
+.fr-corridor-live[data-settling] {
   opacity: 0;
 }
-.fr-corridor-door:not(:disabled):hover .fr-corridor-shot,
-.fr-corridor-door:focus-visible .fr-corridor-shot {
-  filter: brightness(1.05);
-}
-/* the fade to black at the end of the walk in (the hall then takes over from black) */
-.fr-corridor::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
+@keyframes fr-corridor-in {
+  from { opacity: 0; }
 }
 .fr-movie-door .fr-corridor-book {
   box-sizing: border-box;
@@ -107,32 +89,16 @@
   color: #ffd9a3;
 }
 
-/* ---- the fly-through ---- */
+/* ---- the walk ---- */
 .fr-corridor[data-door="flying"] {
   z-index: 60;
 }
 .fr-corridor[data-full] {
   -webkit-mask-image: none;
   mask-image: none;
-}
-/* As the corridor fills the window the door swings open onto the dark hall (the strip, frame by frame), then you step
-   towards it - a short push, never far enough to magnify the render - and everything fades to black into the hall. */
-.fr-corridor-swing[data-peek],
-.fr-corridor[data-door="flying"] .fr-corridor-swing {
-  opacity: 1;
-  animation: fr-door-swing 650ms steps(12, jump-none) 380ms both; /* 12 stops = the 12 frames, never half of two */
-}
-@keyframes fr-door-swing {
-  from { background-position-x: 0%; }
-  to { background-position-x: 100%; }
-}
-.fr-corridor[data-full] .fr-corridor-frame {
-  transform: scale(1.7);
-  transition: transform 600ms cubic-bezier(0.5, 0, 0.9, 0.5) 820ms;
-}
-.fr-corridor[data-full]::after {
-  opacity: 1;
-  transition: opacity 380ms ease-in 1000ms;
+  /* only the grow is animated: the step out of the flow (absolute -> fixed at the same place) is not */
+  transition: left 520ms var(--fr-ease-out), top 520ms var(--fr-ease-out), width 520ms var(--fr-ease-out),
+    height 520ms var(--fr-ease-out);
 }
 /* everything else on the page leaves: the poster and facts slide left, the actions up, the rest down, the header up */
 .fr-movie > *,
@@ -141,7 +107,7 @@
 .fr-movie-actions,
 .fr-movie-backdrop,
 .fr-corridor-book {
-  transition: opacity 380ms ease, transform 480ms var(--fr-ease-move);
+  transition: opacity 380ms ease, transform 480ms var(--fr-ease-out);
 }
 .fr-movie[data-flying] .fr-movie-poster { opacity: 0; transform: translateX(-80px); }
 .fr-movie[data-flying] .fr-movie-info { opacity: 0; transform: translateX(-40px); }
@@ -153,7 +119,7 @@ html[data-flying] .fr-header,
 html[data-flying] .fr-footer {
   opacity: 0;
   transform: translateY(-30px);
-  transition: opacity 300ms ease, transform 400ms var(--fr-ease-move);
+  transition: opacity 300ms ease, transform 400ms var(--fr-ease-out);
 }
 /* Save and Share sit over the corridor's ceiling, not under it */
 .fr-movie-hero .fr-movie-actions {

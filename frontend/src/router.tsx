@@ -23,12 +23,15 @@ export interface AppRoute {
 const NAVIGATE_EVENT = "fr:navigate";
 
 /** `hold`, when given, keeps the old page's last frame on screen until it settles (CR-005: the landing's hall stays
- *  up until the seat page's hall has drawn), capped by the promise itself. */
-export function navigate(to: string, hold?: Promise<void>, opts?: { replace?: boolean }): void {
+ *  up until the seat page's hall has drawn), capped by the promise itself. `instant`: no View Transition - CR-014's
+ *  walk has already moved the live hall into place, and a transition would freeze it in a snapshot while it ran. */
+export function navigate(to: string, hold?: Promise<void>, opts?: { replace?: boolean; instant?: boolean }): void {
   // CR-008 T14 (#3): a redirect replaces the current entry, so Back skips it instead of bouncing straight back.
   if (opts?.replace) window.history.replaceState({ frDepth: depth() }, "", to);
   else window.history.pushState({ frDepth: depth() + 1 }, "", to);
-  transition(() => window.dispatchEvent(new Event(NAVIGATE_EVENT)), hold);
+  const change = () => window.dispatchEvent(new Event(NAVIGATE_EVENT));
+  if (opts?.instant) change();
+  else transition(change, hold);
 }
 
 // CR-007: how many in-app steps lie behind this entry (0 on a deep link or a reload of the first page).
@@ -50,7 +53,15 @@ export function goBack(): void {
 // The screen change rides the browser's own View Transitions API (FR-ADR-074): the old screen fades out as the new
 // one settles in (premium.css). flushSync makes React paint the new screen inside the transition callback.
 // No API, or reduced motion: the plain instant swap, unchanged.
+// CR-014: true while the page on screen shows the app's live 3D hall (hall3d/host.tsx sets it). A View Transition would
+// hold that canvas as a still snapshot while it runs, and the hall carries over to the next page anyway: no transition.
+let showsLiveHall: () => boolean = () => false;
+export function liveHallShown(test: () => boolean): void {
+  showsLiveHall = test;
+}
+
 function transition(change: () => void, hold?: Promise<void>): void {
+  if (showsLiveHall()) return void change();
   const swap = () => {
     flushSync(change);
     return hold;

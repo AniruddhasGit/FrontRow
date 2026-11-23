@@ -117,3 +117,16 @@
     animation: none;
   }
 }
+
+/* CR-014: the app's one hall (host.tsx) - its canvas fills whichever slot holds it */
+.fr-hall-host,
+.fr-hall-slot {
+  position: absolute;
+  inset: 0;
+}
+/* A box that grows (the film page's walk) is redrawn at its new size a frame later; meanwhile the last frame is
+   stretched to the box instead of leaving a dark margin. */
+.fr-hall-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
