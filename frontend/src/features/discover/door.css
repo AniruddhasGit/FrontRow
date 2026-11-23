@@ -21,8 +21,8 @@
   height: 100%;
 }
 .fr-corridor {
-  --door-at: 50% 56.3%;
   position: absolute;
+  container-type: size; /* the frame below is sized from this box */
   inset: 0;
   overflow: hidden;
   z-index: 1;
@@ -46,27 +46,54 @@
   outline: 2px solid var(--fr-focus-ring);
   outline-offset: -4px;
 }
-.fr-corridor-zoom {
+.fr-corridor {
+  overflow: hidden;
+}
+/* The render, square, covering the box with the doorway's middle (50% 56.33% of the render) at the same point of the box
+   at any aspect - so the swing strip and the zoom, placed in the render's own percent, always land on the doorway. */
+.fr-corridor-frame {
+  --s: max(100cqw, 100cqh);
   position: absolute;
-  inset: 0;
-  transform-origin: var(--door-at);
+  width: var(--s);
+  height: var(--s);
+  left: calc(50cqw - var(--s) * 0.5);
+  top: calc(56.33cqh - var(--s) * 0.5633);
+  transform-origin: 50% 56.33%;
 }
 .fr-corridor-shot {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: var(--door-at);
-  filter: brightness(0.92);
-  transition: filter 300ms ease;
+  filter: brightness(0.94);
+  opacity: 0; /* shown only once decoded (Door.tsx data-ready): it never draws in line by line */
+  transition: filter 300ms ease, opacity 400ms ease;
 }
-.fr-corridor-opened {
+.fr-corridor[data-ready] .fr-corridor-shot {
+  opacity: 1;
+}
+/* 12 frames of the door swinging open, side by side in one strip, over the doorway (swing.json's crop) */
+.fr-corridor-swing {
+  position: absolute;
+  left: 42.412%;
+  top: 41.438%;
+  width: 15.177%;
+  height: 29.788%;
+  background: url("/art/corridor/swing.webp") 0 0 / 1200% 100% no-repeat;
   opacity: 0;
 }
 .fr-corridor-door:not(:disabled):hover .fr-corridor-shot,
 .fr-corridor-door:focus-visible .fr-corridor-shot {
-  filter: brightness(1.06);
+  filter: brightness(1.05);
+}
+/* the fade to black at the end of the walk in (the hall then takes over from black) */
+.fr-corridor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
 }
 .fr-movie-door .fr-corridor-book {
   box-sizing: border-box;
@@ -88,17 +115,23 @@
   -webkit-mask-image: none;
   mask-image: none;
 }
-/* the door swings open as the corridor fills the window */
-.fr-corridor[data-door="flying"] .fr-corridor-opened {
+/* As the corridor fills the window the door swings open onto the dark hall (the strip, frame by frame), then you step
+   towards it - a short push, never far enough to magnify the render - and everything fades to black into the hall. */
+.fr-corridor[data-door="flying"] .fr-corridor-swing {
   opacity: 1;
-  transition: opacity 380ms ease 300ms;
+  animation: fr-door-swing 650ms steps(11, jump-none) 380ms both;
 }
-.fr-corridor[data-full] .fr-corridor-zoom {
-  transform: scale(12); /* the dark doorway fills the window before the hall takes over */
-  /* once the corridor fills the window, accelerate into the door, like walking faster towards it; the blur and the
-     dimming read as rushing into the dark hall, and hide that the render is magnified far past its pixels */
-  filter: blur(10px) brightness(0.45);
-  transition: transform 950ms cubic-bezier(0.55, 0, 0.85, 0.35) 420ms, filter 600ms ease-in 770ms;
+@keyframes fr-door-swing {
+  from { background-position-x: 0%; }
+  to { background-position-x: 100%; }
+}
+.fr-corridor[data-full] .fr-corridor-frame {
+  transform: scale(1.7);
+  transition: transform 600ms cubic-bezier(0.5, 0, 0.9, 0.5) 820ms;
+}
+.fr-corridor[data-full]::after {
+  opacity: 1;
+  transition: opacity 380ms ease-in 1000ms;
 }
 /* everything else on the page leaves: the poster and facts slide left, the actions up, the rest down, the header up */
 .fr-movie > *,
