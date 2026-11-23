@@ -60,7 +60,12 @@ def test_no_code_path_prunes_a_table_on_the_booking_path():
     # booked - never a booking, booking seat, payment, audit row, user or film - and runs only when DEMO_HISTORY_DAYS > 0.
     demo = [h for h in hits if h.startswith("migrations/versions/0004_demo_history.py:")]
     assert len(demo) == 2
-    assert [h for h in hits if h not in demo] == []
+    # CR-012 (owner ruling 2026-11-23, amended likewise): migration 0008's demo_delete_bookings deletes the demo CROWD's
+    # bookings of shows older than six months (booking_seat, booking, payment; receipt_dispatch is not in this census),
+    # never a real customer's. tests/demo/test_demo_expiry.py proves which rows it may touch.
+    crowd = [h for h in hits if h.startswith("migrations/versions/0008_demo_bookings_expiry.py:")]
+    assert len(crowd) == 3
+    assert [h for h in hits if h not in demo + crowd] == []
 
 
 def test_every_table_except_alembic_version_and_audit_log_carries_created_at(migrated_db):

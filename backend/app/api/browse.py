@@ -120,7 +120,10 @@ async def _top_up(request: Request, now) -> None:
         async with _db(request) as conn:
             added = await schedule.top_up(conn, now, state.settings.DEMO_SHOWTIMES_AHEAD_DAYS)
             if state.settings.DEMO_HISTORY_DAYS:
-                added += await schedule.delete_history(conn, now, state.settings.DEMO_HISTORY_DAYS)
+                # CR-012: crowd bookings older than six months first, so their shows can go with the history; never
+                # sooner than six months, so the analytics keep every booking, seat, price and time they need.
+                await schedule.delete_demo_bookings(conn, now)
+                added += await schedule.delete_history(conn, now, max(state.settings.DEMO_HISTORY_DAYS, schedule.KEEP_DAYS))
             await demo_fill.fill(conn, state.redis, now, horizon_days=state.settings.DEMO_SHOWTIMES_AHEAD_DAYS)
         if added:
             await cache.bump_listing_generation(state.redis)

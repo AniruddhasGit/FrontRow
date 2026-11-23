@@ -42,6 +42,24 @@ async def delete_history(conn: AsyncConnection, now: datetime, days: int) -> int
     return gone or 0
 
 
+# CR-012 (owner ruling 2026-11-23): "keep the old bookings for 6 months" for the admin and manager analytics. The demo
+# crowd's bookings go after this many days, and no show history goes sooner, whatever DEMO_HISTORY_DAYS says.
+KEEP_DAYS = 180
+BOOKING_BATCH = 2000  # crowd bookings deleted per call at most: a day's worth is ~900, so the hourly call keeps up
+
+
+async def delete_demo_bookings(conn: AsyncConnection, now: datetime) -> int:
+    """CR-012: the demo crowd's bookings of shows that started more than KEEP_DAYS ago, with their seats, receipts and
+    payments, through the one SECURITY DEFINER function (migration 0008), which deletes only crowd rows carrying the
+    demo payment mark. A real customer's booking is never touched. Returns the number of bookings deleted."""
+    async with conn.begin():
+        gone = await conn.scalar(text("SELECT demo_delete_bookings(:cutoff, :n)"),
+                                 {"cutoff": now - timedelta(days=KEEP_DAYS), "n": BOOKING_BATCH})
+    if gone:
+        log.info("demo bookings expired", extra={"bookings_deleted": gone, "older_than_days": KEEP_DAYS})
+    return gone or 0
+
+
 async def top_up(conn: AsyncConnection, now: datetime, horizon_days: int) -> int:
     """Returns the number of showtimes added (0 when the schedule already reaches far enough)."""
     horizon = now + timedelta(days=horizon_days)
